@@ -20,8 +20,8 @@ def creat_databases():
     #Raw Materials 
 
     cursor.execute("""
-    CREATE TABLE IN NOT EXISTS raw_materials(
-                   material_id INTEGER PRIMARY KEY AUTOINCRIMENT,
+    CREATE TABLE IF NOT EXISTS raw_materials(
+                   material_id INTEGER PRIMARY KEY AUTOINCREMENT,
                    name TEXT NOT NULL,
                    category TEXT,  
                    stock_level REAL,
@@ -35,19 +35,31 @@ def creat_databases():
     
     #Recipes
     cursor.execute("""
-    CREATE TABLE IF NOT EXIST recipes(
-                   recipie_id INTEGER PRIMARY KEY AUTOINCRIMENT,
+    CREATE TABLE IF NOT EXISTS recipes(
+                   recipe_id INTEGER PRIMARY KEY AUTOINCREMENT,
                    product_name TEXT NOT NULL,
-                   material_id INTEGER,
-                   quantity_per_unit REAL,
-                   FOREIGN KEY (material_id) FROM raw_materials(material_id)
+                   notes TEXT
+                   
                    
                    )
                    """)
     
+    cursor.execute("""
+    CREATE TABLE IF NOT EXISTS recipe_materials(
+                   recipe_material_id INTEGER PRIMARY KEY AUTOINCREMENT,
+                   recipe_id INTEGER,
+                   material_name TEXT NOT NULL,
+                   material_id INTEGER,
+                   quantity_needed REAL,
+                   FOREIGN KEY (material_id) REFERENCES raw_materials(material_id),
+                   FOREIGN KEY (recipe_id) REFERENCES recipes(recipe_id)
+                   
+                   )
+                   """)
+
     # Ready to ship
     cursor.execute("""
-    CREATE TABLE IN NOT EXIST ready_to_ship(
+    CREATE TABLE IF NOT EXISTS ready_to_ship(
                     batch_id INTEGER PRIMARY KEY AUTOINCREMENT,
                     product_name TEXT NOT NULL,
                     quantity INTEGER,
@@ -77,13 +89,13 @@ def add_raw_material(name, category, stock_level, unit, reorder_level, cost_per_
     cursor = conn.cursor()
     
     try:
-        cursor.excecute("""
+        cursor.execute("""
             INSERT INTO raw_materials (name, category, stock_level, unit, reorder_level, cost_per_unit, supplier)
             VALUES (?,?,?,?,?,?,?)
                         
                         """, (name, category, stock_level, unit, reorder_level, cost_per_unit, supplier))
         
-        conn.commit
+        conn.commit()
         print(f"Added {name} to raw materials")
         return cursor.lastrowid
     
@@ -156,11 +168,11 @@ def increase_raw_material(name, increase_amount):
 
         cursor.execute("""
         UPDATE raw_materials
-        SET stock_level + ?
+        SET stock_level = stock_level + ?
         WHERE material_id = ?
         
         """, (increase_amount, material_id) )
-        
+        conn.commit()
 
         #get new stock level
         cursor.execute("""
@@ -182,6 +194,31 @@ def increase_raw_material(name, increase_amount):
     finally:
         conn.close()
 
+
+
+def get_raw_material(name):
+
+    conn = sqlite3.connect('data/inventory.db')
+    cursor = conn.cursor()
+
+    try:
+        cursor.execute("""
+        SELECT material_id, name, stock_level, reorder_level, cost_per_unit
+        FROM raw_materials       
+        WHERE name = ?          
+                       """,(name,))
+        result = cursor.fetchone()
+
+
+        return result
+        
+    except Exception as e:
+        print(f"Error: {e}")
+        conn.rollback()
+        return None
+    
+    finally:
+        conn.close()
 
 def decrease_raw_material(name, decrease_amount):
     """Decreases amount of material given its name and amount to subtract"""
@@ -242,151 +279,73 @@ def decrease_raw_material(name, decrease_amount):
 
 def add_to_ready_to_ship(product_name, quantity, notes=None):
     """
-    Adds a product to ready_to_ship table and automatically deducts raw materials
-    from raw_materials table based on the product's recipe.
     
-    This function performs the following steps:
-    1. Looks up the recipe for the product in the recipes table
-    2. Checks if there are enough raw materials in stock
-    3. If sufficient, deducts the required materials from raw_materials table
-    4. Adds the product batch to ready_to_ship table
-    
-    Args:
-        product_name: Name of the product to add (must exist in recipes table)
-        quantity: Number of units of the product to add
-        notes: Optional notes for the batch (e.g., special instructions)
-    
-    Returns:
-        batch_id if successful, None otherwise
     """
     # Connect to the database
     conn = sqlite3.connect('data/inventory.db')
     cursor = conn.cursor()
     
     try:
-        # ============================================
-        # STEP 1: Get the recipe for this product
-        # ============================================
-        # Query the recipes table to find all raw materials needed for this product
-        # Each row in recipes represents one material needed for the product
-        cursor.execute("""
-        SELECT material_id, quantity_per_unit
-        FROM recipes
-        WHERE product_name = ?
-        """, (product_name,))
         
-        # Fetch all recipe entries (a product can have multiple materials)
-        recipe_items = cursor.fetchall()
-        
-        # Check if recipe exists - if not, we can't produce this product
-        if not recipe_items:
-            print(f"Error: No recipe found for product '{product_name}'")
-            conn.rollback()  # Undo any changes
+        #get recipe data frame
+        recipe_df = get_recipe(product_name)
+
+        if recipe_df is None or recipe_df.empty:
+            print(f"No recipe found for {product_name}")\
             return None
         
-        # ============================================
-        # STEP 2: Check if we have enough raw materials
-        # ============================================
-        # Before deducting anything, verify we have sufficient stock
-        # This prevents partial deductions if we run out mid-process
-        insufficient_materials = []  # List to track any materials we're short on
         
-        # Loop through each material in the recipe
-        for material_id, quantity_per_unit in recipe_items:
-            # Get the material's details (name, current stock, unit) from raw_materials table
-            cursor.execute("""
-            SELECT name, stock_level, unit
-            FROM raw_materials
-            WHERE material_id = ?
-            """, (material_id,))
-            
-            material_info = cursor.fetchone()
-            # Safety check: make sure the material exists
+
+        #check in there is needed resources
+
+        for _, row in recipe_df.itterrows(): #iterate through each row of recipe df
+            material_name = row['material_name'] #get material name
+            quantity_needed = row['quantity_needed'] # needed amount
+
+            material_info = get_raw_material(material_name)
             if not material_info:
-                print(f"Error: Material with ID {material_id} not found")
-                conn.rollback()
+                print(f"Material {material_name} not found in inventory")
                 return None
             
-            # Unpack the material information
-            material_name, current_stock, unit = material_info
+            material_id, name, stock_level, reorder_level, cost_per_unit = material_info #break down tuple
+
+            required_amount = quantity_needed * quantity 
+
+            if stock_level < required_amount:
+                print(f"Insufficient {material_name}: need {required_amount}, have {stock_level}")
+                return None
             
-            # Calculate how much of this material we need
-            # Example: If recipe says 0.5 kg per unit and we're making 10 units, we need 5 kg
-            required_amount = quantity_per_unit * quantity
-            
-            # Check if we have enough stock
-            if current_stock < required_amount:
-                # Add to insufficient list for reporting
-                insufficient_materials.append({
-                    'name': material_name,
-                    'required': required_amount,
-                    'available': current_stock,
-                    'unit': unit
-                })
-        
-        # ============================================
-        # STEP 3: If insufficient materials, abort and report
-        # ============================================
-        # If any materials are insufficient, don't proceed with production
-        # This ensures we never partially deduct materials
-        if insufficient_materials:
-            print(f"Error: Insufficient raw materials to produce {quantity} units of {product_name}:")
-            # Print details for each insufficient material
-            for mat in insufficient_materials:
-                print(f"  - {mat['name']}: Need {mat['required']} {mat['unit']}, but only {mat['available']} {mat['unit']} available")
-            conn.rollback()  # Undo any changes
-            return None
-        
-        # ============================================
-        # STEP 4: All checks passed - deduct materials
-        # ============================================
-        # Now that we've verified we have enough materials, deduct them from inventory
-        # Loop through each material in the recipe again
-        for material_id, quantity_per_unit in recipe_items:
-            # Calculate required amount (same calculation as before)
-            required_amount = quantity_per_unit * quantity
-            
-            # Get material name and unit for logging purposes
-            cursor.execute("""
-            SELECT name, unit
-            FROM raw_materials
-            WHERE material_id = ?
-            """, (material_id,))
-            material_name, unit = cursor.fetchone()
-            
-            # Deduct the required amount from the material's stock level
+            else:
+                print(f"{material_name}: enough stock ({stock_level} available)")
+
+
+
+        #deduct from raw_materials
+        for _, row in recipe_df.itterrows(): #iterate through each row of recipe df
+            material_id_recipe = row['material_id'] #get id
+            material_name = row['material_name'] #get material name
+            quantity_needed = row['quantity_needed'] # needed amount
+            required_amount = quantity_needed * quantity 
             cursor.execute("""
             UPDATE raw_materials
-            SET stock_level = stock_level - ?
-            WHERE material_id = ?
-            """, (required_amount, material_id))
-            
-            # Log what was deducted for transparency
-            print(f"Deducted {required_amount} {unit} of {material_name}")
+            SET stock_level = stock_level - ?               
+            WHERE material_id = ?   
+                           """,(required_amount, material_id,))
+            print(f'decreased {material_name} by {quantity_needed}')
+
         
-        # ============================================
-        # STEP 5: Add product to ready_to_ship table
-        # ============================================
-        # Create a timestamp for when this batch was completed
         date_completed = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
-        
-        # Insert the new batch into ready_to_ship table
         cursor.execute("""
-        INSERT INTO ready_to_ship (product_name, quantity, date_completed, status, notes)
-        VALUES (?, ?, ?, 'Ready', ?)
+            INSERT INTO ready_to_ship (product_name, quantity, date_completed, status, notes)
+            VALUES (?, ?, ?, 'Ready', ?)
         """, (product_name, quantity, date_completed, notes))
-        
-        # Get the batch_id that was automatically generated
         batch_id = cursor.lastrowid
-        
-        # Commit all changes to the database (both material deductions and batch insertion)
-        # This ensures atomicity - either everything succeeds or everything fails
         conn.commit()
-        
-        # Success message with batch ID for reference
-        print(f"Successfully added {quantity} units of {product_name} to ready_to_ship (Batch ID: {batch_id})")
+        print(f"Added {quantity} units of {product_name} to ready_to_ship (Batch {batch_id})")
         return batch_id
-        
+
+
+
     except Exception as e:
         # If any error occurs during the process, print it and undo all changes
         print(f"Error adding to ready_to_ship: {e}")
@@ -403,20 +362,53 @@ def add_to_ready_to_ship(product_name, quantity, notes=None):
 # ========================
 
 
+def get_recipe(product_name):
+"""
+Gets recipe from recipes, which refrences recipe materials
 
+"""
+
+    conn = sqlite3.connect('data/inventory.db')
+    cursor = conn.cursor()
+
+    try:
+        
+        cursor.execute("""
+        SELECT recipe_id
+        FROM recipes
+        WHERE product_name = ?   
+                       """,(product_name,))
+        row = cursor.fetchone() # get recipe_id from product name
+
+        if not row:
+            print(f"{product_name} not found in recipes")
+            return None
+        recipe_id = row[0]
+        
+        query = ("""
+        SELECT r.product_name, 
+        r.notes,
+        rm.material_id, 
+        rm.material_name, 
+        rm.quantity_needed
+        FROM recipes r
+        JOIN recipe_materials rm ON r.recipe_id = rm.recipe_id
+        WHERE r.recipe_id = ?
+        ORDER BY rm.material_name ASC
+        """)
+
+        df = pd.read_sql_query(query, conn, params= (recipe_id,))
+
+        return df
+        
+
+
+
+
+    except Exception as e:
+        print(f"Error: {e} \ngetting recipe:{product_name}.")
+        return None
     
-
-
-
-
-
-
-
-
- 
-
-             
-                    
-                    
-                  
-
+    finally:
+        conn.close()
+    
