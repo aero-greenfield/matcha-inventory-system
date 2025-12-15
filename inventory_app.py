@@ -363,10 +363,10 @@ def add_to_ready_to_ship(product_name, quantity, notes=None):
 
 
 def get_recipe(product_name):
-"""
-Gets recipe from recipes, which refrences recipe materials
+    """
+    Gets recipe from recipes, which refrences recipe materials
 
-"""
+    """
 
     conn = sqlite3.connect('data/inventory.db')
     cursor = conn.cursor()
@@ -412,3 +412,78 @@ Gets recipe from recipes, which refrences recipe materials
     finally:
         conn.close()
     
+
+
+def add_recipe(product_name, materials, notes=None):
+     
+    conn = sqlite3.connect('data/inventory.db')
+    cursor = conn.cursor()
+     
+
+     """
+    Adds a new recipe to the database.
+
+    Parameters:
+        product_name (str): Name of the product.
+        materials (list of dict): Each dict contains 'material_name' and 'quantity_needed'.
+        notes (str, optional): Additional notes for the recipe.
+
+    Example:
+        materials = [
+            {'material_name': 'Matcha Powder', 'quantity_needed': 10},
+            {'material_name': 'Milk', 'quantity_needed': 200}
+        ]
+        add_recipe('Matcha Latte', materials, notes='Sweetened')
+    """
+
+    try:
+
+        cursor.execute("""
+        INSERT INTO recipes (product_name, notes)
+        VALUES (?, ?)               
+         """,(product_name, notes))
+        recipe_id = cursor.lastrowid # get recipe_id, able to add to recipe_materials
+
+
+
+        for material in materials:
+            material_name = material["material_name"]
+            quantity_needed = material['quantity_needed']
+
+            #check material is in database
+
+            material_info = get_raw_material(material_name)
+
+            if not material_info:
+                print(f"Warning: Material '{material_name}' not found in raw_materials.")
+                material_id = None
+
+            else:
+                material_id = material_info[0]#get material_id, first value from get_raw_material result
+
+
+            cursor.execute("""
+            INSERT INTO recipe_materials (
+                   recipe_id,
+                   material_name,
+                   material_id,
+                   quantity_needed)
+            VALUES (?,?,?,?)                              
+              """,(recipe_id, material_name, material_id, quantity_needed))
+            
+
+        conn.commit()
+        print(f"Recipe '{product_name}' added successfully with {len(materials)} materials.")
+        return recipe_id
+
+
+
+    except Exception as e:
+        print(f"Error: {e}")
+        conn.rollback()
+        return None
+    
+    finally:
+        conn.close()
+
+         
