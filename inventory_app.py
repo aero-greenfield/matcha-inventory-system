@@ -291,7 +291,8 @@ def add_to_ready_to_ship(product_name, quantity, notes=None):
         recipe_df = get_recipe(product_name)
 
         if recipe_df is None or recipe_df.empty:
-            print(f"No recipe found for {product_name}")\
+            print(f"No recipe found for {product_name}")
+            
             return None
         
         
@@ -418,9 +419,8 @@ def add_recipe(product_name, materials, notes=None):
      
     conn = sqlite3.connect('data/inventory.db')
     cursor = conn.cursor()
-     
 
-     """
+    """
     Adds a new recipe to the database.
 
     Parameters:
@@ -485,5 +485,6 @@ def add_recipe(product_name, materials, notes=None):
     
     finally:
         conn.close()
+     
 
          
