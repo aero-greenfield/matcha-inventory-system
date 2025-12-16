@@ -487,4 +487,96 @@ def add_recipe(product_name, materials, notes=None):
         conn.close()
      
 
-         
+def change_recipe(product_name, materials, notes= None):
+    """
+    changes a pre exisitng recipe 
+
+    Parameters:
+        product_name (str): Name of the product.
+        materials (list of dict): Each dict contains 'material_name' and 'quantity_needed'.
+        notes (str, optional): Additional notes for the recipe.
+
+    Example:
+        materials = [
+            {'material_name': 'Matcha Powder', 'quantity_needed': 10},
+            {'material_name': 'Milk', 'quantity_needed': 200}
+        ]
+        change_recipe('Matcha Latte', materials, notes='Sweetened')
+
+        
+        
+        """
+    
+    conn = sqlite3.connect('data/inventory.db')
+    cursor = conn.cursor()
+    
+    try:
+
+        cursor.execute("""
+        SELECT recipe_id
+        FROM recipes
+        WHERE product_name = ?               
+               
+                       """,(product_name,))
+        recipe_id = cursor.fetchone()
+
+        if not recipe_id:
+            print(f"No recipe found for {product_name}")
+            return None
+        recipe_id = recipe_id[0]
+
+
+
+        cursor.execute("""
+        UPDATE recipes
+        SET notes = ?
+        WHERE product_name = ?               
+                       
+                       """,(notes, product_name,))
+        
+
+        cursor.execute("""
+        DELETE FROM recipe_materials
+        WHERE recipe_id = ?               
+                       """,(recipe_id,))
+        
+
+        for material in materials:
+            material_name = material["material_name"]
+            quantity_needed = material['quantity_needed']
+
+
+            material_info = get_raw_material(material_name)
+
+            if not material_info:
+                print(f"Warning: Material '{material_name}' not found in raw_materials.")
+                material_id = None
+
+            else:
+                material_id = material_info[0]#get material_id, first value from get_raw_material result
+
+
+            cursor.execute("""
+            INSERT INTO recipe_materials (
+            
+            recipe_id,
+            material_name,
+            material_id,
+            quantity_needed)
+            VALUES (?,?,?,?)                             
+                """, (recipe_id, material_name, material_id, quantity_needed))
+        
+        conn.commit()
+        print(f"Recipe '{product_name}' changed successfully with {len(materials)} materials.")
+        return recipe_id
+        
+
+    except Exception as e:
+        print(f"Error: {e}")
+        conn.rollback()
+        return None
+    
+    finally:
+        conn.close()
+    
+
