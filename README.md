@@ -27,9 +27,8 @@ Built full-stack inventory management application with:
 - **Deployment:** (Future) Streamlit Cloud with automated backups
 
 ## 📊 Key Features
-- **Multi-table relational database** with products, inventory, and sales tracking
+- **Multi-table relational database** with final products, inventory, and recipes
 - **SQL JOIN queries** for cross-table data analysis
-- **Aggregate functions** (SUM, GROUP BY) for sales summaries
 - **Parameterized queries** for SQL injection protection
 - **Data visualization** with bar charts and dashboards
 
