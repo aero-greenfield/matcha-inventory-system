@@ -580,3 +580,68 @@ def change_recipe(product_name, materials, notes= None):
         conn.close()
     
 
+def delete_recipe(product_name):
+
+    "deletes recipe"
+
+    conn = sqlite3.connect('data/inventory.db')
+    cursor = conn.cursor()
+
+    try:
+
+        #get id
+        cursor.execute("""
+        SELECT recipe_id
+        FROM recipes
+        WHERE product_name = ?         
+                       """,(product_name,))
+        row = cursor.fetchone()
+
+        if not row:
+            print(f"Recipe for {product_name} not found.")
+            return None
+        recipe_id = row[0]
+
+        #get materials that will be deleted 
+        query = ("""
+        SELECT material_name, quantity_needed               
+        FROM recipe_materials
+        WHERE recipe_id = ?                             
+                       """)
+        df = pd.read_sql_query(query, conn, params=(recipe_id,) )
+
+        #clean query for presentation
+
+        df = df.rename(columns={
+            'material_name': 'Material',
+        'quantity_needed': 'Quantity Needed'
+            })
+        
+        
+        
+        
+        #delete recipe from recipes
+        cursor.execute("""
+        DELETE FROM recipes
+        WHERE product_name = ?               
+                       """,(product_name,))
+        conn.commit()
+
+        
+        
+        cursor.execute("""
+        DELETE FROM recipe_materials
+        WHERE recipe_id = ?               
+                       """,(recipe_id,))
+        
+        conn.commit()
+
+        print(f"Deleted {product_name} from recipe log, {product_name}'s recipe:\n{df}")
+    
+    except Exception as e:
+        print(f"Error: {e}")
+        conn.rollback()
+        return None
+    
+    finally:
+        conn.close()
