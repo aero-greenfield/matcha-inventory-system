@@ -12,7 +12,7 @@ from datetime import datetime
 # ========================
 
 
-def creat_databases():
+def create_database():
     """Creates database with raw_materials, recipes, and ready_to_ship tables"""
     conn = sqlite3.connect('data/inventory.db')
     cursor = conn.cursor()
@@ -48,7 +48,6 @@ def creat_databases():
     CREATE TABLE IF NOT EXISTS recipe_materials(
                    recipe_material_id INTEGER PRIMARY KEY AUTOINCREMENT,
                    recipe_id INTEGER,
-                   material_name TEXT NOT NULL,
                    material_id INTEGER,
                    quantity_needed REAL,
                    FOREIGN KEY (material_id) REFERENCES raw_materials(material_id),
@@ -185,7 +184,8 @@ def increase_raw_material(name, increase_amount):
         new_stock_level = cursor.fetchone()[0] # fetchone() returns a tuple, so get the first and only value in tuple instead of tuple
         conn.close()
         print(f"Succesfully added, {name} is now at {new_stock_level}")
-
+        return new_stock_level
+    
     except Exception as e:
         print(f"Error: {e}")
         conn.rollback()
@@ -299,7 +299,7 @@ def add_to_ready_to_ship(product_name, quantity, notes=None):
 
         #check in there is needed resources
 
-        for _, row in recipe_df.itterrows(): #iterate through each row of recipe df
+        for _, row in recipe_df.iterrows(): #iterate through each row of recipe df
             material_name = row['material_name'] #get material name
             quantity_needed = row['quantity_needed'] # needed amount
 
@@ -322,7 +322,7 @@ def add_to_ready_to_ship(product_name, quantity, notes=None):
 
 
         #deduct from raw_materials
-        for _, row in recipe_df.itterrows(): #iterate through each row of recipe df
+        for _, row in recipe_df.iterrows(): #iterate through each row of recipe df
             material_id_recipe = row['material_id'] #get id
             material_name = row['material_name'] #get material name
             quantity_needed = row['quantity_needed'] # needed amount
@@ -331,7 +331,7 @@ def add_to_ready_to_ship(product_name, quantity, notes=None):
             UPDATE raw_materials
             SET stock_level = stock_level - ?               
             WHERE material_id = ?   
-                           """,(required_amount, material_id,))
+                           """,(required_amount, material_id_recipe,))
             print(f'decreased {material_name} by {quantity_needed}')
 
         
@@ -356,6 +356,9 @@ def add_to_ready_to_ship(product_name, quantity, notes=None):
     finally:
         # Always close the database connection, even if an error occurred
         conn.close()
+
+
+
 
 
 # ========================
@@ -390,10 +393,11 @@ def get_recipe(product_name):
         SELECT r.product_name, 
         r.notes,
         rm.material_id, 
-        rm.material_name, 
+        raw.name AS material_name, 
         rm.quantity_needed
         FROM recipes r
         JOIN recipe_materials rm ON r.recipe_id = rm.recipe_id
+        JOIN raw_materials raw ON rm.material_id = raw.material_id
         WHERE r.recipe_id = ?
         ORDER BY rm.material_name ASC
         """)
@@ -602,6 +606,8 @@ def delete_recipe(product_name):
             return None
         recipe_id = row[0]
 
+        
+        
         #get materials that will be deleted 
         query = ("""
         SELECT material_name, quantity_needed               
@@ -616,8 +622,6 @@ def delete_recipe(product_name):
             'material_name': 'Material',
         'quantity_needed': 'Quantity Needed'
             })
-        
-        
         
         
         #delete recipe from recipes
