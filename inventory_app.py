@@ -80,7 +80,7 @@ def create_database():
                    material_id INTEGER,
                    quantity_used REAL,
                    FOREIGN KEY (material_id) REFERENCES raw_materials(material_id),
-                   FOREIGN KEY (batch_id) REFERENCES ready_to_ship(batch_id)           
+                   FOREIGN KEY (batch_id) REFERENCES batches(batch_id)           
                   
                    
                    ) """)
@@ -289,10 +289,10 @@ def decrease_raw_material(name, decrease_amount):
 
 
 # ========================
-# READY TO SHIP FUNCTIONS
+# BATCHES FUNCTIONS
 # ========================
 
-def add_to_batches(product_name, quantity, notes=None, batch_id = None):
+def add_to_batches(product_name, quantity, notes=None, batch_id = None, deduct_resources=True):
     """
     adds batch to ready to ship, but asks user if they want to deduct from resources, or just add it. 
     """
@@ -310,145 +310,94 @@ def add_to_batches(product_name, quantity, notes=None, batch_id = None):
         if recipe_df is None or recipe_df.empty:
             raise ValueError(f"No recipe found for {product_name}")  #make sure there is a recipe for that product
             
-            
-        
-        
-        while True:
-
-            #ask user if they want to deduct or not:
-
-            
-            user_response = input(f"Do you want to deduct from resources? (Y/N):").strip().upper()
-            
-
-            if user_response not in {"Y", "N"}:
-                print("Invalid input. Please enter Y or N.")
-                continue
-            
-            
-            
-            date_completed = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
-            
+        date_completed = datetime.now().strftime('%Y-%m-%d %H:%M:%S')    
         
         
 
-
-
-            if user_response == "N":
+        if batch_id is not None:
 
                 #add to batches
                 
                 # check if batch_id already exists
-                if batch_id is not None:
-                    cursor.execute("""
-                        SELECT 1 
-                        FROM batches
-                        WHERE batch_id = ?
-                    """, (batch_id,))
-                    if cursor.fetchone():
-                        raise ValueError(f"Batch ID {batch_id} already exists.")
-                    #if it doesnt already exist and isnt None:
-                    cursor.execute("""
-                        INSERT INTO batches (batch_id, product_name, quantity, date_completed, status, notes)
-                        VALUES (?, ?, ?, ?, 'Ready', ?)
-                    """, (batch_id, product_name, quantity, date_completed, notes))
-                else:# if its None:
-                    cursor.execute("""
-                        INSERT INTO batches (product_name, quantity, date_completed, status, notes)
-                        VALUES (?, ?, ?, 'Ready', ?)
-                    """, (product_name, quantity, date_completed, notes))
-                    batch_id = cursor.lastrowid
                 
-                conn.commit()
-                print(f"Added {quantity} units of {product_name} to batches (Batch {batch_id})")
-                return batch_id
-            
-            if user_response == "Y":
+            cursor.execute("""
+                SELECT 1 
+                FROM batches
+                WHERE batch_id = ?
+            """, (batch_id,))
+            if cursor.fetchone():
+                raise ValueError(f"Batch ID {batch_id} already exists.")
+                    
+                    
+                    
+                    
+                #if it doesnt already exist and isnt None:
 
-            
+            cursor.execute("""
+                INSERT INTO batches (batch_id, product_name, quantity, date_completed, status, notes)
+                VALUES (?, ?, ?, ?, 'Ready', ?)
+            """, (batch_id, product_name, quantity, date_completed, notes))
+        
+        
+        else:# if its None:
+
+
+            cursor.execute("""
+                INSERT INTO batches (product_name, quantity, date_completed, status, notes)
+                VALUES (?, ?, ?, 'Ready', ?)
+            """, (product_name, quantity, date_completed, notes))
+            batch_id = cursor.lastrowid
                 
                 
-                
-                materials_deducted = []# record materials_deducted
+        #Deducting resources:        
+
+
+        if deduct_resources:
                 
 
-                #check in there is needed resources
-                for _, row in recipe_df.iterrows(): #iterate through each row of recipe df
-                    material_name = row['material_name'] #get material name
-                    quantity_needed = row['quantity_needed'] # needed amount
+            #check in there is needed resources
+            for _, row in recipe_df.iterrows(): #iterate through each row of recipe df
+                material_id_recipe = row['material_id'] #get id
+                material_name = row['material_name'] #get material name
+                quantity_needed = row['quantity_needed'] # needed amount
 
-                    material_info = get_raw_material(material_name)
-                    if not material_info:
-                        raise ValueError(f"Material {material_name} not found in inventory")
+                material_info = get_raw_material(material_name)
+                if not material_info:
+                    raise ValueError(f"Material {material_name}: not found in inventory")
+                
+                    
+                material_id, name, stock_level, reorder_level, cost_per_unit = material_info #break down tuple
+
+                required_amount = quantity_needed * quantity 
+
+                if stock_level < required_amount:
+                    raise ValueError(f"Insufficient {material_name}: need {required_amount}, have {stock_level}")
                         
-                    
-                    material_id, name, stock_level, reorder_level, cost_per_unit = material_info #break down tuple
-
-                    required_amount = quantity_needed * quantity 
-
-                    if stock_level < required_amount:
-                        raise ValueError(f"Insufficient {material_name}: need {required_amount}, have {stock_level}")
-                        
-                    
-                    else:
-                        print(f"{material_name}: enough stock ({stock_level} available)")
-
-                
-
-
-                #add to batches
-                
-                # check if batch_id already exists
-                if batch_id is not None:
-                    cursor.execute("""
-                        SELECT 1 
-                        FROM batches 
-                        WHERE batch_id = ?
-                    """, (batch_id,))
-                    if cursor.fetchone():
-                        raise ValueError(f"Batch ID {batch_id} already exists.")
-                    
-                    cursor.execute("""
-                        INSERT INTO batches (batch_id, product_name, quantity, date_completed, status, notes)
-                        VALUES (?, ?, ?, ?, 'Ready', ?)
-                    """, (batch_id, product_name, quantity, date_completed, notes))
-                else:
-                    cursor.execute("""
-                        INSERT INTO batches (product_name, quantity, date_completed, status, notes)
-                        VALUES (?, ?, ?, 'Ready', ?)
-                    """, (product_name, quantity, date_completed, notes))
-                    batch_id = cursor.lastrowid
-                conn.commit()
-                
 
                 #deduct from raw_materials
-                for _, row in recipe_df.iterrows(): #iterate through each row of recipe df
-                    material_id_recipe = row['material_id'] #get id
-                    material_name = row['material_name'] #get material name
-                    quantity_needed = row['quantity_needed'] # needed amount
-                    required_amount = quantity_needed * quantity 
-                    cursor.execute("""
-                    UPDATE raw_materials
-                    SET stock_level = stock_level - ?               
-                    WHERE material_id = ?   
-                                """,(required_amount, material_id_recipe,))
-                    print(f'decreased {material_name} by {required_amount}')
+            for _, row in recipe_df.iterrows(): #iterate through each row of recipe df
+                material_id = row['material_id'] #get id
+                material_name = row['material_name'] #get material name
+                quantity_needed = row['quantity_needed'] # needed amount
+                required_amount = quantity_needed * quantity 
+                    
+                    
+                cursor.execute("""
+                UPDATE raw_materials
+                SET stock_level = stock_level - ?               
+                WHERE material_id = ?   
+                    """,(required_amount, material_id,))
+                    
 
-                    materials_deducted.append({"material": material_name, "amount deducted": required_amount})
-
-                    cursor.execute("""
-                    INSERT INTO batch_materials (batch_id, material_id, quantity_used)
-                            VALUES (?, ?, ?)
-                        """, (batch_id, material_id, required_amount))
-                
-
-                print(f"Added {quantity} units of {product_name} to batches (Batch: {batch_id})")
-                print(f"materials deducted from resources:{materials_deducted}")
-                return batch_id
-            
-            
-            
-                
+                cursor.execute("""
+                INSERT INTO batch_materials (batch_id, material_id, quantity_used)
+                    VALUES (?, ?, ?)
+                    """, (batch_id, material_id, required_amount))
+        
+        conn.commit()
+        print(f"Added {quantity} units of {product_name} (Batch {batch_id})")
+        return batch_id
+                    
 
 
     except Exception as e:
@@ -501,7 +450,7 @@ def mark_as_shipped(batch_id):
     finally:
         conn.close()
 
-def delete_batch(batch_id):
+def delete_batch(batch_id, reallocate=False):
     """
     Deletes a batch from batches.
     Optionally reallocates raw materials back into inventory.
@@ -523,67 +472,62 @@ def delete_batch(batch_id):
             print(f"Batch ID {batch_id} not found in batches.")
             return None
 
-        product_name, batch_quantity = row
+        
 
-        while True:
-            user_input = input(
-                "Reallocate resources used in this batch back to inventory? (Y/N): "
-            ).strip().upper()
+        
 
-            if user_input == "Y":
-                recipe_df = get_recipe(product_name)
+        if reallocate:
 
-                if recipe_df is None or recipe_df.empty:
-                    raise ValueError(
-                        f"No recipe found for product '{product_name}'. Cannot reallocate."
-                    )
+            materials_added = []
+            #get batch material info from batch id
+            cursor.execute("""
+            SELECT bm.batch_material_id, bm.material_id, bm.quantity_used, rm.name AS material_name
+            FROM batch_materials AS bm
+            JOIN raw_materials AS rm ON bm.material_id = rm.material_id
+            WHERE bm.batch_id = ?               
+                           """,(batch_id,))
+            
+            batch_materials = cursor.fetchall()
 
-                materials_added = []
 
-                for _, recipe_row in recipe_df.iterrows():
-                    material_id = recipe_row["material_id"]
-                    material_name = recipe_row["material_name"]
-                    quantity_needed = recipe_row["quantity_needed"]
 
-                    quantity_used = quantity_needed * batch_quantity
+            for bm_id, material_id, quantity_used, material_name in batch_materials:
 
-                    cursor.execute("""
-                        UPDATE raw_materials
-                        SET stock_level = stock_level + ?
-                        WHERE material_id = ?
-                    """, (quantity_used, material_id))
+                cursor.execute("""
+                    UPDATE raw_materials
+                    SET stock_level = stock_level + ?
+                    WHERE material_id = ?
+                """, (quantity_used, material_id))
 
-                    materials_added.append({
-                        "material": material_name,
-                        "quantity_added": quantity_used
+                materials_added.append({
+                    "material": material_name,
+                    "quantity_added": quantity_used
                     })
 
-                # Delete batch
-                cursor.execute("""
-                    DELETE FROM batches
-                    WHERE batch_id = ?
-                """, (batch_id,))
+            # Delete batch
+            cursor.execute("""
+                DELETE FROM batches
+                WHERE batch_id = ?
+            """, (batch_id,))
 
-                conn.commit()
+            conn.commit()
 
-                print(
-                    f"Successfully deleted batch {batch_id}.\n"
-                    f"Reallocated materials: {materials_added}"
+            print(
+                f"Successfully deleted batch {batch_id}.\n"
+                f"Reallocated materials: {materials_added}"
                 )
-                break
+               
+        else:
+            cursor.execute("""
+                DELETE FROM batches
+                WHERE batch_id = ?
+            """, (batch_id,))
 
-            elif user_input == "N":
-                cursor.execute("""
-                    DELETE FROM batches
-                    WHERE batch_id = ?
-                """, (batch_id,))
+            conn.commit()
+            print(f"Successfully deleted batch {batch_id}.")
+            
 
-                conn.commit()
-                print(f"Successfully deleted batch {batch_id}.")
-                break
-
-            else:
-                print("Invalid input. Please enter Y or N.")
+        
 
     except Exception as e:
         conn.rollback()
