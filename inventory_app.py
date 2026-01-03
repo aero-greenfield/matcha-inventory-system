@@ -36,33 +36,13 @@ def create_database():
     
     #Recipes
     cursor.execute("""
-<<<<<<< HEAD
-    CREATE TABLE IF NOT EXIST recipes(
-                   recipe_id INTEGER PRIMARY KEY AUTOINCRIMENT,
-                   name TEXT NOT NULL UNIQUE,
-                   category TEXT
-=======
     CREATE TABLE IF NOT EXISTS recipes(
                    recipe_id INTEGER PRIMARY KEY AUTOINCREMENT,
                    product_name TEXT NOT NULL,
                    notes TEXT
                    
->>>>>>> b2e6b250d1ada0a5e968729b71a27a1358e03dbc
                    
                    )
-                   """)
-    #recipes ingredients, references recipes
-    #each row = one ingredient in one recipe
-    #one recipe has a recipe_id, and each ingredient under that recipe shares the same recipe_id
-    cursor.execute("""
-    CREATE TABLE IN NOT EXIST recipe_ingredients(
-                   id INTEGER PRIMARY KEY AUTOINCREMENT,
-                   recipe_id INTEGER NOT NULL,
-                   material_id INTEGER NOT NULL,
-                   ammount_needed REAL NOT NULL,
-                   unit TEXT NOT NULL,
-                   FOREIGN KEY (recipe_id) REFERENCES recipes(recipe_id),
-                   FOREIGN KEY (material_id) REFERENCES raw_materials(material_id)
                    """)
     
     cursor.execute("""
@@ -148,28 +128,16 @@ def get_low_stock_materials():
     conn = sqlite3.connect('data/inventory.db')
     cursor = conn.cursor()
 
-    try:
+    query = """
 
-        cursor.execute("""
-                    
-        SELECT name, category, stock_level, reorder_level, unit
-        FROM raw_materials
-        WHERE stock_level <= reorder_level
-        ORDER BY (stock_level / reorder_level)         
-        """)
-        rows = cursor.fetchall() 
-
-        
-        print("Low of following materials:")
-        for row in rows:
-            print(row)
-        
-    except Exception as e:
-        print(f'Error:{e} when trying to find low stock levels.')
-
-
-    finally:
-        conn.close()
+    SELECT name, category, stock_level, reorder_level, unit
+    FROM raw_materials
+    WHERE stock_level <= reorder_level
+    ORDER BY (stock_level / reorder_level)
+    """
+    result = pd.read_sql_query(query, conn)
+    conn.close()
+    return result
 
 
 def get_all_materials():
@@ -177,34 +145,15 @@ def get_all_materials():
     conn = sqlite3.connect('data/inventory.db')
     cursor = conn.cursor()
 
+    query = """
+    SELECT name, category, stock_level, unit, reorder_level, cost_per_unit, supplier
+    FROM raw_materials
+    ORDER BY category, name
+    """
 
-
-    try:
-        cursor.execute("""
-                     
-        SELECT name, category, stock_level, unit, reorder_level, cost_per_unit, supplier
-        FROM raw_materials
-        ORDER BY category, name
-                     """)
-   
-        rows = cursor.fetchall()
-
-        print(f'Current materials in inventory:')
-        for row in rows:
-            print(row)
-    
-
-    except Exception as e:
-        print(f"Error:{e} when finding all materals")
-
-    
-    
-    
-    finally:
-        conn.close()
-    
-
-
+    result = pd.read_sql_query(query,conn)
+    conn.close()
+    return result
 
 
 def increase_raw_material(name, increase_amount):
@@ -339,9 +288,6 @@ def decrease_raw_material(name, decrease_amount):
         conn.close()
 
 
-<<<<<<< HEAD
-
-=======
 # ========================
 # BATCHES FUNCTIONS
 # ========================
@@ -463,7 +409,6 @@ def add_to_batches(product_name, quantity, notes=None, batch_id = None, deduct_r
     finally:
         # Always close the database connection, even if an error occurred
         conn.close()
->>>>>>> b2e6b250d1ada0a5e968729b71a27a1358e03dbc
 
 
 def get_batches():
@@ -598,50 +543,10 @@ def delete_batch(batch_id, reallocate=False):
 # RECIPE FUNCTIONS
 # ========================
 
-def get_recipe(name):
-    conn = sqlite3.connect('data/inventory.db')
-    cursor = conn.cursor()
 
-<<<<<<< HEAD
-    try:
-        #get recipe id
-        cursor.execute("""
-                       
-        SELECT recipe_id
-        FROM recipes
-        WHERE name = ?""", (name,))
-
-        result = cursor.fetchone()
-
-        if not result:
-            print(f'Recipe:{name}, not found')
-        
-        recipe_id = result[0]
-        #get all ingredients from recipe
-        
-        cursor.execute("""
-            SELECT rm.material_id, rm.name, ri.amount_needed, ri.unit
-            FROM recipe_ingredients ri
-            JOIN raw_materials rm ON ri.material_id = rm.material_id
-            WHERE ri.recipe_id = ?         
-                       
-                       """,(recipe_id,))
-        rows = cursor.fetchall()
-
-        materials = []
-        for row in rows:
-            material_id, material_name, amount_needed, unit = row
-            materials.append({"material_id": material_id, "name": material_name, "amount_needed": amount_needed, "unit": unit})
-
-        return materials
-    
-    except Exception as e:
-        print(f'Error:{e} when fetching recipe.')
-=======
 def get_recipe(product_name):
     """
     Gets recipe from recipes, which refrences recipe materials
->>>>>>> b2e6b250d1ada0a5e968729b71a27a1358e03dbc
 
     """
 
@@ -691,10 +596,6 @@ def get_recipe(product_name):
         conn.close()
     
 
-<<<<<<< HEAD
-    finally:
-        conn.close()
-=======
 
 def add_recipe(product_name, materials, notes=None):
      
@@ -724,7 +625,6 @@ def add_recipe(product_name, materials, notes=None):
         VALUES (?, ?)               
          """,(product_name, notes))
         recipe_id = cursor.lastrowid # get recipe_id, able to add to recipe_materials
->>>>>>> b2e6b250d1ada0a5e968729b71a27a1358e03dbc
 
 
 
@@ -760,187 +660,6 @@ def add_recipe(product_name, materials, notes=None):
 
 
 
-<<<<<<< HEAD
- 
-# ========================
-# READY TO SHIP FUNCTIONS
-# ========================
-
-
-def get_ready_to_ship():
-
-    conn = sqlite3.connect('data/inventory.db')
-    cursor = conn.cursor()
-    try:
-        
-        cursor.execute("""
-                       
-        SELECT * 
-        FROM ready_to_ship
-        ORDER BY category, name
-                       """)
-    
-        rows =  cursor.fetchall()
-
-        print("Ready to ship products:")
-        for row in rows:
-            print(row)
-
-
-
-
-    except Exception as e:
-        print(f"Error:{e} when retreiving ready to ship products")
-
-    finally:
-        conn.close()
-
-
-
-
-
-def add_to_ready_to_ship(product_name, quantity, notes=None):
-    """
-    Adds a product to ready_to_ship table and automatically deducts raw materials
-    from raw_materials table based on the product's recipe
-    
-
-    1. Looks up the recipe for the product in the recipes table
-    2. finds the recipe materials from recipe_id in recipe_ingredients
-    3. Checks if there are enough raw materials in stock
-    4. deducts the required materials from raw_materials table
-    5. Adds the product batch to ready_to_ship table
-    
-    """
-    
-    conn = sqlite3.connect('data/inventory.db')
-    cursor = conn.cursor()
-    
-    try:
-        
-        recipe = get_recipe(product_name)
-        if not recipe:
-            print(f"No recipe found for '{product_name}'")
-            return None
-        
-
-        
-        insufficient_materials = []  
-
-        for ingredient in recipe:
-            required = ingredient["amount_needed"] * quantity
-            
-        
-       
-        for material_id, quantity_per_unit in recipe_items:
-            
-            cursor.execute("""
-            SELECT name, stock_level, unit
-            FROM raw_materials
-            WHERE material_id = ?
-            """, (material_id,))
-            
-            material_info = cursor.fetchone()
-            
-            #saftey check
-            if not material_info:
-                print(f"Error: Material with ID {material_id} not found")
-                conn.rollback()
-                return None
-            
-            # unpack material information
-            material_name, current_stock, unit = material_info
-            
-            
-            required_amount = quantity_per_unit * quantity
-            
-           
-            if current_stock < required_amount:
-                
-
-                insufficient_materials.append({
-                    'name': material_name,
-
-                    'required': required_amount,
-                    'available': current_stock,
-                    'unit': unit
-                })
-        
-        
-        #if insufficient materials, abort and report
-        
-        
-        if insufficient_materials:
-            print(f"Error: Insufficient raw materials to produce {quantity} units of {product_name}:")
-            
-
-            for mat in insufficient_materials:
-                print(f"  - {mat['name']}: Need {mat['required']} {mat['unit']}, but only {mat['available']} {mat['unit']} available")
-            conn.rollback()  
-            return None
-        
-        
-
-
-
-        # all good for required amount:
-        # procede to incrase to ready to ship and decrease from raw materials
-
-        for material_id, quantity_per_unit in recipe_items:
-            
-
-            required_amount = quantity_per_unit * quantity
-            
-            
-            cursor.execute("""
-            SELECT name, unit
-            FROM raw_materials
-            WHERE material_id = ?
-            """, (material_id,))
-            material_name, unit = cursor.fetchone()
-            
-            #deduct the required amount from the materials stock level
-            cursor.execute("""
-            UPDATE raw_materials
-            SET stock_level = stock_level - ?
-            WHERE material_id = ?
-            """, (required_amount, material_id))
-            
-            # log what was deducted 
-            print(f"Deducted {required_amount} {unit} of {material_name}")
-        
-       
-        date_completed = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
-        
-        # insert the new batch into ready_to_ship table
-        cursor.execute("""
-        INSERT INTO ready_to_ship (product_name, quantity, date_completed, status, notes)
-        VALUES (?, ?, ?, 'Ready', ?)
-        """, (product_name, quantity, date_completed, notes))
-        
-        # get the batch_id that was automatically generated
-        batch_id = cursor.lastrowid
-        
-    
-        conn.commit()
-        
-        # success message with batch ID 
-        print(f"Successfully added {quantity} units of {product_name} to ready_to_ship (Batch ID: {batch_id})")
-        return batch_id
-        
-    except Exception as e:
-        
-        print(f"Error adding to ready_to_ship: {e}")
-        conn.rollback()  
-        return None
-    
-    finally:
-        conn.close()
-    
-                    
-                    
-                  
-=======
     except Exception as e:
         print(f"Error: {e}")
         conn.rollback()
@@ -953,7 +672,6 @@ def add_to_ready_to_ship(product_name, quantity, notes=None):
 def change_recipe(product_name, materials, notes= None):
     """
     changes a pre exisitng recipe 
->>>>>>> b2e6b250d1ada0a5e968729b71a27a1358e03dbc
 
     Parameters:
         product_name (str): Name of the product.
@@ -1113,53 +831,6 @@ def delete_recipe(product_name):
 
 
 
-#======================== 
-#TESTING
-#================
 
 
-if __name__ == "__main__":
-    
-    if os.path.exists("data/inventory.db"):
-        os.remove("data/inventory.db")
-    
-    
-    
-    # Step 1: Create database
-    create_database()
 
-    # Step 2: Add raw materials
-    add_raw_material("Matcha", "Powder", 1000, "g", 100, 0.05)
-    add_raw_material("Milk Powder", "Powder", 5000, "g", 200, 0.02)
-    add_raw_material("Sugar", "Powder", 2000, "g", 100, 0.01)
-
-    # Step 3: Add a recipe
-    materials = [
-        {"material_name": "Matcha", "quantity_needed": 2},   # per unit
-        {"material_name": "Milk Powder", "quantity_needed": 30},
-        {"material_name": "Sugar", "quantity_needed": 5}
-    ]
-    add_recipe("Matcha Latte", materials, notes="Classic sweetened")
-
-    # Step 4: Produce a batch
-    print("\n--- Produce a batch ---")
-    batch_id = add_to_batches("Matcha Latte", 10, notes="Morning batch", batch_id = 67)
-    print(f"Batch created: {batch_id}")
-
-    # Step 5: Check tables
-    print("\n--- Raw Materials ---")
-    print(get_all_materials())
-
-    print("\n--- Ready to Ship ---")
-    print(get_batches())
-
-    print("\n--- Recipe ---")
-    print(get_recipe("Matcha Latte"))
-
-
-    #more testing:
-    #increase raw_material:
-    increase_raw_material('Matcha', 42067, )
-
-    print("\n--- Raw Materials  2 ---")
-    print(get_all_materials())
