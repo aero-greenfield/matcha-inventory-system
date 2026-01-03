@@ -1,0 +1,32 @@
+1. create databases:
+    makes the tables
+
+
+RAW MATERIALS:
+
+1. add_raw_material:
+    adds raw materials to raw materials tables
+
+2. get_low_stock_materials:
+    Return raw materials below if low on stock
+
+3. get_all_materials:
+    returns all materials in raw materials table
+
+4. increase_raw_materials
+
+
+5. decrease_raw_materials:
+
+
+READY TO SHIP:
+
+
+1. add_to_ready_to_ship:
+    Adds a product to ready_to_ship table and automatically deducts raw materials
+    from raw_materials table based on the product's recipe
+
+2. get ready to ship:
+    returns all ready to ship products in table
+
+3. 
