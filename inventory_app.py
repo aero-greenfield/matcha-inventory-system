@@ -287,6 +287,28 @@ def decrease_raw_material(name, decrease_amount):
     finally:
         conn.close()
 
+def delete_raw_material(name):
+
+    """Deletes raw material from database given its name"""
+    
+    conn = sqlite3.connect('data/inventory.db')
+    cursor = conn.cursor()
+
+    try:
+        cursor.execute("""
+        DELETE FROM raw_materials
+        WHERE name = ?               
+                       """,(name,))
+        conn.commit()
+        print(f"Deleted {name} from raw materials")
+    
+    except Exception as e:
+        print(f"Error: {e}")
+        conn.rollback()
+        return None
+    
+    finally:
+        conn.close()
 
 # ========================
 # BATCHES FUNCTIONS

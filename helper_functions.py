@@ -202,7 +202,27 @@ def export_to_csv(df, filename_prefix):
     return filepath
 
 
-
+def optional_export_to_csv(df, default_prefix):
+    """
+    Asks user if they want to export dataframe to csv.
+    
+    If yes, prompts for custom filename prefix or uses default.
+    Exports and returns file path, else returns None.
+    """
+    if df.empty:
+        print("|WARNING| No data to export.")
+        return None
+    
+    if get_yes_no_input("Would you like to export this data to a CSV file?"):
+        custom_prefix = input(f"Enter filename prefix (or press Enter for '{default_prefix}'): ").strip()
+        prefix = custom_prefix if custom_prefix else default_prefix
+        
+        filepath = export_to_csv(df, prefix)
+        print(f" Data exported to: {filepath}")
+        return filepath
+    else:
+        print(" Export cancelled by user.")
+        return None
 # DATABASE BACKUP
 
 """

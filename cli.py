@@ -23,7 +23,8 @@ from inventory_app import (
     get_recipe,
     add_recipe,
     change_recipe,
-    delete_recipe
+    delete_recipe,
+    delete_raw_material
 )
 
 # Import utility functions
@@ -180,6 +181,8 @@ def view_inventory():
             'supplier': 'Supplier'
         })
         display_dataframe(df, empty_message="No materials found.") #call display function
+    
+
     
     pause()# wait for user to read output
 
