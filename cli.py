@@ -243,7 +243,7 @@ def add_material():
     
     pause()
 
-# CONTINUE HERE ***********************************************
+
 
 def restock_material():
     """
@@ -300,11 +300,11 @@ def check_low_stock():
     df = get_low_stock_materials()# get df from func
     
     if df.empty:
-        print_success("All materials are adequately stocked!")#CONTINUE HERE_____________________________________________
+        print_success("All materials are adequately stocked!")# No current stock < restock value
     else:
-        print(f"⚠️  {len(df)} material(s) need reordering:\n")
+        print(f"⚠️  {len(df)} material(s) need reordering:\n") #else
         
-        # Clean up column names
+        # Clean up column names for readabilty 
         df = df.rename(columns={
             'name': 'Material',
             'category': 'Category',
@@ -313,7 +313,7 @@ def check_low_stock():
             'unit': 'Unit'
         })
         
-        display_dataframe(df)
+        display_dataframe(df) #pretty df using tabulate
     
     pause()
 
@@ -322,11 +322,13 @@ def check_low_stock():
 # BATCH MANAGEMENT
 # ========================
 
+
+
 def create_batch():
     """
     Creates new production batch.
     
-    Complex workflow:
+     workflow:
     1. Ask for product name
     2. Verify recipe exists
     3. Show recipe and cost calculation
@@ -334,23 +336,29 @@ def create_batch():
     5. Check material availability
     6. Optionally set custom batch ID
     7. Create batch (auto-deducts materials)
-    8. Create backup before operation (safety!)
+    8. adds batch to batches for logging
+    9. Create backup before operation (safety!)
     
     This is the most critical function - handles inventory transactions
+
+    calls:
+    - "get_recipe"
+    -" add_to_batches"
+    
     """
     print_header("CREATE NEW BATCH")
     
-    product_name = input("Enter product name: ").strip()
+    product_name = input("Enter product name: ").strip() # valid poduct name
     
     if not product_name:
-        print_error("Product name cannot be empty.")
+        print_error("Product name cannot be empty.")# if not valid
         pause()
         return
     
     # Check if recipe exists
     recipe_df = get_recipe(product_name)
     
-    if recipe_df is None or recipe_df.empty:
+    if recipe_df is None or recipe_df.empty:# invalid recipe given product name
         print_error(f"No recipe found for '{product_name}'.")
         print("Please create a recipe first (option 10).")
         pause()
@@ -359,33 +367,33 @@ def create_batch():
     # Show recipe to user
     print(f"\n📋 Recipe for {product_name}:")
     display_dataframe(
-        recipe_df[['material_name', 'quantity_needed']],
+        recipe_df[['material_name', 'quantity_needed']],# only display name and quant needed 
         empty_message="No materials in recipe."
     )
     
-    quantity = get_int_input("\nEnter batch quantity to produce: ", min_val=1, allow_zero=False)
+    quantity = get_int_input("\nEnter batch quantity to produce: ", min_val=1, allow_zero=False) # valid quant input
     
     # Show what materials will be consumed
-    print(f"\n📊 This batch will consume:")
-    for _, row in recipe_df.iterrows():
-        total_needed = row['quantity_needed'] * quantity
-        print(f"   • {row['material_name']}: {total_needed} units")
+    print(f"\n📊 This batch will consume:") 
+    for _, row in recipe_df.iterrows():# itr through rec df 
+        total_needed = row['quantity_needed'] * quantity # calc needed quant
+        print(f"   • {row['material_name']}: {total_needed} units") # for each itr in df, prints mat name and quant needed
     
     # Confirm with user
-    if not get_yes_no_input("\nProceed with batch creation?"):
+    if not get_yes_no_input("\nProceed with batch creation?"):# valid y/n input
         print("❌ Batch creation cancelled.")
         pause()
         return
     
     # Get batch ID (optional manual or auto-generate)
-    batch_id = get_optional_batch_id()
+    batch_id = get_optional_batch_id() # custom batch_id or auto 
     
     # Create backup before modifying database
-    print("\n📦 Creating safety backup before batch creation...")
+    print("\n📦 Creating safety backup before batch creation...") 
     backup_database(reason="before_batch")
     
-    # Create the batch
-    result = add_to_batches(
+    # Create the batch by calling main func
+    result = add_to_batches( 
         product_name=product_name,
         quantity=quantity,
         batch_id=batch_id,
@@ -393,7 +401,7 @@ def create_batch():
     )
     
     if result:
-        print_success(f"Batch created successfully! Batch ID: {result}")
+        print_success(f"Batch created successfully! Batch ID: {result}") #if successful 
     else:
         print_error("Batch creation failed. Database rolled back to previous state.")
     
@@ -401,15 +409,19 @@ def create_batch():
 
 
 def view_ready_batches():
-    """Shows all batches with status 'Ready'."""
+    """Shows all batches with status 'Ready'.
+    
+    calls " get_batches"
+    """
+
     print_header("READY TO SHIP BATCHES")
     
-    df = get_batches()
+    df = get_batches()#call main func
     
     if df.empty:
-        print_warning("No batches ready for shipment.")
+        print_warning("No batches ready for shipment.")# validate func return
     else:
-        df = df.rename(columns={
+        df = df.rename(columns={ # improve df for readability 
             'batch_id': 'Batch ID',
             'product_name': 'Product',
             'quantity': 'Quantity',
@@ -427,7 +439,11 @@ def ship_batch():
     Marks batch as shipped.
     
     Records shipment date in database.
-    Portfolio: Shows you understand status workflows and audit trails
+   calls"get_batches"
+
+   - "mark_as_shipped"
+
+
     """
     print_header("MARK BATCH AS SHIPPED")
     
@@ -435,25 +451,25 @@ def ship_batch():
     df = get_batches()
     
     if df.empty:
-        print_warning("No batches available to ship.")
+        print_warning("No batches available to ship.") #valid return of func
         pause()
         return
     
     print("Available batches:\n")
-    display_dataframe(df[['batch_id', 'product_name', 'quantity']])
+    display_dataframe(df[['batch_id', 'product_name', 'quantity']]) #display df only ID, name, quant
     
-    batch_id = get_int_input("\nEnter Batch ID to mark as shipped: ", min_val=1)
+    batch_id = get_int_input("\nEnter Batch ID to mark as shipped: ", min_val=1)#vallid batch_id input
     
     # Confirm action
-    if not get_yes_no_input(f"Mark Batch {batch_id} as shipped?"):
+    if not get_yes_no_input(f"Mark Batch {batch_id} as shipped?"): # second check
         print("❌ Operation cancelled.")
         pause()
         return
     
-    success = mark_as_shipped(batch_id)
+    success = mark_as_shipped(batch_id) # call main func
     
     if success:
-        print_success(f"Batch {batch_id} marked as shipped!")
+        print_success(f"Batch {batch_id} marked as shipped!")# func returned successfully 
     else:
         print_error("Failed to update batch status.")
     
@@ -469,6 +485,9 @@ def remove_batch():
     - No if batch was already used/consumed
     
     Creates backup before deletion (safety!)
+
+    calls: -" delete_batch"
+    - "get_batch"
     """
     print_header("DELETE BATCH")
     
@@ -481,32 +500,32 @@ def remove_batch():
         return
     
     print("Available batches:\n")
-    display_dataframe(df[['batch_id', 'product_name', 'quantity', 'status']])
+    display_dataframe(df[['batch_id', 'product_name', 'quantity', 'status']])# print batches. only show Id, name, quant, status (ready or shipped)
     
-    batch_id = get_int_input("\nEnter Batch ID to delete: ", min_val=1)
+    batch_id = get_int_input("\nEnter Batch ID to delete: ", min_val=1) # valid batch_id
     
-    # Ask about material reallocation
+    # Ask about material reallocation  (CRITICAL)
     print("\n🔄 Material Reallocation:")
     print("  • Choose 'Yes' if batch was defective (materials go back to inventory)")
     print("  • Choose 'No' if batch was consumed/damaged (materials are lost)")
     
-    reallocate = get_yes_no_input("\nReallocate materials back to inventory?")
+    reallocate = get_yes_no_input("\nReallocate materials back to inventory?") #valid y/n input
     
     # Final confirmation
-    action = "delete and reallocate" if reallocate else "delete permanently"
-    if not get_yes_no_input(f"\nConfirm: {action} Batch {batch_id}?"):
+    action = "delete and reallocate" if reallocate else "delete permanently" # if input == True, reallocate string, else, delete string
+    if not get_yes_no_input(f"\nConfirm: {action} Batch {batch_id}?"):#get another y/n input, if True, contiue, if not quit here
         print("❌ Operation cancelled.")
         pause()
         return
     
-    # Backup before deletion
+    # Backup before deletion (critical for saftey)
     print("\n📦 Creating safety backup before deletion...")
     backup_database(reason="before_delete")
     
     # Delete the batch
-    result = delete_batch(batch_id, reallocate=reallocate)
+    result = delete_batch(batch_id, reallocate=reallocate) # call main func
     
-    if result is not None:
+    if result is not None: #validate succesful deletion of batch
         print_success(f"Batch {batch_id} deleted successfully!")
     else:
         print_error("Failed to delete batch.")
