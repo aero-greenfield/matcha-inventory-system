@@ -249,57 +249,58 @@ def restock_material():
     """
     Increases stock level of existing material.
     
-    Business logic: Common operation (receiving shipments)
-    Should be easy and fast to use
+    updates raw material table,
+    calls "increase_raw_material"
+    & "get_raw_material"
     """
-    print_header("RESTOCK MATERIAL")
+    print_header("RESTOCK MATERIAL") #header
     
-    material_name = input("Enter material name to restock: ").strip()
+    material_name = input("Enter material name to restock: ").strip() #get mat name wanted to increase
     
     if not material_name:
-        print_error("Material name cannot be empty.")
+        print_error("Material name cannot be empty.")#valid input
         pause()
         return
     
     # Check if material exists first
-    material_info = get_raw_material(material_name)
+    material_info = get_raw_material(material_name)# get info given material name 
     
     if not material_info:
         print_error(f"Material '{material_name}' not found in inventory.")
         pause()
-        return
+        return#needs material info to have worked
     
     # Show current stock before asking for increase
     _, name, current_stock, reorder_level, cost = material_info
-    print(f"\n📊 Current stock: {current_stock} units")
+    print(f"\n📊 Current stock: {current_stock} units") #print current inventory of mat
     print(f"   Reorder level: {reorder_level} units\n")
     
-    amount_to_add = get_float_input("Enter amount to add: ", min_val=0, allow_zero=False)
+    amount_to_add = get_float_input("Enter amount to add: ", min_val=0, allow_zero=False)# get valid float input
     
     # Call inventory_app function
-    new_stock = increase_raw_material(material_name, amount_to_add)
+    new_stock = increase_raw_material(material_name, amount_to_add) #incrase
     
     if new_stock is not None:
-        print_success(f"Stock updated! New level: {new_stock} units")
+        print_success(f"Stock updated! New level: {new_stock} units")# succesful restock
     else:
         print_error("Failed to update stock.")
     
     pause()
 
 
+
 def check_low_stock():
     """
     Shows materials below reorder level.
     
-    Critical for operations: Prevents stockouts
-    Portfolio value: Shows you understand business process automation
+    calls :"get_low_stock_materials"
     """
-    print_header("LOW STOCK ALERTS")
+    print_header("LOW STOCK ALERTS")#header
     
-    df = get_low_stock_materials()
+    df = get_low_stock_materials()# get df from func
     
     if df.empty:
-        print_success("All materials are adequately stocked!")
+        print_success("All materials are adequately stocked!")#CONTINUE HERE_____________________________________________
     else:
         print(f"⚠️  {len(df)} material(s) need reordering:\n")
         
