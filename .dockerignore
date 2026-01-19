@@ -1,0 +1,125 @@
+# ============================================================ 
+# Python cache files (don't copy these into container) 
+# ============================================================ 
+__pycache__/ 
+*.pyc 
+*.pyo 
+*.pyd 
+.Python 
+*.so 
+*.egg 
+*.egg-info/ 
+dist/ 
+build/ 
+ 
+# Why ignore these? 
+# - __pycache__ = Python bytecode cache (auto-generated) 
+# - *.pyc = compiled Python files (auto-generated) 
+# - These are specific to your computer 
+# - Container will regenerate them 
+# - Copying them wastes space and can cause errors 
+ 
+# ============================================================ 
+# Virtual environment (IMPORTANT - don't copy!) 
+# ============================================================ 
+.venv/ 
+venv/ 
+ENV/ 
+env/ 
+ 
+# Why ignore virtual environment? 
+# - Your .venv is 200-500MB 
+# - It's Windows-specific (container uses Linux) 
+# - Container builds its own environment from requirements.txt 
+# - Copying it would break the container! 
+ 
+# ============================================================ 
+# IDE files (editor-specific, not needed in container) 
+# ============================================================ 
+.vscode/ 
+.idea/ 
+*.swp 
+*.swo 
+ 
+# Why ignore these? 
+# - .vscode = VS Code settings (only for your editor) 
+# - .idea = PyCharm settings 
+# - *.swp/*.swo = Vim temporary files 
+# - Container doesn't need these 
+ 
+# ============================================================ 
+# OS files (operating system junk) 
+# ============================================================ 
+.DS_Store 
+Thumbs.db 
+desktop.ini 
+ 
+# Why ignore these? 
+# - .DS_Store = Mac folder metadata 
+# - Thumbs.db = Windows thumbnail cache 
+# - desktop.ini = Windows folder settings 
+# - These are OS-specific, container doesn't need them 
+ 
+# ============================================================ 
+# Git files (version control, not needed in container) 
+# ============================================================ 
+.git/ 
+.gitignore 
+README.md 
+*.md 
+ 
+# Why ignore these? 
+# - .git = entire Git history (can be 100MB+) 
+# - Container doesn't need Git 
+# - README.md = documentation (not needed to run app) 
+ 
+# ============================================================ 
+# Local database (we'll use PostgreSQL in cloud) 
+# ============================================================ 
+data/*.db 
+data/*.db-journal 
+data/backups/*.db 
+ 
+# Why ignore local database? 
+# - Your local SQLite file is development data 
+# - Cloud will use PostgreSQL (different database) 
+# - Don't want to overwrite cloud data with local data 
+# - Keep them separate! 
+ 
+# ============================================================ 
+# Exports (temporary files) 
+# ============================================================ 
+exports/*.csv 
+exports/*.xlsx 
+ 
+# Why ignore exports? 
+# - These are output files (temporary) 
+# - Each deployment should start clean 
+# - Users will generate new exports 
+# - Old exports waste space 
+ 
+# ============================================================ 
+# Logs (temporary, auto-generated) 
+# ============================================================ 
+*.log 
+ 
+# Why ignore logs? 
+# - Log files are runtime-generated 
+# - Old logs from your computer aren't useful in cloud 
+# - Cloud will generate its own logs 
+ 
+# ============================================================ 
+# WHAT GETS COPIED TO CONTAINER? 
+# ============================================================ 
+# Only these files: 
+# - inventory_app.py 
+# - cli.py 
+# - helper_functions.py 
+# - requirements.txt 
+# - Any other .py files you create 
+# 
+# Result: 
+# - Container size: 250MB (with all this ignored) 
+# - Without .dockerignore: 1GB+ (wasteful!) 
+# - Build time: 30 seconds vs 2+ minutes
+
