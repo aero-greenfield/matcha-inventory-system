@@ -320,22 +320,37 @@ def auto_backup_on_startup():
     
     Design decision: Non-blocking - prints message but doesn't
     stop user from continuing if backup fails
-    """
-    last_backup = get_last_backup_time() # call function to get last backup time
-    
-    if last_backup is None:
-        print(" No previous backup found. Creating initial backup...")# if no backup found, create initial backup
-        backup_database(reason="initial") # first backup
-        return
-    
-    hours_since_backup = (datetime.now() - last_backup).total_seconds() / 3600 # hours since last backup
-    
-    if hours_since_backup > 24: # if more than 24 hours back up 
-        print(f" Last backup was {int(hours_since_backup)} hours ago. Creating fresh backup...")
-        backup_database(reason="daily")
-    else:
-        print(f"✅ Recent backup exists ({int(hours_since_backup)} hours ago)")
 
+    uses try except to prevent crashes
+     - Wraps everything in try-except (catches unexpected errors) 
+   - If backup check fails, creates backup anyway (safe default) 
+   - Continues even if backup fails (app doesn't crash)
+    """
+    try: 
+        last_backup = get_last_backup_time() # call function to get last backup time 
+        
+        if last_backup is None:
+            print(" No previous backup found. Creating initial backup...")# if no backup found, create initial backup
+            backup_database(reason="initial") # first backup
+            return
+        
+        hours_since_backup = (datetime.now() - last_backup).total_seconds() / 3600 # hours since last backup
+        
+        if hours_since_backup > 24: # if more than 24 hours back up 
+            print(f" Last backup was {int(hours_since_backup)} hours ago. Creating fresh backup...")
+            backup_database(reason="daily")
+        else:
+            print(f"✅ Recent backup exists ({int(hours_since_backup)} hours ago)")
+    except Exception as e: 
+        print(f"|ERROR|  Backup check skipped: {e}")
+        print("📦 Creating backup to be safe...")
+        try:
+            backup_database(reason="startup") 
+       
+        except: 
+           # Even if backup fails, let app continue 
+           print("⚠️  Backup failed, but app will continue") 
+           pass
 
 
 # PRETTY PRINTING HELPERS
