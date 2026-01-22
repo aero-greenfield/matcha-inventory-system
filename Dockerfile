@@ -157,11 +157,12 @@ EXPOSE 8000
 # STAGE 9: Define Default Command 
 # ============================================================ 
 # Default: run CLI ( change this to web app later) 
-CMD ["python", "cli.py"] 
+#changed ####
+CMD ["python", "app.py"] 
  
 # What is "CMD"? 
 # - Command to run when container starts 
-# - python cli.py = start the CLI application 
+# - python cli.py = start the CLI application ( NOW APP APPLICATION )
  
 # Why square brackets ["python", "cli.py"]? 
 # - Exec form (preferred over shell form) 
