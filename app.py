@@ -17,6 +17,15 @@ from helper_functions import (export_to_csv, backup_database)
 
 app = Flask(__name__)
 
+
+
+import os
+print("=" * 60)
+print("🔍 DEBUG: Checking DATABASE_URL")
+print(f"DATABASE_URL = {os.getenv('DATABASE_URL')}")
+print("=" * 60)
+
+
 if not os.path.exists('data'):
     os.makedirs('data')
 
@@ -28,6 +37,7 @@ try:
 except:
     print("🔧 Initializing database...")
     create_database()
+
 
 
 @app.route('/')
@@ -149,4 +159,3 @@ def health_check():
 if __name__ == '__main__':
     port = int(os.environ.get('PORT', 8000))
     app.run(host='0.0.0.0', port=port, debug=False)
-    
