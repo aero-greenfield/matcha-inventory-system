@@ -13,16 +13,23 @@ HOW IT WORKS:
  
 import os 
 import sqlite3 
+
+# Try to import psycopg2 (only available when installed)
+# This prevents import warnings in your IDE
+try:
+    import psycopg2
+    PSYCOPG2_AVAILABLE = True
+except ImportError:
+    # psycopg2 not installed (local development)
+    PSYCOPG2_AVAILABLE = False
+    psycopg2 = None
  
 # Check if we're running in cloud 
 # Railway automatically sets DATABASE_URL environment variable 
-DATABASE_URL = os.getenv('DATABASE_URL') 
- 
-# What is os.getenv()? 
-# - Reads environment variable (like a global setting) 
-# - Returns None if variable doesn't exist 
-# - Railway sets DATABASE_URL = "postgresql://user:pass@host/db" 
-# - Locally, DATABASE_URL doesn't exist, so returns None 
+DATABASE_URL = os.getenv('DATABASE_URL')
+
+print(f"🔍 database.py: DATABASE_URL = {DATABASE_URL[:50] if DATABASE_URL else 'None'}...")
+print(f"🔍 database.py: PSYCOPG2_AVAILABLE = {PSYCOPG2_AVAILABLE}")
  
  
 def get_connection(): 
@@ -46,65 +53,27 @@ def get_connection():
        # ======================================== 
        # CLOUD MODE: Use PostgreSQL 
        # ======================================== 
-       import psycopg2 
+       print("🔍 get_connection: Using PostgreSQL")
+       
+       if not PSYCOPG2_AVAILABLE:
+           raise ImportError(
+               "DATABASE_URL is set but psycopg2 is not installed. "
+               "Install it with: pip install psycopg2-binary"
+           )
         
        # Railway gives URL like: postgres://user:pass@host/db 
        # psycopg2 expects: postgresql://user:pass@host/db 
        # Fix: Replace "postgres://" with "postgresql://" 
        connection_string = DATABASE_URL.replace('postgres://', 'postgresql://', 1) 
-        
-       # Why replace? 
-       # - Railway uses older URL format (postgres://) 
-       # - psycopg2 uses newer format (postgresql://) 
-       # - They're the same, just different spelling 
-       # - replace(old, new, 1) = replace first occurrence only 
+       
+       print(f"🔍 get_connection: Connecting to {connection_string[:50]}...")
         
        # Connect to PostgreSQL 
        return psycopg2.connect(connection_string) 
-        
-       # What just happened? 
-       # - Imported psycopg2 (PostgreSQL driver) 
-       # - Fixed URL format 
-       # - Connected to cloud database 
-       # - Returned connection object 
     
    else: 
        # ======================================== 
        # LOCAL MODE: Use SQLite 
        # ======================================== 
-       return sqlite3.connect('data/inventory.db') 
-        
-       # What just happened? 
-       # - Connected to local SQLite file 
-       # - No import needed (sqlite3 is built into Python) 
-       # - Returned connection object 
- 
- 
-# ============================================================ 
-# USAGE EXAMPLE (for your reference) 
-# ============================================================ 
-# Instead of this (old way): 
-#     conn = sqlite3.connect('data/inventory.db') 
-# 
-# Use this (new way): 
-#     from database import get_connection 
-#     conn = get_connection() 
-# 
-# Same code works locally AND in cloud! 
-# ============================================================ 
- 
- 
-# ============================================================ 
-# WHY THIS MATTERS 
-# ============================================================ 
-# Without this file: 
-# - Would need TWO versions of inventory_app.py 
-# - One for local (SQLite) 
-# - One for cloud (PostgreSQL) 
-# - Hard to maintain! 
-# 
-# With this file: 
-# - ONE version of inventory_app.py 
-# - Works everywhere 
-# - Automatically adapts to environment 
-# ============================================================
+       print("🔍 get_connection: Using SQLite (data/inventory.db)")
+       return sqlite3.connect('data/inventory.db')
