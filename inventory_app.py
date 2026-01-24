@@ -112,7 +112,8 @@ def add_raw_material(name, category, stock_level, unit, reorder_level, cost_per_
         
         conn.commit()
         print(f"Added {name} to raw materials")
-        return cursor.lastrowid if hasattr(cursor, 'lastrowid') else None
+        cursor.execute("SELECT LASTVAL()")
+        return cursor.fetchone()[0]
     
     except Exception as e:
         print(f"Error: {e}")
