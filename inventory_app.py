@@ -3,7 +3,7 @@ Matcha Inventory Management System
 Core functions for database operations and queries
 """
 
-import sqlite3
+from database import get_connection
 import pandas as pd
 from datetime import datetime
 import os
@@ -12,9 +12,10 @@ import os
 # DATABASE SETUP
 # ========================
 
-
+# NOTE: This function only for local SQLite - use init_db.py for PostgreSQL
 def create_database():
     """Creates database with raw_materials, recipes, and ready_to_ship tables"""
+    import sqlite3
     conn = sqlite3.connect('data/inventory.db')
     cursor = conn.cursor()
 
@@ -99,19 +100,19 @@ def create_database():
 def add_raw_material(name, category, stock_level, unit, reorder_level, cost_per_unit, supplier=None):
     # adds material to raw_materials
     
-    conn = sqlite3.connect('data/inventory.db')
+    conn = get_connection()
     cursor = conn.cursor()
     
     try:
         cursor.execute("""
             INSERT INTO raw_materials (name, category, stock_level, unit, reorder_level, cost_per_unit, supplier)
-            VALUES (?,?,?,?,?,?,?)
+            VALUES (%s,%s,%s,%s,%s,%s,%s)
                         
                         """, (name, category, stock_level, unit, reorder_level, cost_per_unit, supplier))
         
         conn.commit()
         print(f"Added {name} to raw materials")
-        return cursor.lastrowid
+        return cursor.lastrowid if hasattr(cursor, 'lastrowid') else None
     
     except Exception as e:
         print(f"Error: {e}")
@@ -125,7 +126,7 @@ def add_raw_material(name, category, stock_level, unit, reorder_level, cost_per_
 def get_low_stock_materials():
     "Return raw materials below if low on stock"
 
-    conn = sqlite3.connect('data/inventory.db')
+    conn = get_connection()
     cursor = conn.cursor()
 
     query = """
@@ -142,7 +143,7 @@ def get_low_stock_materials():
 
 def get_all_materials():
     "Returns all materials"
-    conn = sqlite3.connect('data/inventory.db')
+    conn = get_connection()
     cursor = conn.cursor()
 
     query = """
@@ -160,7 +161,7 @@ def increase_raw_material(name, increase_amount):
     
     """ increases amount of material given its name and amount to add"""
     
-    conn = sqlite3.connect('data/inventory.db')
+    conn = get_connection()
     cursor = conn.cursor()
 
     try:
@@ -168,7 +169,7 @@ def increase_raw_material(name, increase_amount):
         cursor.execute("""
         SELECT material_id, stock_level, unit
         FROM raw_materials
-        WHERE name = ?
+        WHERE name = %s
         """, (name,))
         result = cursor.fetchone()
         # gets the result from the query in form of a tuple
@@ -182,8 +183,8 @@ def increase_raw_material(name, increase_amount):
 
         cursor.execute("""
         UPDATE raw_materials
-        SET stock_level = stock_level + ?
-        WHERE material_id = ?
+        SET stock_level = stock_level + %s
+        WHERE material_id = %s
         
         """, (increase_amount, material_id,) )
         conn.commit()
@@ -192,7 +193,7 @@ def increase_raw_material(name, increase_amount):
         cursor.execute("""
         SELECT stock_level
         FROM raw_materials
-        WHERE material_id = ?
+        WHERE material_id = %s
                        
          """, (material_id,))
         
@@ -213,14 +214,14 @@ def increase_raw_material(name, increase_amount):
 
 def get_raw_material(name):
 
-    conn = sqlite3.connect('data/inventory.db')
+    conn = get_connection()
     cursor = conn.cursor()
 
     try:
         cursor.execute("""
         SELECT material_id, name, stock_level, reorder_level, cost_per_unit
         FROM raw_materials       
-        WHERE name = ?          
+        WHERE name = %s          
                        """,(name,))
         result = cursor.fetchone()
 
@@ -238,14 +239,14 @@ def get_raw_material(name):
 def decrease_raw_material(name, decrease_amount):
     """Decreases amount of material given its name and amount to subtract"""
     
-    conn = sqlite3.connect('data/inventory.db')
+    conn = get_connection()
     cursor = conn.cursor()
 
     try:
         cursor.execute("""
         SELECT material_id, stock_level, unit
         FROM raw_materials
-        WHERE name = ?
+        WHERE name = %s
         """, (name,))
         result = cursor.fetchone()
         
@@ -262,8 +263,8 @@ def decrease_raw_material(name, decrease_amount):
 
         cursor.execute("""
         UPDATE raw_materials
-        SET stock_level = stock_level - ?
-        WHERE material_id = ?
+        SET stock_level = stock_level - %s
+        WHERE material_id = %s
         """, (decrease_amount, material_id))
         
         conn.commit()
@@ -272,7 +273,7 @@ def decrease_raw_material(name, decrease_amount):
         cursor.execute("""
         SELECT stock_level
         FROM raw_materials
-        WHERE material_id = ?
+        WHERE material_id = %s
         """, (material_id,))
         
         new_stock_level = cursor.fetchone()[0]
@@ -291,13 +292,13 @@ def delete_raw_material(name):
 
     """Deletes raw material from database given its name"""
     
-    conn = sqlite3.connect('data/inventory.db')
+    conn = get_connection()
     cursor = conn.cursor()
 
     try:
         cursor.execute("""
         DELETE FROM raw_materials
-        WHERE name = ?               
+        WHERE name = %s               
                        """,(name,))
         conn.commit()
         print(f"Deleted {name} from raw materials")
@@ -319,7 +320,7 @@ def add_to_batches(product_name, quantity, notes=None, batch_id = None, deduct_r
     adds batch to ready to ship, but asks user if they want to deduct from resources, or just add it. 
     """
     # Connect to the database
-    conn = sqlite3.connect('data/inventory.db')
+    conn = get_connection()
     cursor = conn.cursor()
     
 
@@ -345,7 +346,7 @@ def add_to_batches(product_name, quantity, notes=None, batch_id = None, deduct_r
             cursor.execute("""
                 SELECT 1 
                 FROM batches
-                WHERE batch_id = ?
+                WHERE batch_id = %s
             """, (batch_id,))
             if cursor.fetchone():
                 raise ValueError(f"Batch ID {batch_id} already exists.")
@@ -357,7 +358,7 @@ def add_to_batches(product_name, quantity, notes=None, batch_id = None, deduct_r
 
             cursor.execute("""
                 INSERT INTO batches (batch_id, product_name, quantity, date_completed, status, notes)
-                VALUES (?, ?, ?, ?, 'Ready', ?)
+                VALUES (%s, %s, %s, %s, 'Ready', %s)
             """, (batch_id, product_name, quantity, date_completed, notes))
         
         
@@ -366,9 +367,10 @@ def add_to_batches(product_name, quantity, notes=None, batch_id = None, deduct_r
 
             cursor.execute("""
                 INSERT INTO batches (product_name, quantity, date_completed, status, notes)
-                VALUES (?, ?, ?, 'Ready', ?)
+                VALUES (%s, %s, %s, 'Ready', %s)
             """, (product_name, quantity, date_completed, notes))
-            batch_id = cursor.lastrowid
+            cursor.execute("SELECT LASTVAL()")
+            batch_id = cursor.fetchone()[0]
                 
                 
         #Deducting resources:        
@@ -406,14 +408,14 @@ def add_to_batches(product_name, quantity, notes=None, batch_id = None, deduct_r
                     
                 cursor.execute("""
                 UPDATE raw_materials
-                SET stock_level = stock_level - ?               
-                WHERE material_id = ?   
+                SET stock_level = stock_level - %s               
+                WHERE material_id = %s   
                     """,(required_amount, material_id,))
                     
 
                 cursor.execute("""
                 INSERT INTO batch_materials (batch_id, material_id, quantity_used)
-                    VALUES (?, ?, ?)
+                    VALUES (%s, %s, %s)
                     """, (batch_id, material_id, required_amount))
         
         conn.commit()
@@ -435,7 +437,7 @@ def add_to_batches(product_name, quantity, notes=None, batch_id = None, deduct_r
 
 def get_batches():
     """Gets all batches ready to ship"""
-    conn = sqlite3.connect('data/inventory.db')
+    conn = get_connection()
     
     query = """
     SELECT batch_id, product_name, quantity, date_completed, status, notes
@@ -451,14 +453,14 @@ def get_batches():
 
 def mark_as_shipped(batch_id):
     """Marks a batch as shipped"""
-    conn = sqlite3.connect('data/inventory.db')
+    conn = get_connection()
     cursor = conn.cursor()
     
     try:
         cursor.execute("""
         UPDATE batches
-        SET status = 'Shipped', date_shipped = ?
-        WHERE batch_id = ?
+        SET status = 'Shipped', date_shipped = %s
+        WHERE batch_id = %s
         """, (datetime.now().strftime('%Y-%m-%d'), batch_id))
         
         conn.commit()
@@ -478,7 +480,7 @@ def delete_batch(batch_id, reallocate=False):
     Optionally reallocates raw materials back into inventory.
     """
 
-    conn = sqlite3.connect('data/inventory.db')
+    conn = get_connection()
     cursor = conn.cursor()
 
     try:
@@ -486,7 +488,7 @@ def delete_batch(batch_id, reallocate=False):
         cursor.execute("""
             SELECT product_name, quantity
             FROM batches
-            WHERE batch_id = ?
+            WHERE batch_id = %s
         """, (batch_id,))
         row = cursor.fetchone()
 
@@ -506,7 +508,7 @@ def delete_batch(batch_id, reallocate=False):
             SELECT bm.batch_material_id, bm.material_id, bm.quantity_used, rm.name AS material_name
             FROM batch_materials AS bm
             JOIN raw_materials AS rm ON bm.material_id = rm.material_id
-            WHERE bm.batch_id = ?               
+            WHERE bm.batch_id = %s               
                            """,(batch_id,))
             
             batch_materials = cursor.fetchall()
@@ -517,8 +519,8 @@ def delete_batch(batch_id, reallocate=False):
 
                 cursor.execute("""
                     UPDATE raw_materials
-                    SET stock_level = stock_level + ?
-                    WHERE material_id = ?
+                    SET stock_level = stock_level + %s
+                    WHERE material_id = %s
                 """, (quantity_used, material_id))
 
                 materials_added.append({
@@ -529,7 +531,7 @@ def delete_batch(batch_id, reallocate=False):
             # Delete batch
             cursor.execute("""
                 DELETE FROM batches
-                WHERE batch_id = ?
+                WHERE batch_id = %s
             """, (batch_id,))
 
             conn.commit()
@@ -542,7 +544,7 @@ def delete_batch(batch_id, reallocate=False):
         else:
             cursor.execute("""
                 DELETE FROM batches
-                WHERE batch_id = ?
+                WHERE batch_id = %s
             """, (batch_id,))
 
             conn.commit()
@@ -572,7 +574,7 @@ def get_recipe(product_name):
 
     """
 
-    conn = sqlite3.connect('data/inventory.db')
+    conn = get_connection()
     cursor = conn.cursor()
 
     try:
@@ -580,7 +582,7 @@ def get_recipe(product_name):
         cursor.execute("""
         SELECT recipe_id
         FROM recipes
-        WHERE product_name = ?   
+        WHERE product_name = %s   
                        """,(product_name,))
         row = cursor.fetchone() # get recipe_id from product name
 
@@ -598,7 +600,7 @@ def get_recipe(product_name):
         FROM recipes r
         JOIN recipe_materials rm ON r.recipe_id = rm.recipe_id
         JOIN raw_materials raw ON rm.material_id = raw.material_id
-        WHERE r.recipe_id = ?
+        WHERE r.recipe_id = %s
         ORDER BY rm.material_name ASC
         """)
 
@@ -621,7 +623,7 @@ def get_recipe(product_name):
 
 def add_recipe(product_name, materials, notes=None):
      
-    conn = sqlite3.connect('data/inventory.db')
+    conn = get_connection()
     cursor = conn.cursor()
 
     """
@@ -644,9 +646,10 @@ def add_recipe(product_name, materials, notes=None):
 
         cursor.execute("""
         INSERT INTO recipes (product_name, notes)
-        VALUES (?, ?)               
+        VALUES (%s, %s)               
          """,(product_name, notes))
-        recipe_id = cursor.lastrowid # get recipe_id, able to add to recipe_materials
+        cursor.execute("SELECT LASTVAL()")
+        recipe_id = cursor.fetchone()[0] # get recipe_id, able to add to recipe_materials
 
 
 
@@ -672,7 +675,7 @@ def add_recipe(product_name, materials, notes=None):
                    material_name,
                    material_id,
                    quantity_needed)
-            VALUES (?,?,?,?)                              
+            VALUES (%s,%s,%s,%s)                              
               """,(recipe_id, material_name, material_id, quantity_needed))
             
 
@@ -711,7 +714,7 @@ def change_recipe(product_name, materials, notes= None):
         
         """
     
-    conn = sqlite3.connect('data/inventory.db')
+    conn = get_connection()
     cursor = conn.cursor()
     
     try:
@@ -719,7 +722,7 @@ def change_recipe(product_name, materials, notes= None):
         cursor.execute("""
         SELECT recipe_id
         FROM recipes
-        WHERE product_name = ?               
+        WHERE product_name = %s               
                
                        """,(product_name,))
         recipe_id = cursor.fetchone()
@@ -733,15 +736,15 @@ def change_recipe(product_name, materials, notes= None):
 
         cursor.execute("""
         UPDATE recipes
-        SET notes = ?
-        WHERE product_name = ?               
+        SET notes = %s
+        WHERE product_name = %s               
                        
                        """,(notes, product_name,))
         
 
         cursor.execute("""
         DELETE FROM recipe_materials
-        WHERE recipe_id = ?               
+        WHERE recipe_id = %s               
                        """,(recipe_id,))
         
 
@@ -767,7 +770,7 @@ def change_recipe(product_name, materials, notes= None):
             material_name,
             material_id,
             quantity_needed)
-            VALUES (?,?,?,?)                             
+            VALUES (%s,%s,%s,%s)                             
                 """, (recipe_id, material_name, material_id, quantity_needed))
         
         conn.commit()
@@ -789,7 +792,7 @@ def delete_recipe(product_name):
 
     "deletes recipe"
 
-    conn = sqlite3.connect('data/inventory.db')
+    conn = get_connection()
     cursor = conn.cursor()
 
     try:
@@ -798,7 +801,7 @@ def delete_recipe(product_name):
         cursor.execute("""
         SELECT recipe_id
         FROM recipes
-        WHERE product_name = ?         
+        WHERE product_name = %s         
                        """,(product_name,))
         row = cursor.fetchone()
 
@@ -813,7 +816,7 @@ def delete_recipe(product_name):
         query = ("""
         SELECT material_name, quantity_needed               
         FROM recipe_materials
-        WHERE recipe_id = ?                             
+        WHERE recipe_id = %s                             
                        """)
         df = pd.read_sql_query(query, conn, params=(recipe_id,) )
 
@@ -828,7 +831,7 @@ def delete_recipe(product_name):
         #delete recipe from recipes
         cursor.execute("""
         DELETE FROM recipes
-        WHERE product_name = ?               
+        WHERE product_name = %s               
                        """,(product_name,))
         conn.commit()
 
@@ -836,7 +839,7 @@ def delete_recipe(product_name):
         
         cursor.execute("""
         DELETE FROM recipe_materials
-        WHERE recipe_id = ?               
+        WHERE recipe_id = %s               
                        """,(recipe_id,))
         
         conn.commit()
@@ -850,9 +853,3 @@ def delete_recipe(product_name):
     
     finally:
         conn.close()
-
-
-
-
-
-
