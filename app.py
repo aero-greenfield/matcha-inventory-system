@@ -8,8 +8,8 @@ from flask import Flask, request, redirect, url_for, jsonify, send_file
 import os
 from datetime import datetime
 from functools import wraps
-from flask_limiter import Limiter
-from flask_limiter.util import get_remote_address
+#from flask_limiter import Limiter
+#from flask_limiter.util import get_remote_address
 
 # Import all our inventory functions from inventory_app.py
 from inventory_app import (
@@ -27,7 +27,7 @@ app = Flask(__name__)
 
 
 
-# ========================
+# =======================
 # DATABASE SETUP & CHECKS
 # ========================
 
@@ -62,12 +62,11 @@ except:
 # ======================== 
 # RATE LIMITING SETUP
 
-limiter = Limiter(
-    app=app,
-    key_func=get_remote_address,
-    default_limits=["200 per day", "50 per hour"] 
+#limiter = Limiter(
+#    app=app,
+ ##   default_limits=["200 per day", "50 per hour"] 
     # Limit each IP to 200 requests per day and 100 per hour
-)
+#)
 # ========================
 
 
@@ -86,7 +85,7 @@ AUTH_PASSWORD = os.environ.get('AUTH_PASSWORD', 'matcha_220')
 #use "@requires_auth" above any route to require authentication
 def requires_auth(f):
     @wraps(f) # Decorator to require authentication for a route
-    @limiter.limit("10 per minute")  # 10 attempts per minute
+    
     def decorated(*args, **kwargs): # The actual decorator function
         auth = request.authorization # Get auth info from request
          # If no auth or incorrect auth, send 401 response
