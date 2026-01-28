@@ -182,7 +182,7 @@ def get_logo_html():
 # INVENTORY PAGES
 # ========================
 
-@app.route('/inventory')
+@app.route('/inventory') # we know route is /inventory because of the decorator which is in function above
 
 def view_inventory():
     # Get all materials from database as a pandas dataframe
@@ -205,7 +205,7 @@ def view_inventory():
     <p>Total materials: {len(df)}</p>
     {table_html}</div></body></html>"""
 
-@app.route('/add-material', methods=['GET', 'POST'])
+@app.route('/add-material', methods=['GET', 'POST']) #get shows form, post submits it
 
 def add_material_route():
     # This route handles both GET (showing the form) and POST (submitting the form)
@@ -275,6 +275,90 @@ def low_stock():
     <a href="/" class="back-link">← Back to Home</a>
     <h1>⚠️ Low Stock Alerts</h1>
     {message}</div></body></html>"""
+
+
+
+##############
+# BATCHES PAGES
+###############
+
+#View all batches
+@app.route('/batches')
+def view_batches():
+    
+    data = get_batches()
+    # If there's no batches, show a message, otherwise convert dataframe to HTML table
+    table_html = '<p style="color:#666;">No batches available. <a href="/create-batch">Create your first batch</a></p>' if data.empty else data.to_html(index=False, classes='data-table', border=0)
+
+    return f"""<!DOCTYPE html><html><head><title>Batches</title><style>
+    {get_common_styles()}
+    .data-table{{width:100%;border-collapse:collapse;margin:20px 0}}
+    .data-table th,.data-table td{{padding:12px;text-align:left;border-bottom:1px solid #ddd}}
+    .data-table th{{background:#dc3545;color:white}}
+    .data-table tr:hover{{background:#fff3cd}}
+    </style></head><body><div class="container">
+    {get_logo_html()}
+    <a href="/" class="back-link">← Back to Home</a>
+    <h1>📦 Batches</h1>
+    {table_html}</div></body></html>"""
+
+
+
+
+# craete a new batch
+@app.route('/create-batch', methods=['GET', 'POST'])
+def create_batch():
+
+    if request.method == 'POST':
+        # When form is submitted, get all the form data and add to database
+        material_id = int(request.form.get('material_id'))
+        quantity = float(request.form.get('quantity'))
+        result = add_to_batches(material_id, quantity)
+        # If successful, redirect to batches page, otherwise show error
+        return redirect(url_for('view_batches')) if result else ("Error creating batch", 500)
+
+    # If it's a GET request, show the form to create a new batch
+    return """<!DOCTYPE html><html><head><title>Create Batch</title><style>
+    """ + get_common_styles() + """
+    .form-group{margin-bottom:20px}
+    label{display:block;margin-bottom:5px;font-weight:bold;color:#555}
+    input{width:100%;padding:10px;border:1px solid #ddd;border-radius:5px;box-sizing:border-box}
+    button{background:#97bc62;color:white;padding:12px 30px;border:none;border-radius:5px;cursor:pointer;font-size:16px}
+    button:hover{background:#7da34f}
+    </style></head><body><div class="container">
+    """ + get_logo_html() + """
+    <a href="/" class="back-link">← Back to Home</a>
+    <h1>➕ Create New Batch</h1>
+    <form method="POST">
+    <div class="form-group"><label>Material ID *</label><input type="number" name="material_id" required></div>
+    <div class="form-group"><label>Quantity *</label><input type="number" step="0.01" name="quantity" required></div>
+    <button type="submit">Create Batch</button> 
+
+    </form></div></body></html>"""
+
+
+    
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 # ========================
 # API ENDPOINTS
