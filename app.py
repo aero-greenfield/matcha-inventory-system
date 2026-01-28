@@ -128,7 +128,7 @@ def index():
     .logo{position:absolute;top:20px;left:20px;z-index:100}
     .logo img{width:60px;height:60px;object-fit:contain;transition:opacity 0.3s}
     .logo img:hover{opacity:0.8}
-    h1{color:#2c5f2d;border-bottom:4px solid #97bc62;padding-bottom:15px;margin-bottom:30px}
+    h1{color:#2c5f2d;border-bottom:4px solid #97bc62;padding-bottom:15px;margin-bottom:30px;text-align:center}
     .menu-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:25px;margin-top:30px}
     .menu-section{background:#f8f9fa;padding:20px;border-radius:10px;border-left:5px solid #97bc62}
     .menu-section h2{color:#2c5f2d;margin-top:0;font-size:20px}
@@ -137,8 +137,7 @@ def index():
     .emoji{font-size:20px;margin-right:10px}
     </style></head><body><div class="container">
     <a href="/" class="logo"><img src="/static/images/logo.png" alt="Botanik Logo"></a>
-    <h1>         Botanik Inventory Management System</h1>
-    <p style="color:#666;">Inventory control and managment</p>
+    <h1>Botanik Inventory Management System</h1>
     <div class="menu-grid">
     <div class="menu-section"><h2>📦 Inventory & Materials</h2>
     <a href="/inventory" class="menu-item"><span class="emoji">📋</span> View All Materials</a>
