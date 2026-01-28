@@ -137,7 +137,7 @@ def index():
     .emoji{font-size:20px;margin-right:10px}
     </style></head><body><div class="container">
     <a href="/" class="logo"><img src="/static/images/logo.png" alt="Botanik Logo"></a>
-    <h1>🌿 Botanik Inventory Management System</h1>
+    <h1>         Botanik Inventory Management System</h1>
     <p style="color:#666;">Inventory control and managment</p>
     <div class="menu-grid">
     <div class="menu-section"><h2>📦 Inventory & Materials</h2>
