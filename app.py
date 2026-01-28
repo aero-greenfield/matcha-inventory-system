@@ -124,7 +124,10 @@ def index():
     # Return HTML for the home page - it's all inline here as one big string
     return """<!DOCTYPE html><html><head><title>Matcha Inventory</title><style>
     body{font-family:Arial;max-width:1400px;margin:30px auto;padding:20px;background:linear-gradient(135deg,#f5f7fa 0%,#c3cfe2 100%)}
-    .container{background:white;padding:40px;border-radius:15px;box-shadow:0 10px 30px rgba(0,0,0,0.2)}
+    .container{background:white;padding:40px;border-radius:15px;box-shadow:0 10px 30px rgba(0,0,0,0.2);position:relative}
+    .logo{position:absolute;top:20px;left:20px;z-index:100}
+    .logo img{width:60px;height:60px;object-fit:contain;transition:opacity 0.3s}
+    .logo img:hover{opacity:0.8}
     h1{color:#2c5f2d;border-bottom:4px solid #97bc62;padding-bottom:15px;margin-bottom:30px}
     .menu-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:25px;margin-top:30px}
     .menu-section{background:#f8f9fa;padding:20px;border-radius:10px;border-left:5px solid #97bc62}
@@ -132,8 +135,10 @@ def index():
     .menu-item{display:block;background:white;padding:15px;margin:10px 0;border-radius:8px;text-decoration:none;color:#2c5f2d;border:2px solid #e0e0e0;transition:all 0.3s}
     .menu-item:hover{background:#97bc62;color:white;transform:translateX(5px);border-color:#97bc62}
     .emoji{font-size:20px;margin-right:10px}
-    </style></head><body><div class="container"><h1>🍵 Matcha Inventory Management System</h1>
-    <p style="color:#666;">Complete inventory control at your fingertips</p>
+    </style></head><body><div class="container">
+    <a href="/" class="logo"><img src="/static/images/logo.png" alt="Botanik Logo"></a>
+    <h1>🌿 Botanik Inventory Management System</h1>
+    <p style="color:#666;">Inventory control and managment</p>
     <div class="menu-grid">
     <div class="menu-section"><h2>📦 Inventory & Materials</h2>
     <a href="/inventory" class="menu-item"><span class="emoji">📋</span> View All Materials</a>
@@ -142,7 +147,7 @@ def index():
     <a href="/manage-materials" class="menu-item"><span class="emoji">🔧</span> Manage Materials</a>
     </div>
     <div class="menu-section"><h2>🏭 Batch Management</h2>
-    <a href="/batches" class="menu-item"><span class="emoji">📦</span> View Ready Batches</a>
+    <a href="/batches" class="menu-item"><span class="emoji">📋</span> View Ready Batches</a>
     <a href="/create-batch" class="menu-item"><span class="emoji">➕</span> Create New Batch</a>
     <a href="/manage-batches" class="menu-item"><span class="emoji">🔧</span> Manage Batches</a>
     </div>
@@ -161,10 +166,18 @@ def index():
 def get_common_styles():
     # Returns CSS that's used on multiple pages - keeps styling consistent
     return """body{font-family:Arial;margin:20px;background:linear-gradient(135deg,#f5f7fa 0%,#c3cfe2 100%);min-height:100vh}
-    .container{background:white;padding:30px;border-radius:10px;max-width:1200px;margin:0 auto;box-shadow:0 4px 6px rgba(0,0,0,0.1)}
+    .container{background:white;padding:30px;border-radius:10px;max-width:1200px;margin:0 auto;box-shadow:0 4px 6px rgba(0,0,0,0.1);position:relative}
+    .logo{position:absolute;top:20px;left:20px;z-index:100}
+    .logo img{width:60px;height:60px;object-fit:contain;transition:opacity 0.3s}
+    .logo img:hover{opacity:0.8}
     h1{color:#2c5f2d;border-bottom:3px solid #97bc62;padding-bottom:10px}
     .back-link{display:inline-block;margin-bottom:20px;color:#2c5f2d;text-decoration:none;font-weight:bold}
     .back-link:hover{text-decoration:underline}"""
+
+# Helper function to generate logo HTML
+def get_logo_html():
+    # Returns HTML for the logo in the top-left corner
+    return """<a href="/" class="logo"><img src="/static/images/logo.png" alt="Botanik Logo"></a>"""
 
 # ========================
 # INVENTORY PAGES
@@ -187,6 +200,7 @@ def view_inventory():
     .data-table th{{background:#97bc62;color:white;font-weight:bold}}
     .data-table tr:hover{{background:#f0f8f0}}
     </style></head><body><div class="container">
+    {get_logo_html()}
     <a href="/" class="back-link">← Back to Home</a>
     <h1>📦 Current Inventory</h1>
     <p>Total materials: {len(df)}</p>
@@ -220,6 +234,7 @@ def add_material_route():
     button{background:#97bc62;color:white;padding:12px 30px;border:none;border-radius:5px;cursor:pointer;font-size:16px}
     button:hover{background:#7da34f}
     </style></head><body><div class="container">
+    """ + get_logo_html() + """
     <a href="/" class="back-link">← Back to Home</a>
     <h1>➕ Add New Material</h1>
     <form method="POST">
@@ -257,6 +272,7 @@ def low_stock():
     .data-table th{{background:#dc3545;color:white}}
     .data-table tr:hover{{background:#fff3cd}}
     </style></head><body><div class="container">
+    {get_logo_html()}
     <a href="/" class="back-link">← Back to Home</a>
     <h1>⚠️ Low Stock Alerts</h1>
     {message}</div></body></html>"""
