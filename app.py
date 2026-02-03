@@ -34,7 +34,7 @@ app = Flask(__name__)
 
 # Debug output to check if we're using PostgreSQL (Railway) or SQLite (local)
 print("=" * 60)
-print("🔍 DEBUG: Checking DATABASE_URL")
+print("[DEBUG] Checking DATABASE_URL")
 print(f"DATABASE_URL = {os.getenv('DATABASE_URL')}")
 print("=" * 60)
 
@@ -47,10 +47,10 @@ try:
     from database import get_connection
     conn = get_connection()
     conn.close()
-    print("✅ Database connection successful")
+    print("[SUCCESS] Database connection successful")
 except:
     # If connection fails, initialize a new database
-    print("🔧 Initializing database...")
+    print("[INIT] Initializing database...")
     create_database()
 
 

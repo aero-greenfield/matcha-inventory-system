@@ -3,7 +3,7 @@ Matcha Inventory Management System
 Core functions for database operations and queries
 """
 
-from database import get_connection
+from database import get_db_connection
 import pandas as pd
 from datetime import datetime
 import os
@@ -99,36 +99,35 @@ def create_database():
  
 def add_raw_material(name, category, stock_level, unit, reorder_level, cost_per_unit, supplier=None):
     # adds material to raw_materials
-    
-    conn = get_connection()
-    cursor = conn.cursor()
-    
+
+    db = get_db_connection()
+    cursor = db.cursor()
+
     try:
-        cursor.execute("""
+        db.execute(cursor, """
             INSERT INTO raw_materials (name, category, stock_level, unit, reorder_level, cost_per_unit, supplier)
             VALUES (%s,%s,%s,%s,%s,%s,%s)
-                        
+
                         """, (name, category, stock_level, unit, reorder_level, cost_per_unit, supplier))
-        
-        conn.commit()
+
+        db.commit()
         print(f"Added {name} to raw materials")
-        cursor.execute("SELECT LASTVAL()")
-        return cursor.fetchone()[0]
-    
+        return db.get_last_insert_id(cursor)
+
     except Exception as e:
         print(f"Error: {e}")
-        conn.rollback()
+        db.rollback()
         return None
     finally:
-        conn.close()
+        db.close()
 
 
 
 def get_low_stock_materials():
     "Return raw materials below if low on stock"
 
-    conn = get_connection()
-    cursor = conn.cursor()
+    db = get_db_connection()
+    cursor = db.cursor()
 
     query = """
 
@@ -137,15 +136,15 @@ def get_low_stock_materials():
     WHERE stock_level <= reorder_level
     ORDER BY (stock_level / reorder_level)
     """
-    result = pd.read_sql_query(query, conn)
-    conn.close()
+    result = pd.read_sql_query(query, db.conn)
+    db.close()
     return result
 
 
 def get_all_materials():
     "Returns all materials"
-    conn = get_connection()
-    cursor = conn.cursor()
+    db = get_db_connection()
+    cursor = db.cursor()
 
     query = """
     SELECT name, category, stock_level, unit, reorder_level, cost_per_unit, supplier
@@ -153,164 +152,164 @@ def get_all_materials():
     ORDER BY category, name
     """
 
-    result = pd.read_sql_query(query,conn)
-    conn.close()
+    result = pd.read_sql_query(query, db.conn)
+    db.close()
     return result
 
 
 def increase_raw_material(name, increase_amount):
-    
+
     """ increases amount of material given its name and amount to add"""
-    
-    conn = get_connection()
-    cursor = conn.cursor()
+
+    db = get_db_connection()
+    cursor = db.cursor()
 
     try:
 
-        cursor.execute("""
+        db.execute(cursor, """
         SELECT material_id, stock_level, unit
         FROM raw_materials
         WHERE name = %s
         """, (name,))
         result = cursor.fetchone()
         # gets the result from the query in form of a tuple
-        
+
         if not result:
             print(f"{name} not found in raw_materials")
             return None
         # if the query doesnt work, tells user
-        
+
         (material_id, current_stock, unit) = result # breaks tuple down to three new variables
 
-        cursor.execute("""
+        db.execute(cursor, """
         UPDATE raw_materials
         SET stock_level = stock_level + %s
         WHERE material_id = %s
-        
+
         """, (increase_amount, material_id,) )
-        conn.commit()
+        db.commit()
 
         #get new stock level
-        cursor.execute("""
+        db.execute(cursor, """
         SELECT stock_level
         FROM raw_materials
         WHERE material_id = %s
-                       
+
          """, (material_id,))
-        
+
         new_stock_level = cursor.fetchone()[0] # fetchone() returns a tuple, so get the first and only value in tuple instead of tuple
-        conn.close()
+        db.close()
         print(f"Succesfully added, {name} is now at {new_stock_level}")
         return new_stock_level
-    
+
     except Exception as e:
         print(f"Error: {e}")
-        conn.rollback()
+        db.rollback()
         return None
-    
+
     finally:
-        conn.close()
+        db.close()
 
 
 
 def get_raw_material(name):
 
-    conn = get_connection()
-    cursor = conn.cursor()
+    db = get_db_connection()
+    cursor = db.cursor()
 
     try:
-        cursor.execute("""
+        db.execute(cursor, """
         SELECT material_id, name, stock_level, reorder_level, cost_per_unit
-        FROM raw_materials       
-        WHERE name = %s          
+        FROM raw_materials
+        WHERE name = %s
                        """,(name,))
         result = cursor.fetchone()
 
 
         return result
-        
+
     except Exception as e:
         print(f"Error: {e}")
-        conn.rollback()
+        db.rollback()
         return None
-    
+
     finally:
-        conn.close()
+        db.close()
 
 def decrease_raw_material(name, decrease_amount):
     """Decreases amount of material given its name and amount to subtract"""
-    
-    conn = get_connection()
-    cursor = conn.cursor()
+
+    db = get_db_connection()
+    cursor = db.cursor()
 
     try:
-        cursor.execute("""
+        db.execute(cursor, """
         SELECT material_id, stock_level, unit
         FROM raw_materials
         WHERE name = %s
         """, (name,))
         result = cursor.fetchone()
-        
+
         if not result:
             print(f"{name} not found in raw_materials")
             return None
-        
+
         (material_id, current_stock, unit) = result
-        
+
         # Check if there's enough stock
         if current_stock < decrease_amount:
             print(f"Insufficient stock: {name} has {current_stock} {unit}, but {decrease_amount} {unit} is needed")
             return None
 
-        cursor.execute("""
+        db.execute(cursor, """
         UPDATE raw_materials
         SET stock_level = stock_level - %s
         WHERE material_id = %s
         """, (decrease_amount, material_id))
-        
-        conn.commit()
+
+        db.commit()
 
         # Get new stock level
-        cursor.execute("""
+        db.execute(cursor, """
         SELECT stock_level
         FROM raw_materials
         WHERE material_id = %s
         """, (material_id,))
-        
+
         new_stock_level = cursor.fetchone()[0]
         print(f"Successfully deducted {decrease_amount} {unit} from {name}. New stock level: {new_stock_level} {unit}")
         return new_stock_level
 
     except Exception as e:
         print(f"Error: {e}")
-        conn.rollback()
+        db.rollback()
         return None
-    
+
     finally:
-        conn.close()
+        db.close()
 
 def delete_raw_material(name):
 
     """Deletes raw material from database given its name"""
-    
-    conn = get_connection()
-    cursor = conn.cursor()
+
+    db = get_db_connection()
+    cursor = db.cursor()
 
     try:
-        cursor.execute("""
+        db.execute(cursor, """
         DELETE FROM raw_materials
-        WHERE name = %s               
+        WHERE name = %s
                        """,(name,))
-        conn.commit()
+        db.commit()
         print(f"Deleted {name} from raw materials")
-    
+
     except Exception as e:
         print(f"Error: {e}")
-        conn.rollback()
+        db.rollback()
         return None
-    
+
     finally:
-        conn.close()
+        db.close()
 
 # ========================
 # BATCHES FUNCTIONS
@@ -318,11 +317,11 @@ def delete_raw_material(name):
 
 def add_to_batches(product_name, quantity, notes=None, batch_id = None, deduct_resources=True):
     """
-    adds batch to ready to ship, but asks user if they want to deduct from resources, or just add it. 
+    adds batch to ready to ship, but asks user if they want to deduct from resources, or just add it.
     """
     # Connect to the database
-    conn = get_connection()
-    cursor = conn.cursor()
+    db = get_db_connection()
+    cursor = db.cursor()
     
 
 
@@ -341,44 +340,43 @@ def add_to_batches(product_name, quantity, notes=None, batch_id = None, deduct_r
         if batch_id is not None:
 
                 #add to batches
-                
+
                 # check if batch_id already exists
-                
-            cursor.execute("""
-                SELECT 1 
+
+            db.execute(cursor, """
+                SELECT 1
                 FROM batches
                 WHERE batch_id = %s
             """, (batch_id,))
             if cursor.fetchone():
                 raise ValueError(f"Batch ID {batch_id} already exists.")
-                    
-                    
-                    
-                    
+
+
+
+
                 #if it doesnt already exist and isnt None:
 
-            cursor.execute("""
+            db.execute(cursor, """
                 INSERT INTO batches (batch_id, product_name, quantity, date_completed, status, notes)
                 VALUES (%s, %s, %s, %s, 'Ready', %s)
             """, (batch_id, product_name, quantity, date_completed, notes))
-        
-        
+
+
         else:# if its None:
 
 
-            cursor.execute("""
+            db.execute(cursor, """
                 INSERT INTO batches (product_name, quantity, date_completed, status, notes)
                 VALUES (%s, %s, %s, 'Ready', %s)
             """, (product_name, quantity, date_completed, notes))
-            cursor.execute("SELECT LASTVAL()")
-            batch_id = cursor.fetchone()[0]
-                
-                
-        #Deducting resources:        
+            batch_id = db.get_last_insert_id(cursor)
+
+
+        #Deducting resources:
 
 
         if deduct_resources:
-                
+
 
             #check in there is needed resources
             for _, row in recipe_df.iterrows(): #iterate through each row of recipe df
@@ -389,91 +387,91 @@ def add_to_batches(product_name, quantity, notes=None, batch_id = None, deduct_r
                 material_info = get_raw_material(material_name)
                 if not material_info:
                     raise ValueError(f"Material {material_name}: not found in inventory")
-                
-                    
+
+
                 material_id, name, stock_level, reorder_level, cost_per_unit = material_info #break down tuple
 
-                required_amount = quantity_needed * quantity 
+                required_amount = quantity_needed * quantity
 
                 if stock_level < required_amount:
                     raise ValueError(f"Insufficient {material_name}: need {required_amount}, have {stock_level}")
-                        
+
 
                 #deduct from raw_materials
             for _, row in recipe_df.iterrows(): #iterate through each row of recipe df
                 material_id = row['material_id'] #get id
                 material_name = row['material_name'] #get material name
                 quantity_needed = row['quantity_needed'] # needed amount
-                required_amount = quantity_needed * quantity 
-                    
-                    
-                cursor.execute("""
-                UPDATE raw_materials
-                SET stock_level = stock_level - %s               
-                WHERE material_id = %s   
-                    """,(required_amount, material_id,))
-                    
+                required_amount = quantity_needed * quantity
 
-                cursor.execute("""
+
+                db.execute(cursor, """
+                UPDATE raw_materials
+                SET stock_level = stock_level - %s
+                WHERE material_id = %s
+                    """,(required_amount, material_id,))
+
+
+                db.execute(cursor, """
                 INSERT INTO batch_materials (batch_id, material_id, quantity_used)
                     VALUES (%s, %s, %s)
                     """, (batch_id, material_id, required_amount))
-        
-        conn.commit()
+
+        db.commit()
         print(f"Added {quantity} units of {product_name} (Batch {batch_id})")
         return batch_id
-                    
+
 
 
     except Exception as e:
         # If any error occurs during the process, print it and undo all changes
         print(f"Error adding to batches: {e}")
-        conn.rollback()  # Rollback ensures database stays consistent
+        db.rollback()  # Rollback ensures database stays consistent
         return None
-    
+
     finally:
         # Always close the database connection, even if an error occurred
-        conn.close()
+        db.close()
 
 
 def get_batches():
     """Gets all batches ready to ship"""
-    conn = get_connection()
-    
+    db = get_db_connection()
+
     query = """
     SELECT batch_id, product_name, quantity, date_completed, status, notes
     FROM batches
     WHERE status = 'Ready'
     ORDER BY date_completed
     """
-    
-    result = pd.read_sql_query(query, conn)
-    conn.close()
+
+    result = pd.read_sql_query(query, db.conn)
+    db.close()
     return result
 
 
 def mark_as_shipped(batch_id):
     """Marks a batch as shipped"""
-    conn = get_connection()
-    cursor = conn.cursor()
-    
+    db = get_db_connection()
+    cursor = db.cursor()
+
     try:
-        cursor.execute("""
+        db.execute(cursor, """
         UPDATE batches
         SET status = 'Shipped', date_shipped = %s
         WHERE batch_id = %s
         """, (datetime.now().strftime('%Y-%m-%d'), batch_id))
-        
-        conn.commit()
+
+        db.commit()
         print(f" Marked batch {batch_id} as shipped")
         return True
-        
+
     except Exception as e:
         print(f" Error: {e}")
-        conn.rollback()
+        db.rollback()
         return False
     finally:
-        conn.close()
+        db.close()
 
 def delete_batch(batch_id, reallocate=False):
     """
@@ -481,12 +479,12 @@ def delete_batch(batch_id, reallocate=False):
     Optionally reallocates raw materials back into inventory.
     """
 
-    conn = get_connection()
-    cursor = conn.cursor()
+    db = get_db_connection()
+    cursor = db.cursor()
 
     try:
         # Get batch info
-        cursor.execute("""
+        db.execute(cursor, """
             SELECT product_name, quantity
             FROM batches
             WHERE batch_id = %s
@@ -497,28 +495,28 @@ def delete_batch(batch_id, reallocate=False):
             print(f"Batch ID {batch_id} not found in batches.")
             return None
 
-        
 
-        
+
+
 
         if reallocate:
 
             materials_added = []
             #get batch material info from batch id
-            cursor.execute("""
+            db.execute(cursor, """
             SELECT bm.batch_material_id, bm.material_id, bm.quantity_used, rm.name AS material_name
             FROM batch_materials AS bm
             JOIN raw_materials AS rm ON bm.material_id = rm.material_id
-            WHERE bm.batch_id = %s               
+            WHERE bm.batch_id = %s
                            """,(batch_id,))
-            
+
             batch_materials = cursor.fetchall()
 
 
 
             for bm_id, material_id, quantity_used, material_name in batch_materials:
 
-                cursor.execute("""
+                db.execute(cursor, """
                     UPDATE raw_materials
                     SET stock_level = stock_level + %s
                     WHERE material_id = %s
@@ -530,37 +528,37 @@ def delete_batch(batch_id, reallocate=False):
                     })
 
             # Delete batch
-            cursor.execute("""
+            db.execute(cursor, """
                 DELETE FROM batches
                 WHERE batch_id = %s
             """, (batch_id,))
 
-            conn.commit()
+            db.commit()
 
             print(
                 f"Successfully deleted batch {batch_id}.\n"
                 f"Reallocated materials: {materials_added}"
                 )
-               
+
         else:
-            cursor.execute("""
+            db.execute(cursor, """
                 DELETE FROM batches
                 WHERE batch_id = %s
             """, (batch_id,))
 
-            conn.commit()
+            db.commit()
             print(f"Successfully deleted batch {batch_id}.")
-            
 
-        
+
+
 
     except Exception as e:
-        conn.rollback()
+        db.rollback()
         print(f"Error deleting batch: {e}")
         return None
 
     finally:
-        conn.close()
+        db.close()
 
 
 
