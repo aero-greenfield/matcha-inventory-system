@@ -12,10 +12,27 @@ WHEN TO RUN:
 - After adding new tables 
 - To reset database (careful - deletes all data!) 
  
-HOW TO RUN: 
+HOW TO RUN: using railway posgresql database
 - Railway dashboard → Settings → Start Command → python init_db.py 
 - Or locally: python init_db.py 
+
+
+HOW TO RUN using subapase postgresql database
+- Make sure you have python-dotenv installed: pip install python-dotenv
+- Run locally: python init_db.py
+
 """ 
+
+##################new try except block for new load env variable#####################
+## this is for SUPABASE POSTGRESQL DATABASE CONNECTION ## (new main database)
+try:
+    from dotenv import load_dotenv
+    load_dotenv()
+    print("🔍 Loaded environment variables from .env file")
+
+except ImportError:
+    print("🔍 python-dotenv not installed, skipping .env loading")
+    pass 
  
 from database import get_connection 
  

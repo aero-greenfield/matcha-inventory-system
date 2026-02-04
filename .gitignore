@@ -1,0 +1,26 @@
+# Environment variables (NEVER COMMIT!)
+.env
+.env.local
+
+# Python cache
+__pycache__/
+*.pyc
+
+# Virtual environment
+.venv/
+venv/
+
+# Local database
+data/*.db
+
+# IDE files
+.vscode/
+.idea/
+
+# Exports
+exports/*.csv
+exports/*.xlsx
+
+# OS files
+.DS_Store
+Thumbs.db
