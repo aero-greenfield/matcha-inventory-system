@@ -179,27 +179,62 @@ def ensure_export_folder():
 
 
 
-def export_to_csv(df, filename_prefix): 
+def export_to_csv(df, filename_prefix):
     """
 
 
-    exports the dataframe to a csv file with timestamp, and it returns the path to the file. 
+    exports the dataframe to a csv file with timestamp, and it returns the path to the file.
 
     inputs: the DF and file name
 
-    
 
-    
+
+
     """
     ensure_export_folder() # makes sure folder exists
-    
+
     timestamp = datetime.now().strftime('%Y%m%d_%H%M%S') # current time timestamp
     filename = f"{filename_prefix}_{timestamp}.csv" # file name with prefix and timestamp
     filepath = os.path.join('exports', filename) # full path to file
-    
+
     df.to_csv(filepath, index=False) # exports to csv without index
-    
+
     return filepath
+
+
+def export_to_excel(df, filename_prefix):
+    """
+    Exports the dataframe to an Excel file with timestamp
+
+    Similar to export_to_csv but creates .xlsx files instead of .csv
+    Used by web app export buttons to download Excel files
+
+    inputs:
+        - df: pandas DataFrame to export
+        - filename_prefix: string to prefix the filename (e.g., 'inventory', 'batches')
+
+    returns: the filepath to the created Excel file
+
+    Example: export_to_excel(df, 'inventory')
+             creates 'exports/inventory_20260203_143022.xlsx'
+    """
+    ensure_export_folder() # makes sure exports/ folder exists, creates if needed
+
+    # Create timestamp for unique filename (format: YYYYMMDD_HHMMSS)
+    timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
+
+    # Build filename with prefix, timestamp, and .xlsx extension
+    filename = f"{filename_prefix}_{timestamp}.xlsx"
+
+    # Construct full path: exports/filename.xlsx
+    filepath = os.path.join('exports', filename)
+
+    # Export DataFrame to Excel file
+    # - index=False: Don't include row numbers in the export
+    # - engine='openpyxl': Use openpyxl library for .xlsx format (required for Excel)
+    df.to_excel(filepath, index=False, engine='openpyxl')
+
+    return filepath # Return path so Flask can send the file to browser
 
 
 def optional_export_to_csv(df, default_prefix):

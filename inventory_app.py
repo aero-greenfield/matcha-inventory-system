@@ -422,6 +422,11 @@ def add_to_batches(product_name, quantity, notes=None, batch_id = None, deduct_r
         return batch_id
 
 
+    except ValueError as e:
+        # Re-raise ValueError so app.py can catch it and show to user
+        print(f"Error adding to batches: {e}")
+        db.rollback()
+        raise  # ← Re-raises the ValueError to app.py
 
     except Exception as e:
         # If any error occurs during the process, print it and undo all changes
@@ -573,12 +578,12 @@ def get_recipe(product_name):
 
     """
 
-    conn = get_connection()
-    cursor = conn.cursor()
+    db = get_db_connection()
+    cursor = db.cursor()
 
     try:
         
-        cursor.execute("""
+        db.execute(cursor,"""
         SELECT recipe_id
         FROM recipes
         WHERE product_name = %s   
@@ -603,7 +608,7 @@ def get_recipe(product_name):
         ORDER BY rm.material_name ASC
         """)
 
-        df = pd.read_sql_query(query, conn, params= (recipe_id,))
+        df = pd.read_sql_query(query, db.conn, params= (recipe_id,))
 
         return df
         
@@ -616,14 +621,43 @@ def get_recipe(product_name):
         return None
     
     finally:
-        conn.close()
+        db.close()
     
 
 
+def get_all_recipes():
+    """
+    Returns all recipes and their materials as a DataFrame
+    """
+    db = get_db_connection()
+
+    query = """
+    SELECT
+        r.product_name,
+        r.notes,
+        rm.material_id,
+        raw.name AS material_name,
+        rm.quantity_needed
+    FROM recipes r
+    JOIN recipe_materials rm ON r.recipe_id = rm.recipe_id
+    JOIN raw_materials raw ON rm.material_id = raw.material_id
+    ORDER BY r.product_name ASC, rm.material_name ASC
+    """
+
+    result = pd.read_sql_query(query, db.conn)
+    db.close()
+    return result
+
+    
+        
+
+    
+
 def add_recipe(product_name, materials, notes=None):
      
-    conn = get_connection()
-    cursor = conn.cursor()
+    db = get_db_connection()
+    cursor = db.cursor()
+
 
     """
     Adds a new recipe to the database.
@@ -643,11 +677,11 @@ def add_recipe(product_name, materials, notes=None):
 
     try:
 
-        cursor.execute("""
+        db.execute(cursor,"""
         INSERT INTO recipes (product_name, notes)
         VALUES (%s, %s)               
          """,(product_name, notes))
-        cursor.execute("SELECT LASTVAL()")
+        db.execute(cursor,"SELECT LASTVAL()")
         recipe_id = cursor.fetchone()[0] # get recipe_id, able to add to recipe_materials
 
 
@@ -668,7 +702,7 @@ def add_recipe(product_name, materials, notes=None):
                 material_id = material_info[0]#get material_id, first value from get_raw_material result
 
 
-            cursor.execute("""
+            db.execute(cursor,"""
             INSERT INTO recipe_materials (
                    recipe_id,
                    material_name,
@@ -678,7 +712,7 @@ def add_recipe(product_name, materials, notes=None):
               """,(recipe_id, material_name, material_id, quantity_needed))
             
 
-        conn.commit()
+        db.commit()
         print(f"Recipe '{product_name}' added successfully with {len(materials)} materials.")
         return recipe_id
 
@@ -686,11 +720,11 @@ def add_recipe(product_name, materials, notes=None):
 
     except Exception as e:
         print(f"Error: {e}")
-        conn.rollback()
+        db.rollback()
         return None
     
     finally:
-        conn.close()
+        db.close()
      
 
 def change_recipe(product_name, materials, notes= None):
@@ -713,12 +747,12 @@ def change_recipe(product_name, materials, notes= None):
         
         """
     
-    conn = get_connection()
-    cursor = conn.cursor()
+    db = get_db_connection()
+    cursor = db.cursor()
     
     try:
 
-        cursor.execute("""
+        db.execute(cursor,"""
         SELECT recipe_id
         FROM recipes
         WHERE product_name = %s               
@@ -733,7 +767,7 @@ def change_recipe(product_name, materials, notes= None):
 
 
 
-        cursor.execute("""
+        db.execute(cursor,"""
         UPDATE recipes
         SET notes = %s
         WHERE product_name = %s               
@@ -741,7 +775,7 @@ def change_recipe(product_name, materials, notes= None):
                        """,(notes, product_name,))
         
 
-        cursor.execute("""
+        db.execute(cursor,"""
         DELETE FROM recipe_materials
         WHERE recipe_id = %s               
                        """,(recipe_id,))
@@ -762,7 +796,7 @@ def change_recipe(product_name, materials, notes= None):
                 material_id = material_info[0]#get material_id, first value from get_raw_material result
 
 
-            cursor.execute("""
+            db.execute(cursor,"""
             INSERT INTO recipe_materials (
             
             recipe_id,
@@ -772,18 +806,18 @@ def change_recipe(product_name, materials, notes= None):
             VALUES (%s,%s,%s,%s)                             
                 """, (recipe_id, material_name, material_id, quantity_needed))
         
-        conn.commit()
+        db.commit()
         print(f"Recipe '{product_name}' changed successfully with {len(materials)} materials.")
         return recipe_id
         
 
     except Exception as e:
         print(f"Error: {e}")
-        conn.rollback()
+        db.rollback()
         return None
     
     finally:
-        conn.close()
+        db.close()
     
 
 def delete_recipe(product_name):
@@ -791,13 +825,13 @@ def delete_recipe(product_name):
 
     "deletes recipe"
 
-    conn = get_connection()
-    cursor = conn.cursor()
+    db = get_db_connection()
+    cursor = db.cursor()
 
     try:
 
         #get id
-        cursor.execute("""
+        db.execute(cursor,"""
         SELECT recipe_id
         FROM recipes
         WHERE product_name = %s         
@@ -817,7 +851,7 @@ def delete_recipe(product_name):
         FROM recipe_materials
         WHERE recipe_id = %s                             
                        """)
-        df = pd.read_sql_query(query, conn, params=(recipe_id,) )
+        df = pd.read_sql_query(query, db.conn, params=(recipe_id,) )
 
         #clean query for presentation
 
@@ -828,27 +862,27 @@ def delete_recipe(product_name):
         
         
         #delete recipe from recipes
-        cursor.execute("""
+        db.execute(cursor,"""
         DELETE FROM recipes
         WHERE product_name = %s               
                        """,(product_name,))
-        conn.commit()
+        db.commit()
 
-        
-        
-        cursor.execute("""
+
+
+        db.execute(cursor, """
         DELETE FROM recipe_materials
-        WHERE recipe_id = %s               
+        WHERE recipe_id = %s
                        """,(recipe_id,))
         
-        conn.commit()
+        db.commit()
 
         print(f"Deleted {product_name} from recipe log, {product_name}'s recipe:\n{df}")
     
     except Exception as e:
         print(f"Error: {e}")
-        conn.rollback()
+        db.rollback()
         return None
     
     finally:
-        conn.close()
+        db.close()
