@@ -455,6 +455,21 @@ def get_batches():
     return result
 
 
+def get_batches_shipped():
+    """Gets all batches that have been shipped"""
+    db = get_db_connection()
+
+    query = """
+    SELECT batch_id, product_name, quantity, date_completed, date_shipped, notes
+    FROM batches
+    WHERE status = 'Shipped'
+    ORDER BY date_shipped DESC
+    """
+
+    result = pd.read_sql_query(query, db.conn)
+    db.close()
+    return result
+
 def mark_as_shipped(batch_id):
     """Marks a batch as shipped"""
     db = get_db_connection()

@@ -117,7 +117,7 @@ from functools import wraps  # Used for creating decorators (like @requires_auth
 
 # Import all our inventory functions from inventory_app.py
 from inventory_app import (
-    create_database, add_raw_material, get_all_materials, get_all_recipes, get_low_stock_materials,
+    create_database, add_raw_material, get_all_materials, get_all_recipes, get_batches_shipped, get_low_stock_materials,
     increase_raw_material, decrease_raw_material, get_raw_material, add_to_batches,
     get_batches, mark_as_shipped, delete_batch, get_recipe, add_recipe,
     change_recipe, delete_recipe, delete_raw_material
@@ -365,6 +365,7 @@ def index():
     <div class="menu-section"><h2>🏭 Batch Management</h2>
     <a href="/batches" class="menu-item"><span class="emoji">📋</span> View Ready Batches</a>
     <a href="/create-batch" class="menu-item"><span class="emoji">➕</span> Create New Batch</a>
+    <a href="/shipped-batches" class="menu-item"><span class="emoji">🚚</span> View Shipped Batches</a>
     <a href="/manage-batches" class="menu-item"><span class="emoji">🔧</span> Manage Batches</a>
     </div>
     <div class="menu-section"><h2>📖 Recipes</h2>
@@ -372,11 +373,7 @@ def index():
     <a href="/add-recipe" class="menu-item"><span class="emoji">➕</span> Add New Recipe</a>
     <a href="/manage-recipes" class="menu-item"><span class="emoji">🔧</span> Manage Recipes</a>
     </div>
-    <div class="menu-section"><h2>📊 Reports & System</h2>
-    <a href="/export-inventory" class="menu-item"><span class="emoji">📥</span> Export Inventory</a>
-    <a href="/export-low-stock" class="menu-item"><span class="emoji">📥</span> Export Low Stock</a>
-    <a href="/backup" class="menu-item"><span class="emoji">💾</span> Create Backup</a>
-    </div></div></div></body></html>"""
+    """
 
 # Helper function to keep CSS consistent across pages
 def get_common_styles():
@@ -436,7 +433,6 @@ def view_inventory():
 
     # STEP 1: Get data from database
     # get_all_materials() returns a pandas DataFrame
-    # DataFrame is like an Excel spreadsheet - rows and columns of data
     df = get_all_materials()
 
     # STEP 2: Convert data to HTML
@@ -736,6 +732,35 @@ def export_batches_excel():
     return send_file(filepath, as_attachment=True, download_name=os.path.basename(filepath))
 
 
+# NEW: View shipped batches
+@app.route('/shipped-batches')
+def view_shipped_batches():
+    """
+    gets all shipped batches and displays them in a table
+    """
+
+    data = get_batches_shipped()  # Get all batches with status='Shipped'
+
+    export_button = '' if data.empty else '<a href="/export/shipped-batches-excel" class="export-btn">📥 Export to Excel</a>'
+
+    # If there's no shipped batches, show a message, otherwise convert dataframe to HTML table
+    table_html = '<p style="color:#666;">No shipped batches found.</p>' if data.empty else data.to_html(index=False, classes='data-table', border=0)
+
+    return f"""<!DOCTYPE html><html><head><title>Shipped Batches</title><style>
+    {get_common_styles()}
+    .data-table{{width:100%;border-collapse:collapse;margin:20px 0}}
+    .data-table th,.data-table td{{padding:12px;text-align:left;border-bottom:1px solid #ddd}}
+    .data-table th{{background:#6c757d;color:white}}
+    .data-table tr:hover{{background:#e2e3e5}}
+    </style></head><body><div class="container">
+    {get_logo_html()}
+    <a href="/" class="back-link">← Back to Home</a>
+    <h1>🚚 Shipped Batches</h1>
+    <p>Total shipped batches: {len(data)}</p>
+    {export_button}
+    {table_html}</div></body></html>"""
+
+#########################STILL NEED TO ADD EXPORT ROUTE FOR SHIPPED BATCHES EXCEL#########################
 
 
 # craete a new batch
@@ -843,11 +868,7 @@ def export_recipes_excel():
     """
     Export all recipes and their materials to Excel file
 
-    Useful for:
-    - Creating production guides for team members
-    - Sharing formulas with partners
-    - Backup of recipe information
-    - Analyzing material usage across products
+   
 
     Note: DataFrame has one row per material per recipe
     (A recipe with 3 materials will have 3 rows)
@@ -862,6 +883,10 @@ def export_recipes_excel():
 
     # Trigger browser download
     return send_file(filepath, as_attachment=True, download_name=os.path.basename(filepath))
+
+
+
+######################STILL NEED TO ADD ADD-RECIPE ROUTE###########################
 
 
 
