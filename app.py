@@ -211,8 +211,8 @@ It's like putting a lock on a door - any route with @requires_auth is locked.
 # os.environ.get() checks for environment variables (set in Railway/production)
 # If not found, uses the fallback value (for local development)
 
-AUTH_USERNAME = os.environ.get('AUTH_USERNAME', 'botanik_admin')
-AUTH_PASSWORD = os.environ.get('AUTH_PASSWORD', 'matcha_220')
+AUTH_USERNAME = os.environ.get('AUTH_USERNAME')
+AUTH_PASSWORD = os.environ.get('AUTH_PASSWORD')
 
 # How this works:
 # - Production (Railway): Reads from environment variables (secure, not in code)
