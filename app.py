@@ -95,6 +95,18 @@ This cycle repeats for EVERY page load, form submission, export, etc.
 """
 
 # =======================
+# LOAD ENVIRONMENT VARIABLES
+# =======================
+# Load .env file for local development (must be BEFORE other imports that use env vars)
+try:
+    from dotenv import load_dotenv
+    load_dotenv()
+    print("[DEBUG] Loaded environment variables from .env file")
+except ImportError:
+    print("[DEBUG] python-dotenv not installed, skipping .env loading")
+    pass
+
+# =======================
 # IMPORTS
 # =======================
 
