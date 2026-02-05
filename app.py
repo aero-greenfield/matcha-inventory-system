@@ -898,7 +898,340 @@ def export_recipes_excel():
 
 
 
-######################STILL NEED TO ADD ADD-RECIPE ROUTE###########################
+# ========================
+# ADD NEW RECIPE ROUTE
+# ========================
+#
+# PURPOSE:
+# This route handles the "Add New Recipe" functionality, allowing users to create
+# new recipes with multiple materials/ingredients. Recipes define what materials
+# are needed to produce a product (e.g., "Matcha Latte" needs Matcha Powder + Milk).
+#
+# HOW IT WORKS:
+# 1. GET request: Display the form with dynamic material inputs
+# 2. POST request: Process the form, validate data, and save to database
+#
+# COMPLEXITY NOTE:
+# Unlike simple forms (like add-material), recipes require MULTIPLE materials.
+# We use JavaScript on the frontend to dynamically add/remove material rows,
+# then parse them on the backend using indexed form field names (material_name_0, etc.)
+#
+
+@app.route('/add-recipe', methods=['GET', 'POST'])
+def add_recipe_route():
+    """
+    Add Recipe Route - Handles both displaying the form and processing submissions
+
+    FORM STRUCTURE:
+    - Product Name: The name of the recipe/product being created
+    - Notes: Optional notes about the recipe (e.g., "sweetened", "vegan")
+    - Materials: Dynamic list of materials, each with:
+        - Material Name: What ingredient is needed
+        - Quantity Needed: How much of that material per batch
+
+    DATA FLOW:
+    1. User fills out form with product name and adds materials
+    2. JavaScript allows adding/removing material rows dynamically
+    3. On submit, form data is sent as POST request
+    4. Backend parses indexed fields (material_name_0, quantity_0, etc.)
+    5. Builds materials list and calls add_recipe() from inventory_app.py
+    6. Redirects to recipes page on success
+
+    FORM FIELD NAMING CONVENTION:
+    - Material rows use indexed names: material_name_0, quantity_0, material_name_1, etc.
+    - This allows parsing an arbitrary number of materials on the backend
+    """
+
+    # ========================
+    # HANDLE POST REQUEST (Form Submission)
+    # ========================
+    if request.method == 'POST':
+
+        # -----------------------
+        # Step 1: Extract basic recipe info
+        # -----------------------
+        # Get the product name (required field)
+        product_name = request.form.get('product_name')
+
+        # Get optional notes field (None if empty)
+        notes = request.form.get('notes') or None
+
+        # -----------------------
+        # Step 2: Parse dynamic material fields
+        # -----------------------
+        # Materials are submitted with indexed field names:
+        # material_name_0, quantity_0, material_name_1, quantity_1, etc.
+        #
+        # We iterate through indices until we stop finding fields
+        # This allows for any number of materials to be added
+
+        materials = []  # Will hold list of material dictionaries
+        index = 0       # Start at first material (index 0)
+
+        # Loop through all submitted material rows
+        while True:
+            # Try to get material at current index
+            material_name = request.form.get(f'material_name_{index}')
+            quantity_str = request.form.get(f'quantity_{index}')
+
+            # If no material name found at this index, we've processed all materials
+            if not material_name:
+                break
+
+            # Skip empty rows (user added row but didn't fill it in)
+            # This prevents errors from blank material entries
+            if material_name.strip() and quantity_str:
+                try:
+                    # Convert quantity to float for decimal support
+                    quantity = float(quantity_str)
+
+                    # Add material to our list in the format expected by add_recipe()
+                    # Each material is a dict with 'material_name' and 'quantity_needed'
+                    materials.append({
+                        'material_name': material_name.strip(),
+                        'quantity_needed': quantity
+                    })
+                except ValueError:
+                    # If quantity can't be converted to number, skip this row
+                    # Could also return an error here if strict validation needed
+                    pass
+
+            # Move to next index
+            index += 1
+
+        # -----------------------
+        # Step 3: Validate required data
+        # -----------------------
+        # Check that we have both a product name and at least one material
+        if not product_name or not materials:
+            # Return error if missing required fields
+            return """<!DOCTYPE html><html><head><title>Error</title><style>
+            body{font-family:Arial;padding:40px;background:#f5f5f5}
+            .error-box{background:white;padding:30px;border-radius:10px;max-width:500px;margin:0 auto;border-left:5px solid #dc3545}
+            h1{color:#dc3545;margin-top:0}
+            a{color:#2c5f2d}
+            </style></head><body>
+            <div class="error-box">
+            <h1>Missing Required Fields</h1>
+            <p>Please provide a product name and at least one material.</p>
+            <a href="/add-recipe">← Go back and try again</a>
+            </div></body></html>""", 400
+
+        # -----------------------
+        # Step 4: Call database function to save recipe
+        # -----------------------
+        try:
+            # add_recipe() is imported from inventory_app.py
+            # It inserts into 'recipes' table and 'recipe_materials' table
+            result = add_recipe(product_name, materials, notes)
+
+            if result:
+                # Success! Redirect to recipes page to see the new recipe
+                # Using Post/Redirect/Get pattern to prevent duplicate submissions
+                return redirect(url_for('view_recipes'))
+            else:
+                # Database function returned False/None - generic failure
+                return """<!DOCTYPE html><html><head><title>Error</title><style>
+                body{font-family:Arial;padding:40px;background:#f5f5f5}
+                .error-box{background:white;padding:30px;border-radius:10px;max-width:500px;margin:0 auto;border-left:5px solid #dc3545}
+                h1{color:#dc3545;margin-top:0}
+                a{color:#2c5f2d}
+                </style></head><body>
+                <div class="error-box">
+                <h1>Error Adding Recipe</h1>
+                <p>Failed to add recipe. Please check that all materials exist in inventory.</p>
+                <a href="/add-recipe">← Go back and try again</a>
+                </div></body></html>""", 500
+
+        except Exception as e:
+            # Catch any unexpected errors and display them
+            # In production, you might want to log this and show a generic message
+            return f"""<!DOCTYPE html><html><head><title>Error</title><style>
+            body{{font-family:Arial;padding:40px;background:#f5f5f5}}
+            .error-box{{background:white;padding:30px;border-radius:10px;max-width:500px;margin:0 auto;border-left:5px solid #dc3545}}
+            h1{{color:#dc3545;margin-top:0}}
+            a{{color:#2c5f2d}}
+            code{{background:#f8f9fa;padding:2px 6px;border-radius:3px}}
+            </style></head><body>
+            <div class="error-box">
+            <h1>Error Adding Recipe</h1>
+            <p>An error occurred: <code>{str(e)}</code></p>
+            <a href="/add-recipe">← Go back and try again</a>
+            </div></body></html>""", 500
+
+    # ========================
+    # HANDLE GET REQUEST (Display Form)
+    # ========================
+    # When user visits /add-recipe, show the form for creating a new recipe
+    #
+    # JAVASCRIPT FUNCTIONALITY:
+    # - addMaterial(): Adds a new material row to the form
+    # - removeMaterial(): Removes a material row (but keeps at least one)
+    # - Material rows use indexed IDs for proper form submission
+    #
+    # CSS STYLING:
+    # - Follows existing app styling patterns (green theme, rounded corners)
+    # - Material rows have visual grouping with border
+    # - Remove button is red for clear visual distinction
+
+    return """<!DOCTYPE html><html><head><title>Add Recipe</title><style>
+    """ + get_common_styles() + """
+
+    /* Form styling */
+    .form-group{margin-bottom:20px}
+    label{display:block;margin-bottom:5px;font-weight:bold;color:#555}
+    input{width:100%;padding:10px;border:1px solid #ddd;border-radius:5px;box-sizing:border-box}
+
+    /* Submit button - green to match app theme */
+    button[type="submit"]{background:#97bc62;color:white;padding:12px 30px;border:none;border-radius:5px;cursor:pointer;font-size:16px}
+    button[type="submit"]:hover{background:#7da34f}
+
+    /* Materials section container */
+    #materials-container{margin:20px 0;padding:15px;background:#f8f9fa;border-radius:8px}
+
+    /* Individual material row styling */
+    .material-row{display:flex;gap:10px;margin-bottom:15px;padding:15px;background:white;border-radius:8px;border:1px solid #ddd;align-items:flex-end}
+    .material-row .form-group{margin-bottom:0;flex:1}
+    .material-row input{margin-top:5px}
+
+    /* Remove button - red for visual distinction */
+    .remove-btn{background:#dc3545;color:white;border:none;padding:10px 15px;border-radius:5px;cursor:pointer;height:42px}
+    .remove-btn:hover{background:#c82333}
+
+    /* Add material button - outlined style */
+    .add-btn{background:white;color:#97bc62;border:2px solid #97bc62;padding:10px 20px;border-radius:5px;cursor:pointer;font-size:14px;margin-top:10px}
+    .add-btn:hover{background:#97bc62;color:white}
+
+    /* Section header styling */
+    .section-header{font-size:18px;color:#2c5f2d;margin-bottom:15px;padding-bottom:10px;border-bottom:2px solid #97bc62}
+
+    </style></head><body><div class="container">
+    """ + get_logo_html() + """
+    <a href="/" class="back-link">← Back to Home</a>
+    <h1>➕ Add New Recipe</h1>
+
+    <form method="POST" id="recipe-form">
+        <!-- Product Name - The name of the recipe/product -->
+        <div class="form-group">
+            <label>Product Name *</label>
+            <input type="text" name="product_name" required placeholder="e.g., Matcha Latte">
+        </div>
+
+        <!-- Notes - Optional additional information about the recipe -->
+        <div class="form-group">
+            <label>Notes (Optional)</label>
+            <input type="text" name="notes" placeholder="e.g., Sweetened, Vegan, etc.">
+        </div>
+
+        <!-- Materials Section - Dynamic rows for ingredients -->
+        <div class="section-header">📦 Materials Required</div>
+        <div id="materials-container">
+            <!-- Initial material row (at least one required) -->
+            <!-- More rows can be added dynamically with JavaScript -->
+            <div class="material-row" id="material-row-0">
+                <div class="form-group">
+                    <label>Material Name *</label>
+                    <input type="text" name="material_name_0" required placeholder="e.g., Matcha Powder">
+                </div>
+                <div class="form-group">
+                    <label>Quantity Needed *</label>
+                    <input type="number" step="0.01" name="quantity_0" required placeholder="e.g., 10">
+                </div>
+                <button type="button" class="remove-btn" onclick="removeMaterial(0)">✕</button>
+            </div>
+        </div>
+
+        <!-- Button to add more material rows -->
+        <button type="button" class="add-btn" onclick="addMaterial()">+ Add Another Material</button>
+
+        <br><br>
+        <button type="submit">Create Recipe</button>
+    </form>
+
+    <script>
+    // ========================
+    // DYNAMIC MATERIAL ROWS - JavaScript
+    // ========================
+    //
+    // PURPOSE:
+    // Allows users to add/remove material rows without page reload.
+    // Each row gets a unique index for proper form field naming.
+    //
+    // HOW IT WORKS:
+    // - materialCount tracks the next index to use (prevents ID collisions)
+    // - addMaterial() creates new row HTML and appends to container
+    // - removeMaterial() removes a row but ensures at least one remains
+
+    // Track the next material index (starts at 1 since row 0 exists)
+    let materialCount = 1;
+
+    /**
+     * addMaterial() - Adds a new material input row to the form
+     *
+     * Creates HTML for a new row with:
+     * - Material name input (indexed: material_name_N)
+     * - Quantity input (indexed: quantity_N)
+     * - Remove button
+     *
+     * The index ensures each field has a unique name for form submission
+     */
+    function addMaterial() {
+        // Get the container that holds all material rows
+        const container = document.getElementById('materials-container');
+
+        // Create new div element for the row
+        const newRow = document.createElement('div');
+        newRow.className = 'material-row';
+        newRow.id = 'material-row-' + materialCount;
+
+        // Set the inner HTML with indexed field names
+        // Note: New rows don't have 'required' so user can leave them empty
+        newRow.innerHTML = `
+            <div class="form-group">
+                <label>Material Name</label>
+                <input type="text" name="material_name_${materialCount}" placeholder="e.g., Milk">
+            </div>
+            <div class="form-group">
+                <label>Quantity Needed</label>
+                <input type="number" step="0.01" name="quantity_${materialCount}" placeholder="e.g., 200">
+            </div>
+            <button type="button" class="remove-btn" onclick="removeMaterial(${materialCount})">✕</button>
+        `;
+
+        // Add the new row to the container
+        container.appendChild(newRow);
+
+        // Increment counter for next row
+        materialCount++;
+    }
+
+    /**
+     * removeMaterial(index) - Removes a material row from the form
+     *
+     * @param {number} index - The index of the row to remove
+     *
+     * SAFETY: Ensures at least one material row remains
+     * (A recipe must have at least one material)
+     */
+    function removeMaterial(index) {
+        // Get all current material rows
+        const rows = document.querySelectorAll('.material-row');
+
+        // Don't allow removing the last row - recipe needs at least one material
+        if (rows.length <= 1) {
+            alert('A recipe must have at least one material.');
+            return;
+        }
+
+        // Find and remove the specified row
+        const row = document.getElementById('material-row-' + index);
+        if (row) {
+            row.remove();
+        }
+    }
+    </script>
+
+    </div></body></html>"""
 
 
 
