@@ -643,21 +643,29 @@ def get_recipe(product_name):
 def get_all_recipes():
     """
     Returns all recipes and their materials as a DataFrame
+
+    Columns returned:
+    - recipe_product_name: Name of the recipe/product
+    - notes: Optional notes about the recipe
+    - material_name: Name of the material/ingredient
+    - quantity: Amount of material needed per batch
+    - unit: Unit of measurement (from raw_materials table)
     """
     db = get_db_connection()
 
     query = """
     SELECT
-        r.product_name,
+        r.product_name AS recipe_product_name,
         r.notes,
-        rm.material_id,
         raw.name AS material_name,
-        rm.quantity_needed
+        rm.quantity_needed AS quantity,
+        raw.unit
     FROM recipes r
     JOIN recipe_materials rm ON r.recipe_id = rm.recipe_id
     JOIN raw_materials raw ON rm.material_id = raw.material_id
-    ORDER BY r.product_name ASC, rm.material_name ASC
+    ORDER BY r.product_name ASC, raw.name ASC
     """
+    # Note: unit comes from raw_materials (raw.unit), NOT recipe_materials
 
     result = pd.read_sql_query(query, db.conn)
     db.close()
