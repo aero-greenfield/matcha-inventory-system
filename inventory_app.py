@@ -404,14 +404,14 @@ def add_to_batches(product_name, quantity, notes=None, batch_id = None, deduct_r
                 quantity_needed = row['quantity_needed'] # needed amount
                 required_amount = quantity_needed * quantity
 
-
+                #deduct from raw_materials
                 db.execute(cursor, """
                 UPDATE raw_materials
                 SET stock_level = stock_level - %s
                 WHERE material_id = %s
                     """,(required_amount, material_id,))
 
-
+                #add to batch_materials
                 db.execute(cursor, """
                 INSERT INTO batch_materials (batch_id, material_id, quantity_used)
                     VALUES (%s, %s, %s)
