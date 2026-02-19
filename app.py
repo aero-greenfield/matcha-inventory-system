@@ -132,7 +132,7 @@ from inventory_app import (
     create_database, add_raw_material, get_all_materials, get_all_recipes, get_batches_shipped, get_low_stock_materials,
     increase_raw_material, decrease_raw_material, get_raw_material, add_to_batches,
     get_batches, mark_as_shipped, delete_batch, get_recipe, add_recipe,
-    change_recipe, delete_recipe, delete_raw_material
+    change_recipe, delete_recipe, delete_raw_material, get_available_lots
 )
 
 # Import helper functions for exporting data

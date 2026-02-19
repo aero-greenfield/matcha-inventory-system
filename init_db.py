@@ -64,7 +64,9 @@ def init_database():
        unit TEXT, 
        reorder_level REAL,  
        cost_per_unit REAL, 
-       supplier TEXT 
+       supplier TEXT,
+       lot_number INTEGER    
+    
    ) 
    """) 
     
@@ -131,7 +133,9 @@ def init_database():
        batch_material_id SERIAL PRIMARY KEY, 
        batch_id INTEGER, 
        material_id INTEGER, 
-       quantity_used REAL, 
+       quantity_used REAL,
+       lot_number INTEGER,
+       FOREIGN KEY (lot_number) REFERENCES raw_materials(lot_number), 
        FOREIGN KEY (material_id) REFERENCES raw_materials(material_id), 
        FOREIGN KEY (batch_id) REFERENCES batches(batch_id) 
    ) 

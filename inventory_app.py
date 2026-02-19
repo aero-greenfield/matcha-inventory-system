@@ -30,7 +30,8 @@ def create_database():
                    unit TEXT,
                    reorder_level REAL, 
                    cost_per_unit REAL,
-                   supplier TEXT
+                   supplier TEXT,
+                   lot_number INTEGER
                      
                    )
                    """)
@@ -80,6 +81,8 @@ def create_database():
                    batch_id INTEGER,
                    material_id INTEGER,
                    quantity_used REAL,
+                   lot_number INTEGER,
+                   FOREIGN KEY (lot_number) REFERENCES raw_materials(lot_number),
                    FOREIGN KEY (material_id) REFERENCES raw_materials(material_id),
                    FOREIGN KEY (batch_id) REFERENCES batches(batch_id)           
                   
@@ -97,18 +100,20 @@ def create_database():
 # RAW MATERIALS FUNCTIONS
 # ========================
  
-def add_raw_material(name, category, stock_level, unit, reorder_level, cost_per_unit, supplier=None):
+def add_raw_material(name, category, stock_level, unit, reorder_level, cost_per_unit, supplier=None, lot_number=None):
     # adds material to raw_materials
-
+    #new: lot number: optional integer(most mats will have it), if there is a duplicate lot number, 
+    # it will just add to the existing stock level of that lot number,
+    #  instead of creating a new entry. 
     db = get_db_connection()
     cursor = db.cursor()
 
     try:
         db.execute(cursor, """
-            INSERT INTO raw_materials (name, category, stock_level, unit, reorder_level, cost_per_unit, supplier)
-            VALUES (%s,%s,%s,%s,%s,%s,%s)
+            INSERT INTO raw_materials (name, category, stock_level, unit, reorder_level, cost_per_unit, supplier, lot_number)
+            VALUES (%s,%s,%s,%s,%s,%s,%s,%s)
 
-                        """, (name, category, stock_level, unit, reorder_level, cost_per_unit, supplier))
+                        """, (name, category, stock_level, unit, reorder_level, cost_per_unit, supplier, lot_number))
 
         db.commit()
         print(f"Added {name} to raw materials")
@@ -143,11 +148,12 @@ def get_low_stock_materials():
 
 def get_all_materials():
     "Returns all materials"
+    #lot number implimentation needed
     db = get_db_connection()
     cursor = db.cursor()
 
     query = """
-    SELECT name, category, stock_level, unit, reorder_level, cost_per_unit, supplier
+    SELECT name, category, stock_level, unit, reorder_level, cost_per_unit, supplier, lot_number
     FROM raw_materials
     ORDER BY category, name
     """
@@ -157,20 +163,58 @@ def get_all_materials():
     return result
 
 
-def increase_raw_material(name, increase_amount):
+def get_available_lots(material_name):
+    """Returns all lots for a material that have stock > 0.
+    Used during batch creation to show user which lots they can pick from.
 
-    """ increases amount of material given its name and amount to add"""
+    Returns DataFrame with columns: material_id, name, lot_number, stock_level, unit
+    """
+    db = get_db_connection()
+
+    query = """
+    SELECT material_id, name, lot_number, stock_level, unit
+    FROM raw_materials
+    WHERE name = %s AND stock_level > 0
+    ORDER BY lot_number
+    """
+    result = pd.read_sql_query(query, db.conn, params=(material_name,))
+    db.close()
+    return result
+
+
+def material_has_lot_numbers(material_name):
+    """Checks if any rows for this material have a non-null lot number.
+    Returns True if lot numbers exist, False if all are NULL.
+    """
+    db = get_db_connection()
+    cursor = db.cursor()
+    try:
+        db.execute(cursor, """
+        SELECT 1 FROM raw_materials
+        WHERE name = %s AND lot_number IS NOT NULL
+        LIMIT 1
+        """, (material_name,))
+        return cursor.fetchone() is not None
+    finally:
+        db.close()
+
+
+def increase_raw_material(name, increase_amount, lot_number=None):
+
+    """ increases amount of material given its name and amount to add
+    it increases based on name AND lot number. 
+    """
 
     db = get_db_connection()
     cursor = db.cursor()
 
     try:
-
+# get mat_id, stock, and unit
         db.execute(cursor, """
         SELECT material_id, stock_level, unit
         FROM raw_materials
-        WHERE name = %s
-        """, (name,))
+        WHERE name = %s AND lot_number = %s
+        """, (name, lot_number))
         result = cursor.fetchone()
         # gets the result from the query in form of a tuple
 
@@ -184,19 +228,18 @@ def increase_raw_material(name, increase_amount):
         db.execute(cursor, """
         UPDATE raw_materials
         SET stock_level = stock_level + %s
-        WHERE material_id = %s
+        WHERE material_id = %s AND lot_number = %s
 
-        """, (increase_amount, material_id,) )
+        """, (increase_amount, material_id, lot_number) )
         db.commit()
 
         #get new stock level
         db.execute(cursor, """
         SELECT stock_level
         FROM raw_materials
-        WHERE material_id = %s
+        WHERE material_id = %s AND lot_number = %s
 
-         """, (material_id,))
-
+         """, (material_id, lot_number))
         new_stock_level = cursor.fetchone()[0] # fetchone() returns a tuple, so get the first and only value in tuple instead of tuple
         db.close()
         print(f"Succesfully added, {name} is now at {new_stock_level}")
@@ -212,17 +255,28 @@ def increase_raw_material(name, increase_amount):
 
 
 
-def get_raw_material(name):
-
+def get_raw_material(name, lot_number=None):
+    """
+    gets raw material from name, and optional lot#.
+    If lot_number is None, finds the row where lot_number IS NULL.
+    If lot_number is provided, finds the row matching that lot_number.
+    """
     db = get_db_connection()
     cursor = db.cursor()
 
     try:
-        db.execute(cursor, """
-        SELECT material_id, name, stock_level, reorder_level, cost_per_unit
-        FROM raw_materials
-        WHERE name = %s
-                       """,(name,))
+        if lot_number is None:
+            db.execute(cursor, """
+            SELECT material_id, name, stock_level, reorder_level, cost_per_unit
+            FROM raw_materials
+            WHERE name = %s AND lot_number IS NULL
+                           """,(name,))
+        else:
+            db.execute(cursor, """
+            SELECT material_id, name, stock_level, reorder_level, cost_per_unit
+            FROM raw_materials
+            WHERE name = %s AND lot_number = %s
+                           """,(name, lot_number))
         result = cursor.fetchone()
 
 
@@ -236,9 +290,9 @@ def get_raw_material(name):
     finally:
         db.close()
 
-def decrease_raw_material(name, decrease_amount):
-    """Decreases amount of material given its name and amount to subtract"""
-
+def decrease_raw_material(name, decrease_amount, lot_number=None):
+    """Decreases amount of material given its name and lot number and amount to subtract"""
+#lot number implimentation needed
     db = get_db_connection()
     cursor = db.cursor()
 
@@ -246,26 +300,26 @@ def decrease_raw_material(name, decrease_amount):
         db.execute(cursor, """
         SELECT material_id, stock_level, unit
         FROM raw_materials
-        WHERE name = %s
-        """, (name,))
+        WHERE name = %s AND lot_number = %s
+        """, (name, lot_number))
         result = cursor.fetchone()
 
         if not result:
-            print(f"{name} not found in raw_materials")
+            print(f"{name} with lot number: {lot_number} not found in raw_materials")
             return None
 
         (material_id, current_stock, unit) = result
 
         # Check if there's enough stock
         if current_stock < decrease_amount:
-            print(f"Insufficient stock: {name} has {current_stock} {unit}, but {decrease_amount} {unit} is needed")
+            print(f"Insufficient stock: {name} with lot number: {lot_number} has {current_stock} {unit}, but {decrease_amount} {unit} is needed")
             return None
 
         db.execute(cursor, """
         UPDATE raw_materials
         SET stock_level = stock_level - %s
-        WHERE material_id = %s
-        """, (decrease_amount, material_id))
+        WHERE material_id = %s AND lot_number = %s
+        """, (decrease_amount, material_id, lot_number))
 
         db.commit()
 
@@ -273,11 +327,11 @@ def decrease_raw_material(name, decrease_amount):
         db.execute(cursor, """
         SELECT stock_level
         FROM raw_materials
-        WHERE material_id = %s
-        """, (material_id,))
+        WHERE material_id = %s AND lot_number = %s
+        """, (material_id, lot_number))
 
         new_stock_level = cursor.fetchone()[0]
-        print(f"Successfully deducted {decrease_amount} {unit} from {name}. New stock level: {new_stock_level} {unit}")
+        print(f"Successfully deducted {decrease_amount} {unit} from {name} with lot number: {lot_number}. New stock level: {new_stock_level} {unit}")
         return new_stock_level
 
     except Exception as e:
@@ -288,20 +342,20 @@ def decrease_raw_material(name, decrease_amount):
     finally:
         db.close()
 
-def delete_raw_material(name):
+def delete_raw_material(name, lot_number):
 
-    """Deletes raw material from database given its name"""
-
+    """Deletes raw material from database given its name and lot number"""
+#lot number implimentation needed
     db = get_db_connection()
     cursor = db.cursor()
 
     try:
         db.execute(cursor, """
         DELETE FROM raw_materials
-        WHERE name = %s
-                       """,(name,))
+        WHERE name = %s AND lot_number = %s
+                       """,(name, lot_number))
         db.commit()
-        print(f"Deleted {name} from raw materials")
+        print(f"Deleted {name} with lot number: {lot_number} from raw materials")
 
     except Exception as e:
         print(f"Error: {e}")
@@ -315,11 +369,17 @@ def delete_raw_material(name):
 # BATCHES FUNCTIONS
 # ========================
 
-def add_to_batches(product_name, quantity, notes=None, batch_id = None, deduct_resources=True):
+def add_to_batches(product_name, quantity, notes=None, status='Ready', batch_id = None, deduct_resources=True, lot_selections = None):
     """
     adds batch to ready to ship, but asks user if they want to deduct from resources, or just add it.
+    flow: 1.check if batch already exist
+    2. look up batch product recipe
+    3. for each material in recipe, ask user for lot number, then check if there is enough stock in that lot number, if not, error and stop process, if yes, deduct from raw_materials.
+    4. add batch to batches, and materials used to batch_materials
     """
+    # added status optional change, default is ready
     # Connect to the database
+    #lot number implimentation needed (biggest change)
     db = get_db_connection()
     cursor = db.cursor()
     
@@ -358,8 +418,8 @@ def add_to_batches(product_name, quantity, notes=None, batch_id = None, deduct_r
 
             db.execute(cursor, """
                 INSERT INTO batches (batch_id, product_name, quantity, date_completed, status, notes)
-                VALUES (%s, %s, %s, %s, 'Ready', %s)
-            """, (batch_id, product_name, quantity, date_completed, notes))
+                VALUES (%s, %s, %s, %s, %s, %s)
+            """, (batch_id, product_name, quantity, date_completed, status, notes))
 
 
         else:# if its None:
@@ -367,8 +427,8 @@ def add_to_batches(product_name, quantity, notes=None, batch_id = None, deduct_r
 
             db.execute(cursor, """
                 INSERT INTO batches (product_name, quantity, date_completed, status, notes)
-                VALUES (%s, %s, %s, 'Ready', %s)
-            """, (product_name, quantity, date_completed, notes))
+                VALUES (%s, %s, %s, %s, %s)
+            """, (product_name, quantity, date_completed, status, notes))
             batch_id = db.get_last_insert_id(cursor)
 
 
@@ -383,6 +443,7 @@ def add_to_batches(product_name, quantity, notes=None, batch_id = None, deduct_r
                 material_id_recipe = row['material_id'] #get id
                 material_name = row['material_name'] #get material name
                 quantity_needed = row['quantity_needed'] # needed amount
+                
 
                 material_info = get_raw_material(material_name)
                 if not material_info:
