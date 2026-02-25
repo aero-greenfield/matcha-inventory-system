@@ -12,6 +12,7 @@ from inventory_app import (
     create_database,
     add_raw_material,
     get_all_materials,
+    get_all_recipes,
     get_low_stock_materials,
     increase_raw_material,
     decrease_raw_material,
@@ -24,7 +25,9 @@ from inventory_app import (
     add_recipe,
     change_recipe,
     delete_recipe,
-    delete_raw_material
+    delete_raw_material,
+    get_all_recipes
+
 )
 
 # Import utility functions
@@ -101,6 +104,7 @@ def display_main_menu():
     
     print("\n🔧 SYSTEM")
     print("  15. Create Manual Backup")
+    print(" 16. view all recipes")
     print("  0. Exit")
     
     print("\n" + "="*60)
@@ -132,6 +136,7 @@ def main_menu():
         '13': export_inventory,
         '14': export_low_stock,
         '15': manual_backup,
+        '16': view_all_recipes,
         '0': exit_program
     }
     # display menu and handle user input in loop
@@ -243,6 +248,27 @@ def add_material():
     
     pause()
 
+
+def view_all_recipes(): 
+    """
+    Displays all available recipes in the system.
+
+    """
+
+    print_header("ALL RECIPES") #header
+    
+    df = get_all_recipes() #get all recipes from inventory_app
+    
+    if df.empty:
+        print_warning("No recipes found. Add recipes using option 10.")
+    else:
+        df = df.rename(columns={ # improve readability of df
+            'product_name': 'Product Name',
+            'notes': 'Notes'
+        })
+        display_dataframe(df, empty_message="No recipes found.") #display using helper function
+    
+    pause()# wait for user to read output
 
 
 def restock_material():

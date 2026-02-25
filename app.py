@@ -844,33 +844,106 @@ def create_batch():
 # RECIPE PAGES
 #=================
 @app.route('/recipes')
-
 def view_recipes():
-    # Get all recipes from database as a pandas dataframe
-    # Each row = one material in a recipe (recipes with multiple materials have multiple rows)
+    """
+    View All Recipes Page
+
+    Displays recipes in a grouped format where:
+    - Recipe name and notes appear only on the FIRST row of each recipe
+    - Subsequent rows for the same recipe show only materials (name blank)
+    - This makes it easy to see which materials belong to which recipe
+    """
+
+    # ========================================
+    # STEP 1: Get raw data from database
+    # ========================================
+    # Each row = one material in a recipe
+    # Example raw data:
+    #   recipe_product_name | notes | material_name | quantity | unit
+    #   matcha latte        | sweet | sugar         | 10       | grams
+    #   matcha latte        | sweet | matcha powder | 20       | grams
+    #   lavender tea        | None  | lavender      | 10       | grams
     df = get_all_recipes()
 
-    # NEW: Export button for recipes
-    # - Only shows when there are recipes in the database
-    # - Useful for sharing recipe formulas or creating production guides
+    # Export button - only show if there's data
     export_button = '' if df.empty else '<a href="/export/recipes-excel" class="export-btn">📥 Export to Excel</a>'
 
-    # If there's no recipes, show a message, otherwise convert dataframe to HTML table
-    table_html = '<p style="color:#666;">No recipes found. <a href="/add-recipe">Add your first recipe</a></p>' if df.empty else df.to_html(index=False, classes='data-table', border=0)
+    # Handle empty case
+    if df.empty:
+        table_html = '<p style="color:#666;">No recipes found. <a href="/add-recipe">Add your first recipe</a></p>'
+        recipe_count = 0
+    else:
+        # ========================================
+        # STEP 2: Remove duplicate recipe names
+        # ========================================
+        # Goal: Show recipe name only on FIRST row of each group
+        #
+        # Before:                              After:
+        #   matcha latte | sugar                 matcha latte | sugar
+        #   matcha latte | matcha powder   -->                | matcha powder
+        #   lavender tea | lavender              lavender tea | lavender
 
+        # Create a copy so we don't modify the original DataFrame
+        df_display = df.copy()
+
+        # Use pandas .duplicated() to find repeated recipe names
+        # .duplicated() returns True for SECOND and later occurrences
+        # Example: ['matcha', 'matcha', 'lavender'] -> [False, True, False]
+        duplicate_mask = df_display['recipe_product_name'].duplicated()
+
+        # Where duplicated is True, replace recipe name with empty string
+        # .loc[condition, column] = value  --> sets value where condition is True
+        df_display.loc[duplicate_mask, 'recipe_product_name'] = ''
+
+        # Also blank out notes for duplicate rows (notes belong to recipe, not materials)
+        df_display.loc[duplicate_mask, 'notes'] = ''
+
+        # ========================================
+        # STEP 3: Count unique recipes
+        # ========================================
+        # Use the ORIGINAL df (not df_display) to count unique recipe names
+        recipe_count = df['recipe_product_name'].nunique()
+
+        # ========================================
+        # STEP 4: Convert to HTML table
+        # ========================================
+        table_html = df_display.to_html(index=False, classes='data-table', border=0)
+
+    # ========================================
+    # STEP 5: Return styled HTML page
+    # ========================================
     return f"""<!DOCTYPE html><html><head><title>Recipes</title><style>
     {get_common_styles()}
+
+    /* Table styling */
     .data-table{{width:100%;border-collapse:collapse;margin:20px 0}}
-    .data-table th,.data-table td{{padding:12px;text-align:left;border-bottom:1px solid #ddd}}
-    .data-table th{{background:#97bc62;color:white;font-weight:bold}}
+    .data-table th{{background:#97bc62;color:white;font-weight:bold;padding:15px 12px;text-align:left}}
+    .data-table td{{padding:12px;text-align:left;border-bottom:1px solid #e0e0e0}}
+
+    /* Highlight rows that start a new recipe (have recipe name) */
     .data-table tr:hover{{background:#f0f8f0}}
+
+    /* Make recipe name column stand out */
+    .data-table td:first-child{{font-weight:bold;color:#2c5f2d}}
+
+    /* Style the notes column (second column) */
+    .data-table td:nth-child(2){{color:#666;font-style:italic}}
+
+    /* Alternate row colors for better readability */
+    .data-table tbody tr:nth-child(even){{background:#fafafa}}
+
+    /* Export button */
     .export-btn{{display:inline-block;background:#97bc62;color:white;padding:10px 20px;border-radius:5px;text-decoration:none;margin:10px 0}}
     .export-btn:hover{{background:#7da34f}}
+
+    /* Recipe count badge */
+    .recipe-count{{background:#2c5f2d;color:white;padding:5px 15px;border-radius:20px;font-size:14px}}
+
     </style></head><body><div class="container">
     {get_logo_html()}
     <a href="/" class="back-link">← Back to Home</a>
     <h1>📖 All Recipes</h1>
-    <p>Total recipes: {len(df.groupby('product_name')) if not df.empty else 0}</p>
+    <p><span class="recipe-count">Total recipes: {recipe_count}</span></p>
     {export_button}
     {table_html}</div></body></html>"""
 
