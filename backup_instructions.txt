@@ -1,0 +1,58 @@
+When To Use This
+Use this guide if:
+
+Data was accidentally deleted or corrupted
+Something broke in the web app and data is wrong
+You need to roll back to a previous state
+
+
+Step 1: Install psql (one time only)
+psql is the command line tool that restores the database.
+You only need to install it once on your machine.
+
+
+Mac:
+brew install postgresql
+
+
+Windows:
+winget install PostgreSQL.PostgreSQL
+Verify it worked — open a new terminal and run:
+psql --version
+Should say version 17.
+
+OR JUST DOWNLOAD posgresql17 on web. 
+
+
+Step 2: Find the backup you want
+
+go to supabase buckets, chose version you want
+
+ex:
+
+   prod_backup_20260225_020000.sql
+   
+ → Download
+
+
+Step 3: Get your database URL
+
+ex:
+DATABASE_URL=postgresql://postgres:password@db.tyrofukczchyhoafcnwo.supabase.co:5432/postgres
+
+Step 4: Restore the database
+
+Open VS Code
+Open the terminal: 
+Run this command:
+
+ex:
+
+psql "postgresql://postgres:[YOUR-PASSWORD]@db.[YOUR-PROJECT-REF].supabase.co:5432/postgres" < [FILENAME].sql
+
+this is using ur project ref:
+
+psql "postgresql://postgres:[YOUR-PASSWORD]@db.tyrofukczchyhoafcnwo.supabase.co:5432/postgres" < prod_backup_20260226_015410.sql
+
+
+The restore takes about 10-30 seconds.
