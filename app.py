@@ -186,24 +186,8 @@ except:
 # AUTHENTICATION SYSTEM
 # =======================
 
-"""
-WHAT IS AUTHENTICATION?
-========================
-Authentication protects your app from unauthorized access.
-When someone tries to visit your site, they must enter a username and password.
 
-HOW IT WORKS:
-1. User visits a protected page (like /inventory)
-2. Browser shows login popup (because of @requires_auth decorator)
-3. User enters username and password
-4. check_auth() verifies credentials
-5. If correct → show the page
-   If wrong → show error and ask again
 
-WHY USE DECORATORS?
-Instead of adding auth code to every route, we use @requires_auth decorator.
-It's like putting a lock on a door - any route with @requires_auth is locked.
-"""
 
 # ========================
 # RATE LIMITING (Currently Disabled)
@@ -430,6 +414,7 @@ DATA FLOW: DATABASE → PYTHON → HTML → BROWSER
 
 @app.route('/inventory')  # URL path: http://localhost:8000/inventory
 # Note: No methods= parameter means GET only (can't submit data to this route)
+@requires_auth
 def view_inventory():
     """
     View All Inventory Page
@@ -484,6 +469,7 @@ def view_inventory():
 
 # NEW: Excel export route for inventory
 @app.route('/export/inventory-excel')
+@requires_auth
 def export_inventory_excel():
     """
     Export inventory data to Excel file and trigger download
@@ -533,6 +519,7 @@ Some routes need to handle both GET and POST:
 
 @app.route('/add-material', methods=['GET', 'POST'])
 # methods=['GET', 'POST'] tells Flask this route handles both GET and POST requests
+@requires_auth
 def add_material_route():
     """
     Add Material Route - Handles both showing form and processing submission
@@ -631,7 +618,7 @@ def add_material_route():
 # ========================
 
 @app.route('/low-stock')
-
+@requires_auth
 def low_stock():
     # Get all materials where stock is below reorder level
     df = get_low_stock_materials()
@@ -665,6 +652,7 @@ def low_stock():
 
 # NEW: Excel export route for low stock alerts
 @app.route('/export/low-stock-excel')
+@requires_auth
 def export_low_stock_excel():
     """
     Export low stock materials to Excel file
@@ -693,6 +681,7 @@ def export_low_stock_excel():
 
 #View all batches
 @app.route('/batches')
+@requires_auth
 def view_batches():
 
     data = get_batches()  # Get all batches with status='Ready'
@@ -723,6 +712,7 @@ def view_batches():
 
 # NEW: Excel export route for batches
 @app.route('/export/batches-excel')
+@requires_auth
 def export_batches_excel():
     """
     Export batches to Excel file
@@ -746,6 +736,7 @@ def export_batches_excel():
 
 # NEW: View shipped batches
 @app.route('/shipped-batches')
+@requires_auth
 def view_shipped_batches():
     """
     gets all shipped batches and displays them in a table
@@ -777,6 +768,7 @@ def view_shipped_batches():
 
 # craete a new batch
 @app.route('/create-batch', methods=['GET', 'POST'])
+@requires_auth
 def create_batch():
 
     if request.method == 'POST':
@@ -844,6 +836,7 @@ def create_batch():
 # RECIPE PAGES
 #=================
 @app.route('/recipes')
+@requires_auth
 def view_recipes():
     """
     View All Recipes Page
@@ -873,9 +866,9 @@ def view_recipes():
         table_html = '<p style="color:#666;">No recipes found. <a href="/add-recipe">Add your first recipe</a></p>'
         recipe_count = 0
     else:
-        # ========================================
-        # STEP 2: Remove duplicate recipe names
-        # ========================================
+        
+        # Remove duplicate recipe names:
+        
         # Goal: Show recipe name only on FIRST row of each group
         #
         # Before:                              After:
@@ -886,10 +879,10 @@ def view_recipes():
         # Create a copy so we don't modify the original DataFrame
         df_display = df.copy()
 
-        # Use pandas .duplicated() to find repeated recipe names
-        # .duplicated() returns True for SECOND and later occurrences
-        # Example: ['matcha', 'matcha', 'lavender'] -> [False, True, False]
+       
         duplicate_mask = df_display['recipe_product_name'].duplicated()
+
+        # df.duplicated() returns a boolean Series where True means "this value has appeared before in the column" 
 
         # Where duplicated is True, replace recipe name with empty string
         # .loc[condition, column] = value  --> sets value where condition is True
@@ -898,20 +891,21 @@ def view_recipes():
         # Also blank out notes for duplicate rows (notes belong to recipe, not materials)
         df_display.loc[duplicate_mask, 'notes'] = ''
 
-        # ========================================
-        # STEP 3: Count unique recipes
-        # ========================================
+
+
+        #  Count unique recipes
+      
         # Use the ORIGINAL df (not df_display) to count unique recipe names
         recipe_count = df['recipe_product_name'].nunique()
 
-        # ========================================
-        # STEP 4: Convert to HTML table
-        # ========================================
+        
+
+        # Convert to HTML table
+       
         table_html = df_display.to_html(index=False, classes='data-table', border=0)
 
-    # ========================================
-    # STEP 5: Return styled HTML page
-    # ========================================
+    #Return styled HTML page
+    
     return f"""<!DOCTYPE html><html><head><title>Recipes</title><style>
     {get_common_styles()}
 
@@ -949,6 +943,7 @@ def view_recipes():
 
 # NEW: Excel export route for recipes
 @app.route('/export/recipes-excel')
+@requires_auth
 def export_recipes_excel():
     """
     Export all recipes and their materials to Excel file
@@ -991,6 +986,7 @@ def export_recipes_excel():
 #
 
 @app.route('/add-recipe', methods=['GET', 'POST'])
+@requires_auth
 def add_recipe_route():
     """
     Add Recipe Route - Handles both displaying the form and processing submissions
