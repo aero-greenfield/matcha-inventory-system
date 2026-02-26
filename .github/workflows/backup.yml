@@ -100,7 +100,7 @@ jobs:
       # (don't need Flask, gunicorn etc. just for backup)
       # ----------------------------------------
       - name: Install Python dependencies
-        run: pip install -r requirements_backup.txt
+        run: pip install supabase python-dotenv
 
 
       # ----------------------------------------
