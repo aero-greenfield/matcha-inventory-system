@@ -1,0 +1,116 @@
+# ============================================================
+# Botaniks Database Backup Workflow
+# ============================================================
+
+# WHAT THIS FILE IS:
+# GitHub Actions workflow — GitHub reads this file and knows
+# to run it on the schedule defined below.
+
+
+
+# WHAT IT DOES:
+# 1. Spins up a temporary VM on GitHub's server
+# 2. Installs Python + PostgreSQL tools on that VM
+# 3. Runs backup_prod.py (pg_dump → upload to Supabase)
+# 4. VM is destroyed — nothing persists on GitHub's end
+
+
+
+# WHERE DATA ENDS UP:
+# Supabase Storage → db-backups bucket
+# Accessible at: Supabase 
+
+
+
+
+name: Daily Database Backup
+
+on:
+  # ----------------------------------------
+  # SCHEDULED TRIGGER
+  # Runs every day at 2am UTC time 
+  
+
+  # Cron format: minute hour day month weekday
+  # '0 2 * * *' = minute 0, hour 2, every day
+  #
+  # UTC 2am = California time:
+  #   PST (winter): 6pm previous day
+  #   PDT (summer): 7pm previous day
+ 
+
+  # ----------------------------------------
+  schedule:
+    - cron: '0 2 * * *'
+
+  # ----------------------------------------
+  # MANUAL TRIGGER
+  # Lets you run the backup anytime from
+  # GitHub → Actions → Daily Database Backup → Run workflow
+  
+  # ----------------------------------------
+  workflow_dispatch:
+
+jobs:
+  backup:
+    # Use GitHub's free Ubuntu VM
+    runs-on: ubuntu-latest
+
+    steps:
+      # ----------------------------------------
+      # STEP 1: Get your code
+      # Downloads your repo onto the VM so it
+      # can find backup_prod.py
+      # ----------------------------------------
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      # ----------------------------------------
+      # STEP 2: Install Python
+      # Sets up Python 3.11 on the VM
+      # ----------------------------------------
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      # ----------------------------------------
+      # STEP 3: Install PostgreSQL client tools
+      # This gives the VM access to pg_dump
+      # (the VM is blank — nothing pre-installed)
+      # ----------------------------------------
+      - name: Install PostgreSQL client
+        run: sudo apt-get install -y postgresql-client
+
+
+      # ----------------------------------------
+      # STEP 4: Install Python dependencies
+      # Installs supabase and python-dotenv
+      # from a separate lightweight requirements file
+      # (don't need Flask, gunicorn etc. just for backup)
+      # ----------------------------------------
+      - name: Install Python dependencies
+        run: pip install -r requirements-backup.txt
+
+
+      # ----------------------------------------
+      # STEP 5: Run the backup script
+      # GitHub injects your secrets as environment
+      # variables — backup_prod.py reads them with os.getenv()
+      # exactly like it reads from .env locally
+      # ----------------------------------------
+      - name: Run database backup
+        env:
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SERVICE_KEY: ${{ secrets.SUPABASE_SERVICE_KEY }}
+        run: python backup_prod.py
+
+
+      # ----------------------------------------
+      # STEP 6: Report result
+      # Prints success message visible in
+      # GitHub → Actions → workflow run logs
+      # ----------------------------------------
+      - name: Confirm backup complete
+        run: echo "Backup completed at $(date). Check Supabase Storage → db-backups."
