@@ -111,7 +111,7 @@ def run_pg_dump():
     try:
         result = subprocess.run(
             [
-                'pg_dump',
+                '/usr/lib/postgresql/17/bin/pg_dump', # path to pg_dump executable (GitHub Actions has it pre-installed at this path)
                 '--no-password',    # Password is in the URL, don't prompt
                 '--clean',          # DROP TABLE before CREATE TABLE
                 '--if-exists',      # Safe DROP (no error if table missing)

@@ -91,8 +91,7 @@ jobs:
 
       - name: Verify pg_dump version
         run: |
-          which pg_dump
-          pg_dump --version
+          /usr/lib/postgresql/17/bin/pg_dump --version
 
       # ----------------------------------------
       # STEP 4: Install Python dependencies
