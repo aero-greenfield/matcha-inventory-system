@@ -1,0 +1,90 @@
+{% extends "base.html" %}
+
+{% block title %}Add Recipe{% endblock %}
+
+{% block extra_styles %}
+<style>
+.form-group { margin-bottom: 20px; }
+label { display: block; margin-bottom: 5px; font-weight: bold; color: #555; }
+input { width: 100%; padding: 10px; border: 1px solid #ddd; border-radius: 5px; box-sizing: border-box; }
+button[type="submit"] { background: #97bc62; color: white; padding: 12px 30px; border: none; border-radius: 5px; cursor: pointer; font-size: 16px; }
+button[type="submit"]:hover { background: #7da34f; }
+#materials-container { margin: 20px 0; padding: 15px; background: #f8f9fa; border-radius: 8px; }
+.material-row { display: flex; gap: 10px; margin-bottom: 15px; padding: 15px; background: white; border-radius: 8px; border: 1px solid #ddd; align-items: flex-end; }
+.material-row .form-group { margin-bottom: 0; flex: 1; }
+.material-row input { margin-top: 5px; }
+.remove-btn { background: #dc3545; color: white; border: none; padding: 10px 15px; border-radius: 5px; cursor: pointer; height: 42px; }
+.remove-btn:hover { background: #c82333; }
+.add-btn { background: white; color: #97bc62; border: 2px solid #97bc62; padding: 10px 20px; border-radius: 5px; cursor: pointer; font-size: 14px; margin-top: 10px; }
+.add-btn:hover { background: #97bc62; color: white; }
+.section-header { font-size: 18px; color: #2c5f2d; margin-bottom: 15px; padding-bottom: 10px; border-bottom: 2px solid #97bc62; }
+</style>
+{% endblock %}
+
+{% block content %}
+<h1>➕ Add New Recipe</h1>
+
+<form method="POST" id="recipe-form">
+    <div class="form-group">
+        <label>Product Name *</label>
+        <input type="text" name="product_name" required placeholder="e.g., Matcha Latte">
+    </div>
+    <div class="form-group">
+        <label>Notes (Optional)</label>
+        <input type="text" name="notes" placeholder="e.g., Sweetened, Vegan, etc.">
+    </div>
+
+    <div class="section-header">📦 Materials Required</div>
+    <div id="materials-container">
+        <div class="material-row" id="material-row-0">
+            <div class="form-group">
+                <label>Material Name *</label>
+                <input type="text" name="material_name_0" required placeholder="e.g., Matcha Powder">
+            </div>
+            <div class="form-group">
+                <label>Quantity Needed *</label>
+                <input type="number" step="0.01" name="quantity_0" required placeholder="e.g., 10">
+            </div>
+            <button type="button" class="remove-btn" onclick="removeMaterial(0)">✕</button>
+        </div>
+    </div>
+
+    <button type="button" class="add-btn" onclick="addMaterial()">+ Add Another Material</button>
+    <br><br>
+    <button type="submit">Create Recipe</button>
+</form>
+
+<script>
+let materialCount = 1;
+
+function addMaterial() {
+    const container = document.getElementById('materials-container');
+    const newRow = document.createElement('div');
+    newRow.className = 'material-row';
+    newRow.id = 'material-row-' + materialCount;
+    newRow.innerHTML = `
+        <div class="form-group">
+            <label>Material Name</label>
+            <input type="text" name="material_name_${materialCount}" placeholder="e.g., Milk">
+        </div>
+        <div class="form-group">
+            <label>Quantity Needed</label>
+            <input type="number" step="0.01" name="quantity_${materialCount}" placeholder="e.g., 200">
+        </div>
+        <button type="button" class="remove-btn" onclick="removeMaterial(${materialCount})">✕</button>
+    `;
+    container.appendChild(newRow);
+    materialCount++;
+}
+
+function removeMaterial(index) {
+    const rows = document.querySelectorAll('.material-row');
+    if (rows.length <= 1) {
+        alert('A recipe must have at least one material.');
+        return;
+    }
+    const row = document.getElementById('material-row-' + index);
+    if (row) row.remove();
+}
+</script>
+{% endblock %}

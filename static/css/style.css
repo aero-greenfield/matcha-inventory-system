@@ -1,0 +1,50 @@
+/* Shared styles — used across all pages */
+body {
+    font-family: Arial;
+    margin: 20px;
+    background: linear-gradient(135deg, #f5f7fa 0%, #c3cfe2 100%);
+    min-height: 100vh;
+}
+
+.container {
+    background: white;
+    padding: 30px;
+    border-radius: 10px;
+    max-width: 1200px;
+    margin: 0 auto;
+    box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+    position: relative;
+}
+
+.logo {
+    position: absolute;
+    top: 20px;
+    left: 20px;
+    z-index: 100;
+}
+
+.logo img {
+    width: 60px;
+    height: 60px;
+    object-fit: contain;
+    transition: opacity 0.3s;
+}
+
+.logo img:hover { opacity: 0.8; }
+
+h1 {
+    color: #2c5f2d;
+    border-bottom: 3px solid #97bc62;
+    padding-bottom: 10px;
+}
+
+.back-link {
+    display: inline-block;
+    margin-bottom: 20px;
+    margin-left: 80px;
+    color: #2c5f2d;
+    text-decoration: none;
+    font-weight: bold;
+}
+
+.back-link:hover { text-decoration: underline; }

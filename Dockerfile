@@ -159,7 +159,15 @@ EXPOSE 8000
 
 
 #CMD python init_db.py && python app.py
-CMD ["python", "app.py"]
+CMD ["gunicorn", "app:app", "--bind", "0.0.0.0:8000", "--workers", "2"]
+
+# app:app -- use flask app object from app.py
+
+# gunicorn = production-ready WSGI server (better than Flask's built-in)
+
+# blind -- listen on all interfaces ( on port 8000)
+
+# workers -- use multiple worker processes for better performance (2 is good for small apps)
  
 
  

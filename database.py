@@ -28,8 +28,7 @@ except ImportError:
 # Railway automatically sets DATABASE_URL environment variable
 DATABASE_URL = os.getenv('DATABASE_URL')
 
-print(f"[DEBUG] database.py: DATABASE_URL = {DATABASE_URL[:50] if DATABASE_URL else 'None'}...")
-print(f"[DEBUG] database.py: PSYCOPG2_AVAILABLE = {PSYCOPG2_AVAILABLE}")
+
 
 
 def get_connection():
@@ -53,7 +52,7 @@ def get_connection():
        # ========================================
        # CLOUD MODE: Use PostgreSQL
        # ========================================
-       print("[DEBUG] get_connection: Using PostgreSQL")
+       print(" get_connection: Using PostgreSQL")
 
        if not PSYCOPG2_AVAILABLE:
            raise ImportError(
@@ -66,7 +65,7 @@ def get_connection():
        # Fix: Replace "postgres://" with "postgresql://"
        connection_string = DATABASE_URL.replace('postgres://', 'postgresql://', 1)
 
-       print(f"[DEBUG] get_connection: Connecting to {connection_string[:50]}...")
+       
 
        # Connect to PostgreSQL
        return psycopg2.connect(connection_string)
@@ -75,7 +74,7 @@ def get_connection():
        # ========================================
        # LOCAL MODE: Use SQLite
        # ========================================
-       print("[DEBUG] get_connection: Using SQLite (data/inventory.db)")
+       print(" get_connection: Using SQLite (data/inventory.db)")
        return sqlite3.connect('data/inventory.db')
 
 

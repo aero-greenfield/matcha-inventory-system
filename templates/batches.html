@@ -1,0 +1,33 @@
+{% extends "base.html" %}
+
+{% block title %}Batches{% endblock %}
+
+{% block extra_styles %}
+<style>
+.data-table { width: 100%; border-collapse: collapse; margin: 20px 0; }
+.data-table th, .data-table td { padding: 12px; text-align: left; border-bottom: 1px solid #ddd; }
+.data-table th { background: #dc3545; color: white; }
+.data-table tr:hover { background: #fff3cd; }
+.export-btn { display: inline-block; background: #97bc62; color: white; padding: 10px 20px; border-radius: 5px; text-decoration: none; margin: 10px 0; }
+.export-btn:hover { background: #7da34f; }
+</style>
+{% endblock %}
+
+{% block content %}
+<h1>📦 Batches</h1>
+<p>Total batches: {{ count }}</p>
+
+{% if batches %}
+<a href="/export/batches-excel" class="export-btn">📥 Export to Excel</a>
+<table class="data-table">
+    <thead><tr>{% for col in columns %}<th>{{ col }}</th>{% endfor %}</tr></thead>
+    <tbody>
+        {% for row in batches %}
+        <tr>{% for col in columns %}<td>{{ row[col] }}</td>{% endfor %}</tr>
+        {% endfor %}
+    </tbody>
+</table>
+{% else %}s
+<p style="color:#666;">No batches available. <a href="/create-batch">Create your first batch</a></p>
+{% endif %}
+{% endblock %}

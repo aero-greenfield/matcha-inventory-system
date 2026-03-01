@@ -1,0 +1,24 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8">
+    <title>{% block title %}Botanik{% endblock %}</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+    {% block extra_styles %}{% endblock %}
+</head>
+<body>
+<div class="container">
+
+    <a href="/" class="logo">
+        <img src="{{ url_for('static', filename='images/logo.png') }}" alt="Botanik Logo">
+    </a>
+
+    {% if back_link %}
+    <a href="{{ back_link_url }}" class="back-link">← {{ back_link_label }}</a>
+    {% endif %}
+
+    {% block content %}{% endblock %}
+
+</div>
+</body>
+</html>

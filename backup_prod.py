@@ -100,7 +100,7 @@ def run_pg_dump():
 
     # Timestamped filename
     # Example: prod_backup_20260225_020000.sql
-    timestamp = datetime.now().strftime('%Y%m%d %H%M%S') 
+    timestamp = datetime.now().strftime('%Y%m%d_%H%M%S') 
     backup_filename = f"prod_backup_{timestamp}.sql"
     backup_path = os.path.join('backups', backup_filename) 
 
@@ -267,7 +267,7 @@ def run_full_backup():
 
     print("\n" + "="*55)
     print("  BOTANIKS DATABASE BACKUP")
-    print(f"  {datetime.now().strftime('%Y-%m-%d %H:%M:%S UTC')}")
+    print(f"  {datetime.now().strftime('%Y-%m-%d_%H:%M:%S UTC')}")
     print("="*55 + "\n")
 
     # Step 1: pg_dump to local .sql file

@@ -1,0 +1,30 @@
+{% extends "base.html" %}
+
+{% block title %}Shipped Batches{% endblock %}
+
+{% block extra_styles %}
+<style>
+.data-table { width: 100%; border-collapse: collapse; margin: 20px 0; }
+.data-table th, .data-table td { padding: 12px; text-align: left; border-bottom: 1px solid #ddd; }
+.data-table th { background: #6c757d; color: white; }
+.data-table tr:hover { background: #e2e3e5; }
+</style>
+{% endblock %}
+
+{% block content %}
+<h1>🚚 Shipped Batches</h1>
+<p>Total shipped batches: {{ count }}</p>
+
+{% if batches %}
+<table class="data-table">
+    <thead><tr>{% for col in columns %}<th>{{ col }}</th>{% endfor %}</tr></thead>
+    <tbody>
+        {% for row in batches %}
+        <tr>{% for col in columns %}<td>{{ row[col] }}</td>{% endfor %}</tr>
+        {% endfor %}
+    </tbody>
+</table>
+{% else %}
+<p style="color:#666;">No shipped batches found.</p>
+{% endif %}
+{% endblock %}

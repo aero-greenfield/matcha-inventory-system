@@ -1,0 +1,24 @@
+{% extends "base.html" %}
+
+{% block title %}Create Batch{% endblock %}
+
+{% block extra_styles %}
+<style>
+.form-group { margin-bottom: 20px; }
+label { display: block; margin-bottom: 5px; font-weight: bold; color: #555; }
+input { width: 100%; padding: 10px; border: 1px solid #ddd; border-radius: 5px; box-sizing: border-box; }
+button { background: #97bc62; color: white; padding: 12px 30px; border: none; border-radius: 5px; cursor: pointer; font-size: 16px; }
+button:hover { background: #7da34f; }
+</style>
+{% endblock %}
+
+{% block content %}
+<h1>➕ Create New Batch</h1>
+<form method="POST">
+    <div class="form-group"><label>Product Name *</label><input type="text" name="product_name" required></div>
+    <div class="form-group"><label>Quantity *</label><input type="number" step="0.01" name="quantity" required></div>
+    <div class="form-group"><label>Notes (Optional)</label><input type="text" name="notes"></div>
+    <div class="form-group"><label>Batch ID (Optional)</label><input type="number" name="batch_id" min="1"></div>
+    <button type="submit">Create Batch</button>
+</form>
+{% endblock %}

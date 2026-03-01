@@ -1,0 +1,41 @@
+{% extends "base.html" %}
+
+{% block title %}Botanik Inventory{% endblock %}
+
+{% block extra_styles %}
+<style>
+h1 { text-align: center; }
+.menu-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 25px; margin-top: 30px; }
+.menu-section { background: #f8f9fa; padding: 20px; border-radius: 10px; border-left: 5px solid #97bc62; }
+.menu-section h2 { color: #2c5f2d; margin-top: 0; font-size: 20px; }
+.menu-item { display: block; background: white; padding: 15px; margin: 10px 0; border-radius: 8px; text-decoration: none; color: #2c5f2d; border: 2px solid #e0e0e0; transition: all 0.3s; }
+.menu-item:hover { background: #97bc62; color: white; transform: translateX(5px); border-color: #97bc62; }
+.emoji { font-size: 20px; margin-right: 10px; }
+</style>
+{% endblock %}
+
+{% block content %}
+<h1>Botanik Inventory Management System</h1>
+<div class="menu-grid">
+    <div class="menu-section">
+        <h2>📦 Inventory & Materials</h2>
+        <a href="/inventory" class="menu-item"><span class="emoji">📋</span> View All Materials</a>
+        <a href="/low-stock" class="menu-item"><span class="emoji">⚠️</span> Low Stock Alerts</a>
+        <a href="/add-material" class="menu-item"><span class="emoji">➕</span> Add New Material</a>
+        <a href="/manage-materials" class="menu-item"><span class="emoji">🔧</span> Manage Materials</a>
+    </div>
+    <div class="menu-section">
+        <h2>🏭 Batch Management</h2>
+        <a href="/batches" class="menu-item"><span class="emoji">📋</span> View Ready Batches</a>
+        <a href="/create-batch" class="menu-item"><span class="emoji">➕</span> Create New Batch</a>
+        <a href="/shipped-batches" class="menu-item"><span class="emoji">🚚</span> View Shipped Batches</a>
+        <a href="/manage-batches" class="menu-item"><span class="emoji">🔧</span> Manage Batches</a>
+    </div>
+    <div class="menu-section">
+        <h2>📖 Recipes</h2>
+        <a href="/recipes" class="menu-item"><span class="emoji">📋</span> View All Recipes</a>
+        <a href="/add-recipe" class="menu-item"><span class="emoji">➕</span> Add New Recipe</a>
+        <a href="/manage-recipes" class="menu-item"><span class="emoji">🔧</span> Manage Recipes</a>
+    </div>
+</div>
+{% endblock %}

@@ -1,0 +1,45 @@
+{% extends "base.html" %}
+
+{% block title %}Recipes{% endblock %}
+
+{% block extra_styles %}
+<style>
+.data-table { width: 100%; border-collapse: collapse; margin: 20px 0; }
+.data-table th { background: #97bc62; color: white; font-weight: bold; padding: 15px 12px; text-align: left; }
+.data-table td { padding: 12px; text-align: left; border-bottom: 1px solid #e0e0e0; }
+.data-table tr:hover { background: #f0f8f0; }
+.data-table td:first-child { font-weight: bold; color: #2c5f2d; }
+.data-table td:nth-child(2) { color: #666; font-style: italic; }
+.data-table tbody tr:nth-child(even) { background: #fafafa; }
+.export-btn { display: inline-block; background: #97bc62; color: white; padding: 10px 20px; border-radius: 5px; text-decoration: none; margin: 10px 0; }
+.export-btn:hover { background: #7da34f; }
+.recipe-count { background: #2c5f2d; color: white; padding: 5px 15px; border-radius: 20px; font-size: 14px; }
+</style>
+{% endblock %}
+
+{% block content %}
+<h1>📖 All Recipes</h1>
+<p><span class="recipe-count">Total recipes: {{ recipe_count }}</span></p>
+
+{% if recipes %}
+<a href="/export/recipes-excel" class="export-btn">📥 Export to Excel</a>
+<table class="data-table">
+    <thead>
+        <tr><th>Recipe</th><th>Notes</th><th>Material</th><th>Quantity</th><th>Unit</th></tr>
+    </thead>
+    <tbody>
+        {% for row in recipes %}
+        <tr>
+            <td>{{ row.recipe_product_name }}</td>
+            <td>{{ row.notes or '' }}</td>
+            <td>{{ row.material_name }}</td>
+            <td>{{ row.quantity }}</td>
+            <td>{{ row.unit }}</td>
+        </tr>
+        {% endfor %}
+    </tbody>
+</table>
+{% else %}
+<p style="color:#666;">No recipes found. <a href="/add-recipe">Add your first recipe</a></p>
+{% endif %}
+{% endblock %}

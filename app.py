@@ -101,9 +101,9 @@ This cycle repeats for EVERY page load, form submission, export, etc.
 try:
     from dotenv import load_dotenv
     load_dotenv()
-    print("[DEBUG] Loaded environment variables from .env file")
+    
 except ImportError:
-    print("[DEBUG] python-dotenv not installed, skipping .env loading")
+   
     pass
 
 # =======================
@@ -111,7 +111,9 @@ except ImportError:
 # =======================
 
 # Flask core imports - these are the building blocks of our web app
-from flask import Flask, request, redirect, url_for, jsonify, send_file
+from unicodedata import category
+
+from flask import Flask, request, redirect, url_for, jsonify, send_file, render_template
 # - Flask: The main application class
 # - request: Access data from browser (form data, URL parameters, etc.)
 # - redirect: Send user to a different page
@@ -123,17 +125,15 @@ import os  # Operating system functions (file paths, environment variables)
 from datetime import datetime  # For timestamps in exports
 from functools import wraps  # Used for creating decorators (like @requires_auth)
 
-# Rate limiting (currently commented out - would prevent too many requests)
-#from flask_limiter import Limiter
-#from flask_limiter.util import get_remote_address
+
 
 # Import all our inventory functions from inventory_app.py
 from inventory_app import (
     create_database, add_raw_material, get_all_materials, get_all_recipes, get_batches_shipped, get_low_stock_materials,
     increase_raw_material, decrease_raw_material, get_raw_material, add_to_batches,
     get_batches, mark_as_shipped, delete_batch, get_recipe, add_recipe,
-    change_recipe, delete_recipe, delete_raw_material
-)
+    change_recipe, delete_recipe, delete_raw_material, get_material_by_id, get_all_materials_with_id, update_raw_material)
+
 
 # Import helper functions for exporting data
 # - export_to_csv: Exports DataFrames to CSV files (original functionality)
@@ -159,11 +159,7 @@ app = Flask(__name__)
 # ========================
 
 
-# Debug output to check if we're using PostgreSQL (Railway) or SQLite (local)
-print("=" * 60)
-print("[DEBUG] Checking DATABASE_URL")
-print(f"DATABASE_URL = {os.getenv('DATABASE_URL')}")
-print("=" * 60)
+
 
 # Make sure we have a 'data' folder for local SQLite database
 if not os.path.exists('data'):
@@ -209,6 +205,8 @@ except:
 
 AUTH_USERNAME = os.environ.get('AUTH_USERNAME')
 AUTH_PASSWORD = os.environ.get('AUTH_PASSWORD')
+
+assert(AUTH_USERNAME and AUTH_PASSWORD), "Error: AUTH_USERNAME and AUTH_PASSWORD must be set in environment variables or .env file"
 
 # How this works:
 # - Production (Railway): Reads from environment variables (secure, not in code)
@@ -335,58 +333,9 @@ def index():
     Returns: HTML string (the entire home page)
     """
     # Return HTML for the home page - it's all inline here as one big string
-    return """<!DOCTYPE html><html><head><title>Matcha Inventory</title><style>
-    body{font-family:Arial;max-width:1400px;margin:30px auto;padding:20px;background:linear-gradient(135deg,#f5f7fa 0%,#c3cfe2 100%)}
-    .container{background:white;padding:40px;border-radius:15px;box-shadow:0 10px 30px rgba(0,0,0,0.2);position:relative}
-    .logo{position:absolute;top:20px;left:20px;z-index:100}
-    .logo img{width:60px;height:60px;object-fit:contain;transition:opacity 0.3s}
-    .logo img:hover{opacity:0.8}
-    h1{color:#2c5f2d;border-bottom:4px solid #97bc62;padding-bottom:15px;margin-bottom:30px;text-align:center}
-    .menu-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:25px;margin-top:30px}
-    .menu-section{background:#f8f9fa;padding:20px;border-radius:10px;border-left:5px solid #97bc62}
-    .menu-section h2{color:#2c5f2d;margin-top:0;font-size:20px}
-    .menu-item{display:block;background:white;padding:15px;margin:10px 0;border-radius:8px;text-decoration:none;color:#2c5f2d;border:2px solid #e0e0e0;transition:all 0.3s}
-    .menu-item:hover{background:#97bc62;color:white;transform:translateX(5px);border-color:#97bc62}
-    .emoji{font-size:20px;margin-right:10px}
-    </style></head><body><div class="container">
-    <a href="/" class="logo"><img src="/static/images/logo.png" alt="Botanik Logo"></a>
-    <h1>Botanik Inventory Management System</h1>
-    <div class="menu-grid">
-    <div class="menu-section"><h2>📦 Inventory & Materials</h2>
-    <a href="/inventory" class="menu-item"><span class="emoji">📋</span> View All Materials</a>
-    <a href="/low-stock" class="menu-item"><span class="emoji">⚠️</span> Low Stock Alerts</a>
-    <a href="/add-material" class="menu-item"><span class="emoji">➕</span> Add New Material</a>
-    <a href="/manage-materials" class="menu-item"><span class="emoji">🔧</span> Manage Materials</a>
-    </div>
-    <div class="menu-section"><h2>🏭 Batch Management</h2>
-    <a href="/batches" class="menu-item"><span class="emoji">📋</span> View Ready Batches</a>
-    <a href="/create-batch" class="menu-item"><span class="emoji">➕</span> Create New Batch</a>
-    <a href="/shipped-batches" class="menu-item"><span class="emoji">🚚</span> View Shipped Batches</a>
-    <a href="/manage-batches" class="menu-item"><span class="emoji">🔧</span> Manage Batches</a>
-    </div>
-    <div class="menu-section"><h2>📖 Recipes</h2>
-    <a href="/recipes" class="menu-item"><span class="emoji">📋</span> View All Recipes</a>
-    <a href="/add-recipe" class="menu-item"><span class="emoji">➕</span> Add New Recipe</a>
-    <a href="/manage-recipes" class="menu-item"><span class="emoji">🔧</span> Manage Recipes</a>
-    </div>
-    """
+    return render_template("index.html")
 
-# Helper function to keep CSS consistent across pages
-def get_common_styles():
-    # Returns CSS that's used on multiple pages - keeps styling consistent
-    return """body{font-family:Arial;margin:20px;background:linear-gradient(135deg,#f5f7fa 0%,#c3cfe2 100%);min-height:100vh}
-    .container{background:white;padding:30px;border-radius:10px;max-width:1200px;margin:0 auto;box-shadow:0 4px 6px rgba(0,0,0,0.1);position:relative}
-    .logo{position:absolute;top:20px;left:20px;z-index:100}
-    .logo img{width:60px;height:60px;object-fit:contain;transition:opacity 0.3s}
-    .logo img:hover{opacity:0.8}
-    h1{color:#2c5f2d;border-bottom:3px solid #97bc62;padding-bottom:10px}
-    .back-link{display:inline-block;margin-bottom:20px;color:#2c5f2d;text-decoration:none;font-weight:bold}
-    .back-link:hover{text-decoration:underline}"""
 
-# Helper function to generate logo HTML
-def get_logo_html():
-    # Returns HTML for the logo in the top-left corner
-    return """<a href="/" class="logo"><img src="/static/images/logo.png" alt="Botanik Logo"></a>"""
 
 # ========================
 # INVENTORY PAGES
@@ -431,41 +380,15 @@ def view_inventory():
     # STEP 1: Get data from database
     # get_all_materials() returns a pandas DataFrame
     df = get_all_materials()
+    materials = df.to_dict(orient='records') if not df.empty else []
+    return render_template("inventory.html",
+        materials=materials,
+        count=len(df),
+        back_link=True,
+        back_link_url="/",
+        back_link_label="Back to Home"
+)
 
-    # STEP 2: Convert data to HTML
-    # Ternary operator: condition ? if_true : if_false
-    # If DataFrame is empty, show message. Otherwise, convert to HTML table.
-    if df.empty:
-        table_html = '<p style="color:#666;">No materials in inventory. <a href="/add-material">Add your first material</a></p>'
-    else:
-        # df.to_html() converts pandas DataFrame to HTML <table>
-        # - index=False: Don't show row numbers
-        # - classes='data-table': Add CSS class for styling
-        # - border=0: No table borders (we'll style with CSS)
-        table_html = df.to_html(index=False, classes='data-table', border=0)
-
-    # STEP 3: Conditionally show export button
-    # Only show export button if there's data to export
-    export_button = '' if df.empty else '<a href="/export/inventory-excel" class="export-btn">📥 Export to Excel</a>'
-
-    # STEP 4: Return complete HTML page
-    # f-string allows embedding variables: {variable_name}
-    # This is called "string interpolation"
-    return f"""<!DOCTYPE html><html><head><title>Inventory</title><style>
-    {get_common_styles()}
-    .data-table{{width:100%;border-collapse:collapse;margin:20px 0}}
-    .data-table th,.data-table td{{padding:12px;text-align:left;border-bottom:1px solid #ddd}}
-    .data-table th{{background:#97bc62;color:white;font-weight:bold}}
-    .data-table tr:hover{{background:#f0f8f0}}
-    .export-btn{{display:inline-block;background:#97bc62;color:white;padding:10px 20px;border-radius:5px;text-decoration:none;margin:10px 0}}
-    .export-btn:hover{{background:#7da34f}}
-    </style></head><body><div class="container">
-    {get_logo_html()}
-    <a href="/" class="back-link">← Back to Home</a>
-    <h1>📦 Current Inventory</h1>
-    <p>Total materials: {len(df)}</p>
-    {export_button}
-    {table_html}</div></body></html>"""
 
 # NEW: Excel export route for inventory
 @app.route('/export/inventory-excel')
@@ -571,47 +494,17 @@ def add_material_route():
             # Failed! Return error message with 500 status code
             return ("Error adding material", 500)
 
-    """
-    GET REQUEST HANDLING
-    ====================
-    If it's a GET request (user just visiting the page, not submitting form),
-    show the HTML form for adding a material.
+   
+    return render_template("add_material.html",
+    back_link=True,
+    back_link_url="/",
+    back_link_label="Back to Home"
+)
 
-    RETURNING HTML:
-    In Flask, you can return HTML in several ways:
-    1. Return a string (what we're doing here)
-    2. Use render_template() to load from a file
-    3. Use a templating engine like Jinja2
 
-    We're using method #1 - returning a big HTML string.
 
-    HTML FORM BASICS:
-    <form method="POST"> - When submitted, sends POST request to same URL
-    <input name="stock_level"> - Creates form field, 'name' is the key in request.form
-    type="number" step="0.01" - Allows decimal numbers
-    required - Browser won't submit if empty
-    """
-    return """<!DOCTYPE html><html><head><title>Add Material</title><style>
-    """ + get_common_styles() + """
-    .form-group{margin-bottom:20px}
-    label{display:block;margin-bottom:5px;font-weight:bold;color:#555}
-    input{width:100%;padding:10px;border:1px solid #ddd;border-radius:5px;box-sizing:border-box}
-    button{background:#97bc62;color:white;padding:12px 30px;border:none;border-radius:5px;cursor:pointer;font-size:16px}
-    button:hover{background:#7da34f}
-    </style></head><body><div class="container">
-    """ + get_logo_html() + """
-    <a href="/" class="back-link">← Back to Home</a>
-    <h1>➕ Add New Material</h1>
-    <form method="POST">
-    <div class="form-group"><label>Material Name *</label><input type="text" name="name" required></div>
-    <div class="form-group"><label>Category *</label><input type="text" name="category" required></div>
-    <div class="form-group"><label>Initial Stock Level *</label><input type="number" step="0.01" name="stock_level" required></div>
-    <div class="form-group"><label>Unit *</label><input type="text" name="unit" required></div>
-    <div class="form-group"><label>Reorder Level *</label><input type="number" step="0.01" name="reorder_level" required></div>
-    <div class="form-group"><label>Cost per Unit *</label><input type="number" step="0.01" name="cost_per_unit" required></div>
-    <div class="form-group"><label>Supplier (optional)</label><input type="text" name="supplier"></div>
-    <button type="submit">Add Material</button>
-    </form></div></body></html>"""
+
+
 
 # ========================
 # LOW STOCK ALERTS
@@ -622,33 +515,15 @@ def add_material_route():
 def low_stock():
     # Get all materials where stock is below reorder level
     df = get_low_stock_materials()
+    materials = df.to_dict(orient='records') if not df.empty else []
+    return render_template("low_stock.html",
+        materials=materials,
+        count=len(df),
+        back_link=True,
+        back_link_url="/",
+        back_link_label="Back to Home"
+)
 
-    # NEW: Export button - only show if there are low stock items
-    # - Important: Only useful to export when there ARE items that need reordering
-    # - Links to /export/low-stock-excel route
-    export_button = '' if df.empty else '<a href="/export/low-stock-excel" class="export-btn">📥 Export to Excel</a>'
-
-    # Show success message if everything is stocked, or show the low stock table
-    if df.empty:
-        message = '<p style="color:green;font-size:18px;">✅ All materials are adequately stocked!</p>'
-    else:
-        message = f'<p style="color:red;font-size:18px;">⚠️ {len(df)} material(s) need reordering:</p>'
-        message += export_button  # Add export button before the table
-        message += df.to_html(index=False, classes='data-table', border=0)
-
-    return f"""<!DOCTYPE html><html><head><title>Low Stock</title><style>
-    {get_common_styles()}
-    .data-table{{width:100%;border-collapse:collapse;margin:20px 0}}
-    .data-table th,.data-table td{{padding:12px;text-align:left;border-bottom:1px solid #ddd}}
-    .data-table th{{background:#dc3545;color:white}}
-    .data-table tr:hover{{background:#fff3cd}}
-    .export-btn{{display:inline-block;background:#97bc62;color:white;padding:10px 20px;border-radius:5px;text-decoration:none;margin:10px 0}}
-    .export-btn:hover{{background:#7da34f}}
-    </style></head><body><div class="container">
-    {get_logo_html()}
-    <a href="/" class="back-link">← Back to Home</a>
-    <h1>⚠️ Low Stock Alerts</h1>
-    {message}</div></body></html>"""
 
 # NEW: Excel export route for low stock alerts
 @app.route('/export/low-stock-excel')
@@ -675,6 +550,100 @@ def export_low_stock_excel():
 
 
 
+#=============
+#inventory MANAGEMENT PAGES (edit/delete materials)
+#=============
+
+@app.route('/manage-materials') # Page to view all materials with edit/delete options 
+@requires_auth
+def manage_materials():
+    df = get_all_materials_with_id()
+    materials = df.to_dict(orient='records') if (df is not None and not df.empty) else []
+    return render_template("manage_materials.html",
+        materials=materials,
+        count=len(materials),
+        back_link=True,
+        back_link_url="/",
+        back_link_label="Back to Home"
+)
+
+
+
+# edit material page
+@app.route('/edit-material/<int:material_id>')
+@requires_auth
+
+def edit_material(material_id):
+    material = get_material_by_id(material_id)
+    if not material:
+        return f"<h1>Material not found</h1><a href='/manage-materials'>← Back</a>", 404
+
+    mat_id, name, category, stock_level, unit, reorder_level, cost_per_unit, supplier = material
+    msg = request.args.get('msg', '')
+    err = request.args.get('err', '')
+    return render_template("edit_material.html",
+        mat_id=mat_id, name=name, category=category,
+        stock_level=stock_level, unit=unit, reorder_level=reorder_level,
+        cost_per_unit=cost_per_unit, supplier=supplier,
+        msg=msg, err=err,
+        back_link=True,
+        back_link_url="/manage-materials",
+        back_link_label="Back to Manage Materials"
+)
+
+
+@app.route('/edit-material/<int:material_id>/adjust-stock', methods=['POST']) # Route to handle stock adjustments (increase/decrease)
+@requires_auth
+def adjust_stock(material_id):
+
+    amount = float(request.form.get('amount', 0)) # Get the amount to adjust (convert to number)
+    action = request.form.get('action') # Get whether to increase or decrease stock
+
+    if action == 'increase':
+        result = increase_raw_material(material_id, amount) # Call function to increase stock
+    else:
+        result = decrease_raw_material(material_id, amount) # Call function to decrease stock (returns new stock level or None if failed)
+
+    if result is not None:
+        return redirect(url_for('edit_material', material_id=material_id, msg=f'Stock updated to {result}'))
+    else:
+        return redirect(url_for('edit_material', material_id=material_id, err='Stock update failed. Check there is enough stock to decrease.'))
+    
+# Note: Similar POST routes would be needed for updating details and deleting the material, following the same pattern of processing the form data and redirecting back to the edit page with a success or error message.
+
+
+
+
+@app.route('/edit-material/<int:material_id>/update-details', methods=['POST']) 
+# Route to handle updating material details (name, category, etc)
+@requires_auth
+def update_material_details(material_id): 
+    name = request.form.get('name') # Get updated name from form
+    category = request.form.get('category') or None # Get updated category (or None if empty)
+    unit = request.form.get('unit') or None # Get updated unit (or None if empty)
+    reorder_level_str = request.form.get('reorder_level') 
+    cost_per_unit_str = request.form.get('cost_per_unit')
+    reorder_level = float(reorder_level_str) if reorder_level_str else None
+    cost_per_unit = float(cost_per_unit_str) if cost_per_unit_str else None
+    supplier = request.form.get('supplier') or None
+
+    result = update_raw_material(material_id, name=name, category=category, unit=unit,
+                                 reorder_level=reorder_level, cost_per_unit=cost_per_unit, supplier=supplier)
+
+    if result:
+        return redirect(url_for('edit_material', material_id=material_id, msg='Details updated successfully'))
+    else:
+        return redirect(url_for('edit_material', material_id=material_id, err='Failed to update details'))
+# Note: The update_raw_material function would need to be implemented in the database module to handle updating the material details based on the provided parameters.
+
+@app.route('/edit-material/<int:material_id>/delete', methods=['POST']) 
+# Route to handle deleting a material from inventory
+@requires_auth
+def delete_material(material_id):
+    delete_raw_material(material_id)
+    return redirect(url_for('manage_materials'))
+
+
 ##############
 # BATCHES PAGES
 ###############
@@ -684,31 +653,14 @@ def export_low_stock_excel():
 @requires_auth
 def view_batches():
 
-    data = get_batches()  # Get all batches with status='Ready'
+    data = get_batches()
+    batches = data.to_dict(orient='records') if not data.empty else []
+    columns = list(data.columns) if not data.empty else []
+    return render_template("batches.html",
+        batches=batches, columns=columns, count=len(batches),
+        back_link=True, back_link_url="/", back_link_label="Back to Home"
+)
 
-    # NEW: Export button for batches
-    # - Only shows when there are batches ready to ship
-    # - Useful for creating shipping manifests or batch reports
-    export_button = '' if data.empty else '<a href="/export/batches-excel" class="export-btn">📥 Export to Excel</a>'
-
-    # If there's no batches, show a message, otherwise convert dataframe to HTML table
-    table_html = '<p style="color:#666;">No batches available. <a href="/create-batch">Create your first batch</a></p>' if data.empty else data.to_html(index=False, classes='data-table', border=0)
-
-    return f"""<!DOCTYPE html><html><head><title>Batches</title><style>
-    {get_common_styles()}
-    .data-table{{width:100%;border-collapse:collapse;margin:20px 0}}
-    .data-table th,.data-table td{{padding:12px;text-align:left;border-bottom:1px solid #ddd}}
-    .data-table th{{background:#dc3545;color:white}}
-    .data-table tr:hover{{background:#fff3cd}}
-    .export-btn{{display:inline-block;background:#97bc62;color:white;padding:10px 20px;border-radius:5px;text-decoration:none;margin:10px 0}}
-    .export-btn:hover{{background:#7da34f}}
-    </style></head><body><div class="container">
-    {get_logo_html()}
-    <a href="/" class="back-link">← Back to Home</a>
-    <h1>📦 Batches</h1>
-    <p>Total batches: {len(data)}</p>
-    {export_button}
-    {table_html}</div></body></html>"""
 
 # NEW: Excel export route for batches
 @app.route('/export/batches-excel')
@@ -742,26 +694,14 @@ def view_shipped_batches():
     gets all shipped batches and displays them in a table
     """
 
-    data = get_batches_shipped()  # Get all batches with status='Shipped'
+    data = get_batches_shipped()
+    batches = data.to_dict(orient='records') if not data.empty else []
+    columns = list(data.columns) if not data.empty else []
+    return render_template("shipped_batches.html",
+        batches=batches, columns=columns, count=len(batches),
+        back_link=True, back_link_url="/", back_link_label="Back to Home"
+)
 
-    export_button = '' if data.empty else '<a href="/export/shipped-batches-excel" class="export-btn">📥 Export to Excel</a>'
-
-    # If there's no shipped batches, show a message, otherwise convert dataframe to HTML table
-    table_html = '<p style="color:#666;">No shipped batches found.</p>' if data.empty else data.to_html(index=False, classes='data-table', border=0)
-
-    return f"""<!DOCTYPE html><html><head><title>Shipped Batches</title><style>
-    {get_common_styles()}
-    .data-table{{width:100%;border-collapse:collapse;margin:20px 0}}
-    .data-table th,.data-table td{{padding:12px;text-align:left;border-bottom:1px solid #ddd}}
-    .data-table th{{background:#6c757d;color:white}}
-    .data-table tr:hover{{background:#e2e3e5}}
-    </style></head><body><div class="container">
-    {get_logo_html()}
-    <a href="/" class="back-link">← Back to Home</a>
-    <h1>🚚 Shipped Batches</h1>
-    <p>Total shipped batches: {len(data)}</p>
-    {export_button}
-    {table_html}</div></body></html>"""
 
 #########################STILL NEED TO ADD EXPORT ROUTE FOR SHIPPED BATCHES EXCEL#########################
 
@@ -800,27 +740,12 @@ def create_batch():
         
 
     # If it's a GET request, show the form to create a new batch
-    return """<!DOCTYPE html><html><head><title>Create Batch</title><style>
-    """ + get_common_styles() + """
-    .form-group{margin-bottom:20px}
-    label{display:block;margin-bottom:5px;font-weight:bold;color:#555}
-    input{width:100%;padding:10px;border:1px solid #ddd;border-radius:5px;box-sizing:border-box}
-    button{background:#97bc62;color:white;padding:12px 30px;border:none;border-radius:5px;cursor:pointer;font-size:16px}
-    button:hover{background:#7da34f}
-    </style></head><body><div class="container">
-    """ + get_logo_html() + """
-    <a href="/" class="back-link">← Back to Home</a>
-    <h1>➕ Create New Batch</h1>
-    <form method="POST">
-    
-    
-    <div class="form-group"><label>Product Name *</label><input type="text" name="product_name" required></div>
-    <div class="form-group"><label>Quantity *</label><input type="number" step="0.01" name="quantity" required></div>
-    <div class="form-group"><label>Notes (Optional)</label><input type="text" name="notes"></div>
-    <div class="form-group"><label>Batch ID (Optional)</label><input type="number" name="batch_id" min="1"></div>
-    <button type="submit">Create Batch</button> 
+    return render_template("create_batch.html",
+    back_link=True,
+    back_link_url="/",
+    back_link_label="Back to Home"
+)
 
-    </form></div></body></html>"""
 
 
     
@@ -857,89 +782,25 @@ def view_recipes():
     #   matcha latte        | sweet | matcha powder | 20       | grams
     #   lavender tea        | None  | lavender      | 10       | grams
     df = get_all_recipes()
-
-    # Export button - only show if there's data
-    export_button = '' if df.empty else '<a href="/export/recipes-excel" class="export-btn">📥 Export to Excel</a>'
-
-    # Handle empty case
     if df.empty:
-        table_html = '<p style="color:#666;">No recipes found. <a href="/add-recipe">Add your first recipe</a></p>'
-        recipe_count = 0
-    else:
-        
-        # Remove duplicate recipe names:
-        
-        # Goal: Show recipe name only on FIRST row of each group
-        #
-        # Before:                              After:
-        #   matcha latte | sugar                 matcha latte | sugar
-        #   matcha latte | matcha powder   -->                | matcha powder
-        #   lavender tea | lavender              lavender tea | lavender
+        return render_template("recipes.html",
+            recipes=[], recipe_count=0,
+            back_link=True, back_link_url="/", back_link_label="Back to Home"
+    )
 
-        # Create a copy so we don't modify the original DataFrame
-        df_display = df.copy()
+    df_display = df.copy()
+    duplicate_mask = df_display['recipe_product_name'].duplicated()
+    df_display.loc[duplicate_mask, 'recipe_product_name'] = ''
+    df_display.loc[duplicate_mask, 'notes'] = ''
+    recipe_count = df['recipe_product_name'].nunique()
+    recipes = df_display.to_dict(orient='records')
 
-       
-        duplicate_mask = df_display['recipe_product_name'].duplicated()
+    return render_template("recipes.html",
+        recipes=recipes,
+        recipe_count=recipe_count,
+        back_link=True, back_link_url="/", back_link_label="Back to Home"
+    )
 
-        # df.duplicated() returns a boolean Series where True means "this value has appeared before in the column" 
-
-        # Where duplicated is True, replace recipe name with empty string
-        # .loc[condition, column] = value  --> sets value where condition is True
-        df_display.loc[duplicate_mask, 'recipe_product_name'] = ''
-
-        # Also blank out notes for duplicate rows (notes belong to recipe, not materials)
-        df_display.loc[duplicate_mask, 'notes'] = ''
-
-
-
-        #  Count unique recipes
-      
-        # Use the ORIGINAL df (not df_display) to count unique recipe names
-        recipe_count = df['recipe_product_name'].nunique()
-
-        
-
-        # Convert to HTML table
-       
-        table_html = df_display.to_html(index=False, classes='data-table', border=0)
-
-    #Return styled HTML page
-    
-    return f"""<!DOCTYPE html><html><head><title>Recipes</title><style>
-    {get_common_styles()}
-
-    /* Table styling */
-    .data-table{{width:100%;border-collapse:collapse;margin:20px 0}}
-    .data-table th{{background:#97bc62;color:white;font-weight:bold;padding:15px 12px;text-align:left}}
-    .data-table td{{padding:12px;text-align:left;border-bottom:1px solid #e0e0e0}}
-
-    /* Highlight rows that start a new recipe (have recipe name) */
-    .data-table tr:hover{{background:#f0f8f0}}
-
-    /* Make recipe name column stand out */
-    .data-table td:first-child{{font-weight:bold;color:#2c5f2d}}
-
-    /* Style the notes column (second column) */
-    .data-table td:nth-child(2){{color:#666;font-style:italic}}
-
-    /* Alternate row colors for better readability */
-    .data-table tbody tr:nth-child(even){{background:#fafafa}}
-
-    /* Export button */
-    .export-btn{{display:inline-block;background:#97bc62;color:white;padding:10px 20px;border-radius:5px;text-decoration:none;margin:10px 0}}
-    .export-btn:hover{{background:#7da34f}}
-
-    /* Recipe count badge */
-    .recipe-count{{background:#2c5f2d;color:white;padding:5px 15px;border-radius:20px;font-size:14px}}
-
-    </style></head><body><div class="container">
-    {get_logo_html()}
-    <a href="/" class="back-link">← Back to Home</a>
-    <h1>📖 All Recipes</h1>
-    <p><span class="recipe-count">Total recipes: {recipe_count}</span></p>
-    {export_button}
-    {table_html}</div></body></html>"""
 
 # NEW: Excel export route for recipes
 @app.route('/export/recipes-excel')
@@ -1143,164 +1004,12 @@ def add_recipe_route():
     # - Material rows have visual grouping with border
     # - Remove button is red for clear visual distinction
 
-    return """<!DOCTYPE html><html><head><title>Add Recipe</title><style>
-    """ + get_common_styles() + """
+    return render_template("add_recipe.html",
+    back_link=True,
+    back_link_url="/",
+    back_link_label="Back to Home"
+)
 
-    /* Form styling */
-    .form-group{margin-bottom:20px}
-    label{display:block;margin-bottom:5px;font-weight:bold;color:#555}
-    input{width:100%;padding:10px;border:1px solid #ddd;border-radius:5px;box-sizing:border-box}
-
-    /* Submit button - green to match app theme */
-    button[type="submit"]{background:#97bc62;color:white;padding:12px 30px;border:none;border-radius:5px;cursor:pointer;font-size:16px}
-    button[type="submit"]:hover{background:#7da34f}
-
-    /* Materials section container */
-    #materials-container{margin:20px 0;padding:15px;background:#f8f9fa;border-radius:8px}
-
-    /* Individual material row styling */
-    .material-row{display:flex;gap:10px;margin-bottom:15px;padding:15px;background:white;border-radius:8px;border:1px solid #ddd;align-items:flex-end}
-    .material-row .form-group{margin-bottom:0;flex:1}
-    .material-row input{margin-top:5px}
-
-    /* Remove button - red for visual distinction */
-    .remove-btn{background:#dc3545;color:white;border:none;padding:10px 15px;border-radius:5px;cursor:pointer;height:42px}
-    .remove-btn:hover{background:#c82333}
-
-    /* Add material button - outlined style */
-    .add-btn{background:white;color:#97bc62;border:2px solid #97bc62;padding:10px 20px;border-radius:5px;cursor:pointer;font-size:14px;margin-top:10px}
-    .add-btn:hover{background:#97bc62;color:white}
-
-    /* Section header styling */
-    .section-header{font-size:18px;color:#2c5f2d;margin-bottom:15px;padding-bottom:10px;border-bottom:2px solid #97bc62}
-
-    </style></head><body><div class="container">
-    """ + get_logo_html() + """
-    <a href="/" class="back-link">← Back to Home</a>
-    <h1>➕ Add New Recipe</h1>
-
-    <form method="POST" id="recipe-form">
-        <!-- Product Name - The name of the recipe/product -->
-        <div class="form-group">
-            <label>Product Name *</label>
-            <input type="text" name="product_name" required placeholder="e.g., Matcha Latte">
-        </div>
-
-        <!-- Notes - Optional additional information about the recipe -->
-        <div class="form-group">
-            <label>Notes (Optional)</label>
-            <input type="text" name="notes" placeholder="e.g., Sweetened, Vegan, etc.">
-        </div>
-
-        <!-- Materials Section - Dynamic rows for ingredients -->
-        <div class="section-header">📦 Materials Required</div>
-        <div id="materials-container">
-            <!-- Initial material row (at least one required) -->
-            <!-- More rows can be added dynamically with JavaScript -->
-            <div class="material-row" id="material-row-0">
-                <div class="form-group">
-                    <label>Material Name *</label>
-                    <input type="text" name="material_name_0" required placeholder="e.g., Matcha Powder">
-                </div>
-                <div class="form-group">
-                    <label>Quantity Needed *</label>
-                    <input type="number" step="0.01" name="quantity_0" required placeholder="e.g., 10">
-                </div>
-                <button type="button" class="remove-btn" onclick="removeMaterial(0)">✕</button>
-            </div>
-        </div>
-
-        <!-- Button to add more material rows -->
-        <button type="button" class="add-btn" onclick="addMaterial()">+ Add Another Material</button>
-
-        <br><br>
-        <button type="submit">Create Recipe</button>
-    </form>
-
-    <script>
-    // ========================
-    // DYNAMIC MATERIAL ROWS - JavaScript
-    // ========================
-    //
-    // PURPOSE:
-    // Allows users to add/remove material rows without page reload.
-    // Each row gets a unique index for proper form field naming.
-    //
-    // HOW IT WORKS:
-    // - materialCount tracks the next index to use (prevents ID collisions)
-    // - addMaterial() creates new row HTML and appends to container
-    // - removeMaterial() removes a row but ensures at least one remains
-
-    // Track the next material index (starts at 1 since row 0 exists)
-    let materialCount = 1;
-
-    /**
-     * addMaterial() - Adds a new material input row to the form
-     *
-     * Creates HTML for a new row with:
-     * - Material name input (indexed: material_name_N)
-     * - Quantity input (indexed: quantity_N)
-     * - Remove button
-     *
-     * The index ensures each field has a unique name for form submission
-     */
-    function addMaterial() {
-        // Get the container that holds all material rows
-        const container = document.getElementById('materials-container');
-
-        // Create new div element for the row
-        const newRow = document.createElement('div');
-        newRow.className = 'material-row';
-        newRow.id = 'material-row-' + materialCount;
-
-        // Set the inner HTML with indexed field names
-        // Note: New rows don't have 'required' so user can leave them empty
-        newRow.innerHTML = `
-            <div class="form-group">
-                <label>Material Name</label>
-                <input type="text" name="material_name_${materialCount}" placeholder="e.g., Milk">
-            </div>
-            <div class="form-group">
-                <label>Quantity Needed</label>
-                <input type="number" step="0.01" name="quantity_${materialCount}" placeholder="e.g., 200">
-            </div>
-            <button type="button" class="remove-btn" onclick="removeMaterial(${materialCount})">✕</button>
-        `;
-
-        // Add the new row to the container
-        container.appendChild(newRow);
-
-        // Increment counter for next row
-        materialCount++;
-    }
-
-    /**
-     * removeMaterial(index) - Removes a material row from the form
-     *
-     * @param {number} index - The index of the row to remove
-     *
-     * SAFETY: Ensures at least one material row remains
-     * (A recipe must have at least one material)
-     */
-    function removeMaterial(index) {
-        // Get all current material rows
-        const rows = document.querySelectorAll('.material-row');
-
-        // Don't allow removing the last row - recipe needs at least one material
-        if (rows.length <= 1) {
-            alert('A recipe must have at least one material.');
-            return;
-        }
-
-        // Find and remove the specified row
-        const row = document.getElementById('material-row-' + index);
-        if (row) {
-            row.remove();
-        }
-    }
-    </script>
-
-    </div></body></html>"""
 
 
 

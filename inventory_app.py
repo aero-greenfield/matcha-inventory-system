@@ -157,9 +157,73 @@ def get_all_materials():
     return result
 
 
-def increase_raw_material(name, increase_amount):
 
-    """ increases amount of material given its name and amount to add"""
+def get_material_by_id(material_id):
+    "Returns material given its material_id"
+    db = get_db_connection()
+    cursor = db.cursor()
+
+    try:
+        db.execute(cursor, """
+        SELECT material_id, name, category, stock_level, unit, reorder_level, cost_per_unit, supplier
+        FROM raw_materials
+        WHERE material_id = %s
+                       """,(material_id,))
+        result = cursor.fetchone()
+        return result
+
+    except Exception as e:
+        print(f"Error: {e}")
+        return None
+
+    finally:
+        db.close()
+
+
+def update_raw_material(material_id, name=None, category=None, stock_level=None, unit=None, reorder_level=None, cost_per_unit=None, supplier=None):
+    """changes raw material info given id and which parameters are not None (ONLY CHANGES details, not stock level)"""
+
+    db = get_db_connection()
+    cursor = db.cursor()
+
+    field = {}
+
+    for key, value in [("name", name), ("category", category), ("stock_level", stock_level), ("unit", unit), ("reorder_level", reorder_level), ("cost_per_unit", cost_per_unit), ("supplier", supplier)]:
+        if value is not None:
+            field[key] = value
+
+    if not field:
+        print("No fields to update")
+        db.close()
+        return
+
+    try:
+        for key in field:
+            db.execute(cursor,f"""
+            UPDATE raw_materials
+            SET {key} = %s
+            WHERE material_id = %s
+            """, (field[key], material_id,))
+
+        db.commit()
+        print(f"Updated material with id:{material_id}")
+        db.close()
+        return True
+
+    except Exception as e:
+        print(f"Error changing material details: {e}")
+        db.rollback()
+        return None
+
+
+
+
+
+
+
+def increase_raw_material(material_id, increase_amount):
+
+    """ increases amount of material given its material_id and amount to add"""
 
     db = get_db_connection()
     cursor = db.cursor()
@@ -169,13 +233,13 @@ def increase_raw_material(name, increase_amount):
         db.execute(cursor, """
         SELECT material_id, stock_level, unit
         FROM raw_materials
-        WHERE name = %s
-        """, (name,))
+        WHERE material_id = %s
+        """, (material_id,))
         result = cursor.fetchone()
         # gets the result from the query in form of a tuple
 
         if not result:
-            print(f"{name} not found in raw_materials")
+            print(f"Material with ID {material_id} not found in raw_materials")
             return None
         # if the query doesnt work, tells user
 
@@ -199,7 +263,7 @@ def increase_raw_material(name, increase_amount):
 
         new_stock_level = cursor.fetchone()[0] # fetchone() returns a tuple, so get the first and only value in tuple instead of tuple
         db.close()
-        print(f"Succesfully added, {name} is now at {new_stock_level}")
+        print(f"Succesfully added, material with id:{material_id} is now at {new_stock_level}")
         return new_stock_level
 
     except Exception as e:
@@ -236,8 +300,32 @@ def get_raw_material(name):
     finally:
         db.close()
 
-def decrease_raw_material(name, decrease_amount):
-    """Decreases amount of material given its name and amount to subtract"""
+
+def get_all_materials_with_id():
+
+    db = get_db_connection()
+    cursor = db.cursor()
+
+
+    try:
+
+        query = """
+        SELECT material_id, name, category, stock_level, unit, reorder_level, cost_per_unit, supplier
+        FROM raw_materials
+        ORDER BY category, name
+        """
+
+        result = pd.read_sql_query(query, db.conn)
+        db.close()
+        return result
+
+    except Exception as e:
+        print(f"error getting all materials with id: {e}")
+        db.close()
+        return None
+
+def decrease_raw_material(material_id, decrease_amount):
+    """Decreases amount of material given its material_id and amount to subtract"""
 
     db = get_db_connection()
     cursor = db.cursor()
@@ -246,19 +334,19 @@ def decrease_raw_material(name, decrease_amount):
         db.execute(cursor, """
         SELECT material_id, stock_level, unit
         FROM raw_materials
-        WHERE name = %s
-        """, (name,))
+        WHERE material_id = %s
+        """, (material_id,))
         result = cursor.fetchone()
 
         if not result:
-            print(f"{name} not found in raw_materials")
+            print(f"Material with ID {material_id} not found in raw_materials")
             return None
 
         (material_id, current_stock, unit) = result
 
         # Check if there's enough stock
         if current_stock < decrease_amount:
-            print(f"Insufficient stock: {name} has {current_stock} {unit}, but {decrease_amount} {unit} is needed")
+            print(f"Insufficient stock: Material with ID {material_id} has {current_stock} {unit}, but {decrease_amount} {unit} is needed")
             return None
 
         db.execute(cursor, """
@@ -277,7 +365,7 @@ def decrease_raw_material(name, decrease_amount):
         """, (material_id,))
 
         new_stock_level = cursor.fetchone()[0]
-        print(f"Successfully deducted {decrease_amount} {unit} from {name}. New stock level: {new_stock_level} {unit}")
+        print(f"Successfully deducted {decrease_amount} {unit} from material with ID :{material_id}. New stock level: {new_stock_level} {unit}")
         return new_stock_level
 
     except Exception as e:
@@ -288,9 +376,9 @@ def decrease_raw_material(name, decrease_amount):
     finally:
         db.close()
 
-def delete_raw_material(name):
+def delete_raw_material(material_id):
 
-    """Deletes raw material from database given its name"""
+    """Deletes raw material from database given its material_id"""
 
     db = get_db_connection()
     cursor = db.cursor()
@@ -298,10 +386,10 @@ def delete_raw_material(name):
     try:
         db.execute(cursor, """
         DELETE FROM raw_materials
-        WHERE name = %s
-                       """,(name,))
+        WHERE material_id = %s
+                       """,(material_id,))
         db.commit()
-        print(f"Deleted {name} from raw materials")
+        print(f"Deleted material with ID {material_id} from raw materials")
 
     except Exception as e:
         print(f"Error: {e}")
@@ -889,7 +977,7 @@ def delete_recipe(product_name):
         DELETE FROM recipes
         WHERE product_name = %s               
                        """,(product_name,))
-        db.commit()
+        
 
 
 

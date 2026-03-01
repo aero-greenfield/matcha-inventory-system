@@ -1,0 +1,27 @@
+{% extends "base.html" %}
+
+{% block title %}Add Material{% endblock %}
+
+{% block extra_styles %}
+<style>
+.form-group { margin-bottom: 20px; }
+label { display: block; margin-bottom: 5px; font-weight: bold; color: #555; }
+input { width: 100%; padding: 10px; border: 1px solid #ddd; border-radius: 5px; box-sizing: border-box; }
+button { background: #97bc62; color: white; padding: 12px 30px; border: none; border-radius: 5px; cursor: pointer; font-size: 16px; }
+button:hover { background: #7da34f; }
+</style>
+{% endblock %}
+
+{% block content %}
+<h1>➕ Add New Material</h1>
+<form method="POST">
+    <div class="form-group"><label>Material Name *</label><input type="text" name="name" required></div>
+    <div class="form-group"><label>Category *</label><input type="text" name="category" required></div>
+    <div class="form-group"><label>Initial Stock Level *</label><input type="number" step="0.01" name="stock_level" required></div>
+    <div class="form-group"><label>Unit *</label><input type="text" name="unit" required></div>
+    <div class="form-group"><label>Reorder Level *</label><input type="number" step="0.01" name="reorder_level" required></div>
+    <div class="form-group"><label>Cost per Unit *</label><input type="number" step="0.01" name="cost_per_unit" required></div>
+    <div class="form-group"><label>Supplier (optional)</label><input type="text" name="supplier"></div>
+    <button type="submit">Add Material</button>
+</form>
+{% endblock %}
