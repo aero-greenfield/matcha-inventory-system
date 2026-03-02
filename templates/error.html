@@ -1,0 +1,11 @@
+{% extends "base.html" %}
+{% block title %}{{ title }}{% endblock %}
+{% block content %}
+<div class="error-box">
+    <h1>{{ title }}</h1>
+    <p>{{ message }}</p>
+    {% if error_detail %}
+    <p><code>{{ error_detail }}</code></p>
+    {% endif %}
+</div>
+{% endblock %}

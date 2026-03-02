@@ -48,3 +48,23 @@ h1 {
 }
 
 .back-link:hover { text-decoration: underline; }
+
+.error-box {
+    background: white;
+    padding: 30px;
+    border-radius: 10px;
+    max-width: 500px;
+    margin: 40px auto;
+    border-left: 5px solid #dc3545;
+}
+
+.error-box h1 {
+    color: #dc3545;
+    margin-top: 0;
+}
+
+.error-box code {
+    background: #f8f9fa;
+    padding: 2px 6px;
+    border-radius: 3px;
+}

@@ -99,7 +99,7 @@ This cycle repeats for EVERY page load, form submission, export, etc.
 # =======================
 # Load .env file for local development (must be BEFORE other imports that use env vars)
 try:
-    from dotenv import load_dotenv
+    from dotenv import load_dotenv # load enviroment varibales, python has build in libracy that loads them in. 
     load_dotenv()
     
 except ImportError:
@@ -111,15 +111,16 @@ except ImportError:
 # =======================
 
 # Flask core imports - these are the building blocks of our web app
-from unicodedata import category
+from unicodedata import category 
 
 from flask import Flask, request, redirect, url_for, jsonify, send_file, render_template
+
 # - Flask: The main application class
-# - request: Access data from browser (form data, URL parameters, etc.)
-# - redirect: Send user to a different page
-# - url_for: Generate URLs for routes by function name
-# - jsonify: Convert Python data to JSON format (for API endpoints)
-# - send_file: Send files to browser (used for Excel exports)
+# - request: obejct that give you access to income http request data. 
+# - redirect:  instructs the browser to go to a different URL
+# - url_for:  builds urls for different functions (useful for redirects)
+# - jsonify:  converests python data structures (lists, dicts) to JSON format 
+# - send_file:  sends file to browser for download
 
 import os  # Operating system functions (file paths, environment variables)
 from datetime import datetime  # For timestamps in exports
@@ -136,21 +137,28 @@ from inventory_app import (
 
 
 # Import helper functions for exporting data
-# - export_to_csv: Exports DataFrames to CSV files (original functionality)
+# - export_to_csv: Exports DataFrames to CSV files (not currently used)
 # - export_to_excel: NEW - Exports DataFrames to Excel files (.xlsx format)
-# - backup_database: Creates timestamped backups of the database
-from helper_functions import (export_to_csv, export_to_excel, backup_database)
+
+from helper_functions import (export_to_csv, export_to_excel,)
+
+
+
+
 
 # =======================
 # CREATE FLASK APP
 # =======================
-# This creates the Flask application instance - the core of your web server
-# __name__ tells Flask where to look for templates and static files
-app = Flask(__name__)
 
-# WHAT IS 'app'?
+app = Flask(__name__)  # creates flask instance, so this web app name is 'app' which can be used to run the server and define routes.
+ 
+
+# WHAT IS 'app':
 # Think of 'app' as your web server. When you do @app.route('/inventory'),
 # you're telling this server "when someone visits /inventory, run this function"
+
+
+
 
 
 
@@ -161,19 +169,20 @@ app = Flask(__name__)
 
 
 
-# Make sure we have a 'data' folder for local SQLite database
-if not os.path.exists('data'):
-    os.makedirs('data')
+# for local development. 
+if not os.path.exists('data'): # Make sure we have a 'data' folder for local SQLite database 
+    os.makedirs('data') 
 
-# Try to connect to the database - if it fails, create one
+
+# for production, try to connect to data base. 
 try:
     from database import get_connection
-    conn = get_connection()
-    conn.close()
+    conn = get_connection() # get connection fron DATABASE_URL in database.py
+    conn.close() # close connection immediately, we just wanted to test if it works
     print("[SUCCESS] Database connection successful")
 except:
     # If connection fails, initialize a new database
-    print("[INIT] Initializing database...")
+    print("[INIT] Initializing database...") # 
     create_database()
 
 
@@ -199,22 +208,23 @@ except:
 # ========================
 
 
-# AUTHENTICATION CREDENTIALS
-# os.environ.get() checks for environment variables (set in Railway/production)
-# If not found, uses the fallback value (for local development)
+# takes authentication credentials from environment variables (or .env file) and checks them against incoming requests.
 
 AUTH_USERNAME = os.environ.get('AUTH_USERNAME')
 AUTH_PASSWORD = os.environ.get('AUTH_PASSWORD')
 
-assert(AUTH_USERNAME and AUTH_PASSWORD), "Error: AUTH_USERNAME and AUTH_PASSWORD must be set in environment variables or .env file"
-
-# How this works:
-# - Production (Railway): Reads from environment variables (secure, not in code)
-# - Local development: Uses fallback values (convenient for testing)
+assert(AUTH_USERNAME and AUTH_PASSWORD), "Error: AUTH_USERNAME and AUTH_PASSWORD must be set in environment variables or .env file" 
+#assert that it exists, otherwise app would run withouth authentication. 
 
 
-# AUTHENTICATION DECORATOR
-# This is a "decorator factory" - a function that creates a decorator
+
+
+
+# using authentication decorator to protect routes that require login.
+
+
+
+
 def requires_auth(f):
     """
     Decorator to protect routes with authentication
@@ -231,6 +241,9 @@ def requires_auth(f):
     1. @wraps(f) preserves the original function's name and docstring
     2. decorated() is the wrapper function that adds auth checking
     3. Returns the wrapped function
+
+
+    This funciton 
     """
     @wraps(f)  # Preserves metadata from original function
 
@@ -285,55 +298,31 @@ def authenticate():
 
 
 
+
+
+
 # ========================
 # WEB ROUTES (PAGES)
 # ========================
 
-"""
-UNDERSTANDING ROUTES
-====================
-A "route" is a mapping between a URL and a Python function.
 
-HOW ROUTES WORK:
-1. User types URL in browser (e.g., http://localhost:8000/inventory)
-2. Browser sends HTTP request to Flask server
-3. Flask looks at the URL path (/inventory)
-4. Flask finds the function with @app.route('/inventory')
-5. Flask runs that function
-6. Function returns HTML
-7. Flask sends HTML back to browser
-8. Browser displays the page
-
-ROUTE DECORATORS:
-@app.route('/path') - Defines which URL triggers this function
-@requires_auth - Requires login before allowing access
-
-DECORATOR ORDER MATTERS:
-@app.route('/')      ← Must be first (tells Flask about the route)
-@requires_auth       ← Then add authentication
-def my_function():   ← The actual function that handles the request
-    ...
-"""
 
 # =======================
 # HOME PAGE ROUTE
 # =======================
 # This is the main landing page of your app
 
-@app.route('/')  # '/' means root URL (e.g., http://localhost:8000/)
+@app.route('/')  # using app name: 'app', it uses '/' to route as main page. (landing page)
 @requires_auth   # User must login to see this page
 def index():
     """
-    Home page with navigation menu
-
-    HTTP Method: GET (default)
-    - GET is for viewing/retrieving data
-    - No data is being submitted, just showing the page
-
-    Returns: HTML string (the entire home page)
+    The index is the home page of app, provides links to other pages in dashboard.
     """
-    # Return HTML for the home page - it's all inline here as one big string
-    return render_template("index.html")
+    
+    return render_template("index.html") #retrun the html file for the home page. 
+
+#???:
+# does this actually create buttons for pages? is the html code in idex. html responsible for the buttons?
 
 
 
@@ -342,27 +331,23 @@ def index():
 # ========================
 
 """
-DATA FLOW: DATABASE → PYTHON → HTML → BROWSER
-==============================================
+This section is all routes related to raw materials. 
 
-1. DATABASE: Data is stored (PostgreSQL or SQLite)
-   └→ get_all_materials() queries database
+1. view inventory page (/inventory) [GET route only, no POST since this page is just for viewing]
 
-2. PYTHON: Data is processed
-   └→ Returns pandas DataFrame 
+    - also export to excell button. (/export/inventory-excel) [GET route that triggers excel export and download]
 
-3. HTML: Data is converted to HTML
-   └→ df.to_html() converts DataFrame to <table> HTML
-   └→ Wrapped in styled HTML page
+2. add material page (/add-material) [GET and POST routes]
 
-4. BROWSER: User sees the result
-   └→ Flask sends HTML to browser
-   └→ Browser renders it as a webpage
+3. low stock alerts page (/low-stock) [just GET route for now, no POST route since this page is just for viewing alerts]
+
+4. manage materials page (/manage-materials) - view all materials with edit/delete options [GET and POST routes]
+
 
 """
 
-@app.route('/inventory')  # URL path: http://localhost:8000/inventory
-# Note: No methods= parameter means GET only (can't submit data to this route)
+@app.route('/inventory')  # URL path 
+# when only using GET, Flask assumes it's a GET route, so we don't need to specify methods=['GET'] here.
 @requires_auth
 def view_inventory():
     """
@@ -377,21 +362,25 @@ def view_inventory():
     6. Returns HTML to browser
     """
 
-    # STEP 1: Get data from database
-    # get_all_materials() returns a pandas DataFrame
-    df = get_all_materials()
-    materials = df.to_dict(orient='records') if not df.empty else []
-    return render_template("inventory.html",
-        materials=materials,
-        count=len(df),
-        back_link=True,
-        back_link_url="/",
+    
+    df = get_all_materials() # get data in dataframe format from inventory.app func. 
+
+    materials = df.to_dict(orient='records') if not df.empty else [] 
+    #converts dataframe to list of dictionaries, where each dictionary represents what a material (one row). 
+    # the "orient = recors" is just a specific dictionary format.
+    
+
+    return render_template("inventory.html", # render the inventory page html from template. 
+        materials=materials, # pass material data in list of dictionary form to html. 
+        count=len(df), # number of materials for display in html. this is needed because we need to check if there are materials in the html to decide whether to show the table or a "no materials" message.
+        back_link=True,  # back link, this is to present the back link in top left corner. back link is in the base.html, and this variable is used to decide whether to show it or not.
+        back_link_url="/", # back link to home. (index)
         back_link_label="Back to Home"
 )
 
 
-# NEW: Excel export route for inventory
-@app.route('/export/inventory-excel')
+
+@app.route('/export/inventory-excel') # URL path for exporting inventory to excel, this is a button in inventory.html. 
 @requires_auth
 def export_inventory_excel():
     """
@@ -410,35 +399,14 @@ def export_inventory_excel():
         return "No data to export", 400
 
     # Create Excel file with timestamp (e.g., inventory_20260203_143022.xlsx)
-    filepath = export_to_excel(df, 'inventory')
+    filepath = export_to_excel(df, 'inventory') # from helper_functions, this creates the excel file and returns the file path.
 
     # Send file to browser as download
     # - as_attachment=True: Forces download instead of opening in browser
     # - download_name: Sets the filename shown in download dialog
     return send_file(filepath, as_attachment=True, download_name=os.path.basename(filepath))
 
-"""
-HTTP METHODS: GET vs POST
-==========================
-Routes can handle different HTTP methods. The two most common are:
 
-GET - Retrieve/View Data
-- Used when you just want to SEE something
-- Data appears in URL (?param=value)
-- Safe to bookmark or refresh
-- Examples: Viewing inventory, loading a form
-
-POST - Submit/Send Data
-- Used when you want to SEND data to the server
-- Data is hidden in request body (not in URL)
-- NOT safe to refresh (might duplicate submission)
-- Examples: Submitting a form, adding an item
-
-HANDLING BOTH METHODS IN ONE ROUTE:
-Some routes need to handle both GET and POST:
-- GET: Show the form (e.g., "Add Material" page)
-- POST: Process the form submission (e.g., actually add the material)
-"""
 
 @app.route('/add-material', methods=['GET', 'POST'])
 # methods=['GET', 'POST'] tells Flask this route handles both GET and POST requests
@@ -448,7 +416,7 @@ def add_material_route():
     Add Material Route - Handles both showing form and processing submission
 
     This is a common pattern in web development:
-    1. User visits /add-material (GET) → Show empty form
+    1. User visits /add-material (GET) → Show empty form (add_material.html)
     2. User fills form and clicks submit → Browser sends POST request
     3. Server processes POST → Adds material to database
     4. Server redirects to inventory page to show the new material
@@ -457,10 +425,7 @@ def add_material_route():
     # Check which HTTP method was used
     if request.method == 'POST':
         """
-        POST REQUEST HANDLING
-        =====================
-        When the user submits the form, browser sends a POST request
-        with all the form data.
+        POST:
 
         request.form is a dictionary containing all form fields:
         - request.form.get('name') → Value from input with name="name"
@@ -472,10 +437,10 @@ def add_material_route():
         - int() for whole numbers (if needed)
         """
 
-        # Extract all form data and call the database function
+        # get new material data from html input from add_material.html, and call add_raw_material() to add it to database.
         result = add_raw_material(
-            name=request.form.get('name'),  # Get value from <input name="name">
-            category=request.form.get('category'),
+            name=request.form.get('name'),  # Get value from <input name="name"> handled in add_material.html
+            category=request.form.get('category'), 
             stock_level=float(request.form.get('stock_level', 0)),  # Convert to number
             unit=request.form.get('unit'),
             reorder_level=float(request.form.get('reorder_level', 0)),
@@ -483,19 +448,22 @@ def add_material_route():
             supplier=request.form.get('supplier') or None  # Optional field
         )
 
-        # After processing, REDIRECT to another page
-        # This prevents duplicate submissions if user refreshes
-        # This is called the "Post/Redirect/Get" pattern
+        # after getting data, use REDIRECT to go back to inventory page. this is needed because if we just return the inventory page 
+        # html here, the URL would still be /add-material, which is not ideal. we want the URL to reflect the 
+        # actual page we're on, which is /inventory. also, redirecting after POST is a common 
+        # best practice to prevent form resubmission if user refreshes the page.
         if result:
-            # Success! Redirect to inventory page
-            # url_for('view_inventory') generates the URL for the view_inventory function
+            # if succesful data addition. Redirect to inventory page to show updated inventory with new material.
             return redirect(url_for('view_inventory'))
         else:
             # Failed! Return error message with 500 status code
             return ("Error adding material", 500)
 
    
-    return render_template("add_material.html",
+ #note: we dont need if request.method == 'GET' here, because if it's not POST, it must be GET (since we only specified those two methods). 
+ # so we can just put the code to show the form outside of the if statement, and it will run when it's a GET request.
+
+    return render_template("add_material.html", # if its a GET request, just show the add material form.
     back_link=True,
     back_link_url="/",
     back_link_label="Back to Home"
@@ -513,9 +481,13 @@ def add_material_route():
 @app.route('/low-stock')
 @requires_auth
 def low_stock():
+    """
+    to show stock that is below the reorder level.
+    simple GET request
+    """
     # Get all materials where stock is below reorder level
     df = get_low_stock_materials()
-    materials = df.to_dict(orient='records') if not df.empty else []
+    materials = df.to_dict(orient='records') if not df.empty else [] # convert each material (row) into dictionary, all dictionarys in a list. 
     return render_template("low_stock.html",
         materials=materials,
         count=len(df),
@@ -525,41 +497,41 @@ def low_stock():
 )
 
 
-# NEW: Excel export route for low stock alerts
+
 @app.route('/export/low-stock-excel')
 @requires_auth
 def export_low_stock_excel():
-    """
-    Export low stock materials to Excel file
+   """
+   uses GET request to export low stock materials to excel, similar to export_inventory_excel but for low stock items. this is a button in low_stock.html.
+   """
+   
+   df = get_low_stock_materials()  # Get materials below reorder level
 
-    Useful for:
-    - Sending reorder lists to suppliers
-    - Keeping records of stock alerts
-    - Sharing stock status with team members
-    """
-    df = get_low_stock_materials()  # Get materials below reorder level
-
-    if df.empty:
+   if df.empty:
         return "No data to export", 400  # No low stock items to export
 
     # Create Excel file (e.g., low_stock_20260203_143022.xlsx)
-    filepath = export_to_excel(df, 'low_stock')
+   filepath = export_to_excel(df, 'low_stock')
 
     # Trigger browser download
-    return send_file(filepath, as_attachment=True, download_name=os.path.basename(filepath))
+   return send_file(filepath, as_attachment=True, download_name=os.path.basename(filepath))
 
 
 
 #=============
-#inventory MANAGEMENT PAGES (edit/delete materials)
+#INVENTORY MANAGEMENT PAGES (edit/delete materials)
 #=============
 
 @app.route('/manage-materials') # Page to view all materials with edit/delete options 
 @requires_auth
 def manage_materials():
+    """
+    This is a page to view all materials with edit/delete options.
+    simple GET, just viewing, but with buttons. 
+    """
     df = get_all_materials_with_id()
-    materials = df.to_dict(orient='records') if (df is not None and not df.empty) else []
-    return render_template("manage_materials.html",
+    materials = df.to_dict(orient='records') if (df is not None and not df.empty) else [] # convert to HTML format like usual. 
+    return render_template("manage_materials.html", # load html template for this page.
         materials=materials,
         count=len(materials),
         back_link=True,
@@ -570,18 +542,41 @@ def manage_materials():
 
 
 # edit material page
-@app.route('/edit-material/<int:material_id>')
+@app.route('/edit-material/<int:material_id>') # dynamic URL, the main difference of this url is that it takes material_id as a parameter, 
+# which is used to identify which material to edit. this is needed because we have multiple 
+# materials and we need to know which one we're editing. the <int:material_id> part tells Flask to expect an 
+# integer parameter in that part of the URL, and it will pass it to the function as material_id.
+
+# it knows which material to edit based on the material_id in the URL, which is passed to the function as a parameter. when user clicks "edit" button for a material, 
+# it takes them to /edit-material/<material_id>, the route to this funciton is in manage_materials.html, where the edit button for each material has a link to 
+# /edit-material/{{ material.material_id }}.
 @requires_auth
 
 def edit_material(material_id):
-    material = get_material_by_id(material_id)
-    if not material:
-        return f"<h1>Material not found</h1><a href='/manage-materials'>← Back</a>", 404
+    """
+    function to edit a material, 
 
-    mat_id, name, category, stock_level, unit, reorder_level, cost_per_unit, supplier = material
-    msg = request.args.get('msg', '')
-    err = request.args.get('err', '')
-    return render_template("edit_material.html",
+    uses GET to show the edit form with current material details.
+    """
+    material = get_material_by_id(material_id) # get the material being edited. 
+    if not material:
+        return render_template('error.html', # if not found, show error page.
+            title="Material Not Found",
+            message="The material you requested could not be found.",
+            back_link=True, back_link_url="/manage-materials", back_link_label="Back to Manage Materials"
+        ), 404
+
+
+    
+    mat_id, name, category, stock_level, unit, reorder_level, cost_per_unit, supplier = material # unpack material details for display in edit form.
+    
+    # msg and err are for redirecting back to this page after form submission with a success or error message. (after adjusting stock or updating details)
+
+    msg = request.args.get('msg', '') # if there's a 'msg' parameter in the URL (e.g., /edit-material/1?msg=Stock+updated), 
+    # get its value to show success messages after form submissions. if not, default to empty string.
+
+    err = request.args.get('err', '') # similarly, get 'err' parameter for error messages.
+    return render_template("edit_material.html", # show the edit material form, with current material details filled in, and any success/error messages.
         mat_id=mat_id, name=name, category=category,
         stock_level=stock_level, unit=unit, reorder_level=reorder_level,
         cost_per_unit=cost_per_unit, supplier=supplier,
@@ -592,12 +587,20 @@ def edit_material(material_id):
 )
 
 
-@app.route('/edit-material/<int:material_id>/adjust-stock', methods=['POST']) # Route to handle stock adjustments (increase/decrease)
+@app.route('/edit-material/<int:material_id>/adjust-stock', methods=['POST']) # This is a route that is part of the edit material page, 
+# but is specifically for handling stock adjustments (POST request). it takes the material_id to know which material's stock to adjust, and it only accepts POST requests since it's processing a form submission.
 @requires_auth
 def adjust_stock(material_id):
 
-    amount = float(request.form.get('amount', 0)) # Get the amount to adjust (convert to number)
-    action = request.form.get('action') # Get whether to increase or decrease stock
+    """
+    a partner to edit material function, this function is specifically for handling stock adjustments (increasing or decreasing stock level).
+    ONLY uses POST since it's processing a form submission, and it takes material_id to know which material to adjust.
+
+    only adjusts stock level, not specific details of material. 
+    """
+
+    amount = float(request.form.get('amount', 0)) # Get the amount to adjust (convert to number), this is from the form input in edit_material.html 
+    action = request.form.get('action') # Get the action (increase or decrease) from the form submission, this is from the submit button name in edit_material.html, where we have two buttons with name="action" and value="increase" or "decrease".
 
     if action == 'increase':
         result = increase_raw_material(material_id, amount) # Call function to increase stock
@@ -605,7 +608,7 @@ def adjust_stock(material_id):
         result = decrease_raw_material(material_id, amount) # Call function to decrease stock (returns new stock level or None if failed)
 
     if result is not None:
-        return redirect(url_for('edit_material', material_id=material_id, msg=f'Stock updated to {result}'))
+        return redirect(url_for('edit_material', material_id=material_id, msg=f'Stock updated to {result}')) # if successful, REDIRECT back to edit materil page. 
     else:
         return redirect(url_for('edit_material', material_id=material_id, err='Stock update failed. Check there is enough stock to decrease.'))
     
@@ -614,9 +617,10 @@ def adjust_stock(material_id):
 
 
 
-@app.route('/edit-material/<int:material_id>/update-details', methods=['POST']) 
+@app.route('/edit-material/<int:material_id>/update-details', methods=['POST'])  # very similar to adjust_stock route, but for updating material details instead of stock level. it also takes material_id to know which material to update, and only accepts POST requests since it's processing a form submission.
 # Route to handle updating material details (name, category, etc)
 @requires_auth
+
 def update_material_details(material_id): 
     name = request.form.get('name') # Get updated name from form
     category = request.form.get('category') or None # Get updated category (or None if empty)
@@ -628,7 +632,7 @@ def update_material_details(material_id):
     supplier = request.form.get('supplier') or None
 
     result = update_raw_material(material_id, name=name, category=category, unit=unit,
-                                 reorder_level=reorder_level, cost_per_unit=cost_per_unit, supplier=supplier)
+                                 reorder_level=reorder_level, cost_per_unit=cost_per_unit, supplier=supplier) # call function, with updated details. 
 
     if result:
         return redirect(url_for('edit_material', material_id=material_id, msg='Details updated successfully'))
@@ -644,22 +648,56 @@ def delete_material(material_id):
     return redirect(url_for('manage_materials'))
 
 
+
+
+
 ##############
 # BATCHES PAGES
 ###############
+
+"""
+1. View ready batches page (/batches) - shows all batches with details and status (ready only). NEW IMPLIMENTATION: 
+button to move batch as shipped from ready [POST route to mark as shipped], and button to export ready batches to excel [GET to see batches page, then click export button to trigger excel export and download]
+
+2. create batch page (/create-batch) - form to create a new batch by selecting product recipe, quantity, and optional notes [GET and POST routes]
+
+3. view shipped batches page (/shipped-batches) - shows all shipped batches with details [GET route]
+   - has export to excell option as well [GET route to trigger excel export and download]
+4. manage batches page (/manage-batches) - view all batches with edit/delete options [GET and POST routes] (similar to manage materials page)
+- edit batch page (/edit-batch/<batch_id>) - form to edit batch details, change status, or delete batch [GET and POST routes]
+"""
 
 #View all batches
 @app.route('/batches')
 @requires_auth
 def view_batches():
+    """
+    currently only uses get to show all ready batches, but we will need to add POST routes for marking as shipped.
+    
+    """
 
-    data = get_batches()
-    batches = data.to_dict(orient='records') if not data.empty else []
-    columns = list(data.columns) if not data.empty else []
-    return render_template("batches.html",
+    data = get_batches() # get all batches in df, from inventory_app.py. 
+    batches = data.to_dict(orient='records') if not data.empty else [] # convert to HTML friendly like usual.
+    columns = list(data.columns) if not data.empty else [] # get column names for table header in html, if data is not empty. 
+    #if data is empty, set columns to empty list to avoid errors in html.
+    # we need to get columns separately because the batches page shows a table with dynamic columns based on the batch data, so we need to pass the column names to the html to generate the table header.
+    return render_template("batches.html", # render the batches page html template.
         batches=batches, columns=columns, count=len(batches),
         back_link=True, back_link_url="/", back_link_label="Back to Home"
 )
+
+# mark as shipped button. 
+@app.route('/batches/<int:batch_id>/mark-shipped', methods=['POST']) # this is a button in batches.html for each batch, it sends a POST request to this route with the batch_id to mark that batch as shipped.
+@requires_auth
+def mark_batch_as_shipped(batch_id):
+    """
+    click button, mark batch as shipped. this is a POST route
+    
+    """
+    mark_as_shipped(batch_id) # call function to update batch status in database.
+    return redirect(url_for('view_batches')) # after marking as shipped, redirect back to batches page to see updated status.
+
+
 
 
 # NEW: Excel export route for batches
@@ -727,16 +765,28 @@ def create_batch():
                 return redirect(url_for('view_batches'))
             else: 
                 #show generic error page
-                return f"<h1>Error:</h1><p>Failed to create batch. Check terminal for details.</p><a href='/create-batch'>Go back to Create Batch</a>", 500
+                return render_template('error.html',
+                    title="Error",
+                    message="Failed to create batch. Check terminal for details.",
+                    back_link=True, back_link_url="/create-batch", back_link_label="Go back to Create Batch"
+                ), 500
 
         except ValueError as e:
             #show the specific error message from add_to_batches
             # For example, if not enough materials, show that message
-            return f"<h1>Error:</h1><p>{str(e)}</p><a href='/create-batch'>Go back to Create Batch</a>", 400
+            return render_template('error.html',
+                title="Error",
+                message=str(e),
+                back_link=True, back_link_url="/create-batch", back_link_label="Go back to Create Batch"
+            ), 400
 
         except Exception as e:
             # Catch-all for unexpected errors
-            return f"<h1>Unexpected Error:</h1><p>{str(e)}</p><a href='/create-batch'>Go back to Create Batch</a>", 500
+            return render_template('error.html',
+                title="Unexpected Error",
+                message=str(e),
+                back_link=True, back_link_url="/create-batch", back_link_label="Go back to Create Batch"
+            ), 500
         
 
     # If it's a GET request, show the form to create a new batch
@@ -808,7 +858,7 @@ def view_recipes():
 def export_recipes_excel():
     """
     Export all recipes and their materials to Excel file
-
+ 
    
 
     Note: DataFrame has one row per material per recipe
@@ -935,17 +985,11 @@ def add_recipe_route():
         # Check that we have both a product name and at least one material
         if not product_name or not materials:
             # Return error if missing required fields
-            return """<!DOCTYPE html><html><head><title>Error</title><style>
-            body{font-family:Arial;padding:40px;background:#f5f5f5}
-            .error-box{background:white;padding:30px;border-radius:10px;max-width:500px;margin:0 auto;border-left:5px solid #dc3545}
-            h1{color:#dc3545;margin-top:0}
-            a{color:#2c5f2d}
-            </style></head><body>
-            <div class="error-box">
-            <h1>Missing Required Fields</h1>
-            <p>Please provide a product name and at least one material.</p>
-            <a href="/add-recipe">← Go back and try again</a>
-            </div></body></html>""", 400
+            return render_template('error.html',
+                title="Missing Required Fields",
+                message="Please provide a product name and at least one material.",
+                back_link=True, back_link_url="/add-recipe", back_link_label="Go back and try again"
+            ), 400
 
         # -----------------------
         # Step 4: Call database function to save recipe
@@ -961,33 +1005,21 @@ def add_recipe_route():
                 return redirect(url_for('view_recipes'))
             else:
                 # Database function returned False/None - generic failure
-                return """<!DOCTYPE html><html><head><title>Error</title><style>
-                body{font-family:Arial;padding:40px;background:#f5f5f5}
-                .error-box{background:white;padding:30px;border-radius:10px;max-width:500px;margin:0 auto;border-left:5px solid #dc3545}
-                h1{color:#dc3545;margin-top:0}
-                a{color:#2c5f2d}
-                </style></head><body>
-                <div class="error-box">
-                <h1>Error Adding Recipe</h1>
-                <p>Failed to add recipe. Please check that all materials exist in inventory.</p>
-                <a href="/add-recipe">← Go back and try again</a>
-                </div></body></html>""", 500
+                return render_template('error.html',
+                    title="Error Adding Recipe",
+                    message="Failed to add recipe. Please check that all materials exist in inventory.",
+                    back_link=True, back_link_url="/add-recipe", back_link_label="Go back and try again"
+                ), 500
 
         except Exception as e:
             # Catch any unexpected errors and display them
             # In production, you might want to log this and show a generic message
-            return f"""<!DOCTYPE html><html><head><title>Error</title><style>
-            body{{font-family:Arial;padding:40px;background:#f5f5f5}}
-            .error-box{{background:white;padding:30px;border-radius:10px;max-width:500px;margin:0 auto;border-left:5px solid #dc3545}}
-            h1{{color:#dc3545;margin-top:0}}
-            a{{color:#2c5f2d}}
-            code{{background:#f8f9fa;padding:2px 6px;border-radius:3px}}
-            </style></head><body>
-            <div class="error-box">
-            <h1>Error Adding Recipe</h1>
-            <p>An error occurred: <code>{str(e)}</code></p>
-            <a href="/add-recipe">← Go back and try again</a>
-            </div></body></html>""", 500
+            return render_template('error.html',
+                title="Error Adding Recipe",
+                message="An error occurred.",
+                error_detail=str(e),
+                back_link=True, back_link_url="/add-recipe", back_link_label="Go back and try again"
+            ), 500
 
     # ========================
     # HANDLE GET REQUEST (Display Form)

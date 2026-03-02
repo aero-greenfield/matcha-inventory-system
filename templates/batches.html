@@ -10,6 +10,8 @@
 .data-table tr:hover { background: #fff3cd; }
 .export-btn { display: inline-block; background: #97bc62; color: white; padding: 10px 20px; border-radius: 5px; text-decoration: none; margin: 10px 0; }
 .export-btn:hover { background: #7da34f; }
+.btn-ship { background: #4a7c59; color: white; border: none; padding: 4px 10px; border-radius: 4px; cursor: pointer; font-size: 0.85rem; }
+.btn-ship:hover { background: #3a6147; }
 </style>
 {% endblock %}
 
@@ -20,14 +22,24 @@
 {% if batches %}
 <a href="/export/batches-excel" class="export-btn">📥 Export to Excel</a>
 <table class="data-table">
-    <thead><tr>{% for col in columns %}<th>{{ col }}</th>{% endfor %}</tr></thead>
+    <thead>
+        <tr>{% for col in columns %}<th>{{ col }}</th>{% endfor %}<th>Actions</th></tr>
+    </thead>
     <tbody>
         {% for row in batches %}
-        <tr>{% for col in columns %}<td>{{ row[col] }}</td>{% endfor %}</tr>
+        <tr>
+            {% for col in columns %}<td>{{ row[col] }}</td>{% endfor %}
+            <td>
+                <form method="POST" action="/batches/{{ row['batch_id'] }}/mark-shipped"
+                      onsubmit="return confirm('Mark this batch as shipped?')">
+                    <button type="submit" class="btn-ship">Ship</button>
+                </form>
+            </td>
+        </tr>
         {% endfor %}
     </tbody>
 </table>
-{% else %}s
+{% else %}
 <p style="color:#666;">No batches available. <a href="/create-batch">Create your first batch</a></p>
 {% endif %}
 {% endblock %}
