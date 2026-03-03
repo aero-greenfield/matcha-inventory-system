@@ -174,22 +174,23 @@ if not os.path.exists('data'): # Make sure we have a 'data' folder for local SQL
     os.makedirs('data') 
 
 
-# for production, try to connect to data base. 
+DATABASE_URL = os.environ.get('DATABASE_URL')
 try:
     from database import get_connection
-    conn = get_connection() # get connection fron DATABASE_URL in database.py
-    conn.close() # close connection immediately, we just wanted to test if it works
+    conn = get_connection()
+    conn.close()
     print("[SUCCESS] Database connection successful")
+    if not DATABASE_URL:
+        create_database()  # SQLite: always ensure tables exist
 except:
-    # If connection fails, initialize a new database
-    print("[INIT] Initializing database...") # 
+    print("[INIT] Initializing database...")
     create_database()
 
 
 
 # =======================
 # AUTHENTICATION SYSTEM
-# =======================
+# ========================
 
 
 
@@ -741,7 +742,26 @@ def view_shipped_batches():
 )
 
 
-#########################STILL NEED TO ADD EXPORT ROUTE FOR SHIPPED BATCHES EXCEL#########################
+@app.route('/export/shipped-batches-excel')
+@requires_auth
+def export_shipped_batches_excel():
+    """
+    Export shipped batches to Excel file
+ 
+ 
+    """
+    df = get_batches_shipped()  # Get all shipped batches
+
+    if df.empty:
+        return "No data to export", 400  # No shipped batches to export
+
+    # Create Excel file (e.g., shipped_batches_20260203_143022.xlsx)
+    filepath = export_to_excel(df, 'shipped_batches')
+
+    # Trigger browser download
+    return send_file(filepath, as_attachment=True, download_name=os.path.basename(filepath))
+
+
 
 
 # craete a new batch
@@ -1062,9 +1082,15 @@ def add_recipe_route():
 
 @app.route('/api/health')
 def health_check():
-    # Simple health check endpoint - returns JSON to confirm the app is running
-    # Useful for Railway or other hosting platforms to check if app is alive
-    return jsonify({'status': 'healthy', 'service': 'matcha-inventory', 'timestamp': datetime.now().isoformat()})
+    try:
+        db = get_db_connection() # check if connection string is working
+        cursor = db.cursor() # make sure we can get a cursor
+        db.execute(cursor, "SELECT 1") # simple query  to check if we can execute queries
+        db.close() # close connection after check
+        db_status = 'connected' # status is connected if all above steps work. 
+    except Exception as e:
+        db_status = f'error: {str(e)}'
+    return jsonify({'status': 'healthy', 'db': db_status, 'service': 'matcha-inventory', 'timestamp': datetime.now().isoformat()})
 
 # ========================
 # START THE APP

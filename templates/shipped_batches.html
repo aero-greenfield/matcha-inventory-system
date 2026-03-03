@@ -8,12 +8,15 @@
 .data-table th, .data-table td { padding: 12px; text-align: left; border-bottom: 1px solid #ddd; }
 .data-table th { background: #6c757d; color: white; }
 .data-table tr:hover { background: #e2e3e5; }
+.export-btn { display: inline-block; background: #97bc62; color: white; padding: 10px 20px; border-radius: 5px; text-decoration: none; margin: 10px 0; }
+.export-btn:hover { background: #7da34f; }
 </style>
 {% endblock %}
 
 {% block content %}
 <h1>🚚 Shipped Batches</h1>
 <p>Total shipped batches: {{ count }}</p>
+<a href="/export/shipped-batches-excel" class="export-btn">📥 Export to Excel</a>
 
 {% if batches %}
 <table class="data-table">

@@ -570,6 +570,13 @@ def mark_as_shipped(batch_id):
         WHERE batch_id = %s
         """, (datetime.now().strftime('%Y-%m-%d'), batch_id))
 
+
+        if cursor.rowcount == 0: # make sure the batch id exists and was updated
+            print(f"Batch ID {batch_id} not found. No batch marked as shipped.") # if doesnt exist, there was an error marking batch as shipped. 
+            db.rollback()
+            return False
+
+
         db.commit()
         print(f" Marked batch {batch_id} as shipped")
         return True
@@ -978,13 +985,19 @@ def delete_recipe(product_name):
         WHERE product_name = %s               
                        """,(product_name,))
         
-
+        if cursor.rowcount == 0:
+            print(f"Recipe '{product_name}' not found.")
+            db.close()
+            return None
 
 
         db.execute(cursor, """
         DELETE FROM recipe_materials
         WHERE recipe_id = %s
                        """,(recipe_id,))
+
+
+        
         
         db.commit()
 
