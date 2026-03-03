@@ -176,7 +176,7 @@ if not os.path.exists('data'): # Make sure we have a 'data' folder for local SQL
 
 DATABASE_URL = os.environ.get('DATABASE_URL')
 try:
-    from database import get_connection
+    from database import get_connection, get_db_connection
     conn = get_connection()
     conn.close()
     print("[SUCCESS] Database connection successful")
@@ -437,17 +437,24 @@ def add_material_route():
         - float() for decimal numbers (stock_level, cost_per_unit)
         - int() for whole numbers (if needed)
         """
-
-        # get new material data from html input from add_material.html, and call add_raw_material() to add it to database.
-        result = add_raw_material(
-            name=request.form.get('name'),  # Get value from <input name="name"> handled in add_material.html
-            category=request.form.get('category'), 
-            stock_level=float(request.form.get('stock_level', 0)),  # Convert to number
-            unit=request.form.get('unit'),
-            reorder_level=float(request.form.get('reorder_level', 0)),
-            cost_per_unit=float(request.form.get('cost_per_unit', 0)),
-            supplier=request.form.get('supplier') or None  # Optional field
-        )
+        try:
+            # get new material data from html input from add_material.html, and call add_raw_material() to add it to database.
+            result = add_raw_material(
+                name=request.form.get('name'),  # Get value from <input name="name"> handled in add_material.html
+                category=request.form.get('category'), 
+                stock_level=float(request.form.get('stock_level', 0)),  # Convert to number
+                unit=request.form.get('unit'),
+                reorder_level=float(request.form.get('reorder_level', 0)),
+                cost_per_unit=float(request.form.get('cost_per_unit', 0)),
+                supplier=request.form.get('supplier') or None  # Optional field
+            )
+        
+        except ValueError:
+            return render_template('error.html', # if there's a value error (e.g., user entered text in stock level), show error page.
+                title="Invalid Input",
+                message = "Stock Level, Reorder Level, and Cost must be valid numbers.",
+                back_link=True, back_link_url="/add-material", back_link_label="Go back"
+        ), 400
 
         # after getting data, use REDIRECT to go back to inventory page. this is needed because if we just return the inventory page 
         # html here, the URL would still be /add-material, which is not ideal. we want the URL to reflect the 
@@ -599,8 +606,17 @@ def adjust_stock(material_id):
 
     only adjusts stock level, not specific details of material. 
     """
+    try:
 
-    amount = float(request.form.get('amount', 0)) # Get the amount to adjust (convert to number), this is from the form input in edit_material.html 
+        amount = float(request.form.get('amount', 0)) # Get the amount to adjust (convert to number), this is from the form input in edit_material.html 
+    
+    except ValueError:
+        return render_template('error.html', # if not found, show error page.
+            title="Invalid Input",
+            message="Please enter a valid number for the stock adjustment.",
+            back_link=True, back_link_url="/manage-materials", back_link_label="Back to Manage Materials"
+        ), 400
+    
     action = request.form.get('action') # Get the action (increase or decrease) from the form submission, this is from the submit button name in edit_material.html, where we have two buttons with name="action" and value="increase" or "decrease".
 
     if action == 'increase':
@@ -623,14 +639,26 @@ def adjust_stock(material_id):
 @requires_auth
 
 def update_material_details(material_id): 
-    name = request.form.get('name') # Get updated name from form
-    category = request.form.get('category') or None # Get updated category (or None if empty)
-    unit = request.form.get('unit') or None # Get updated unit (or None if empty)
-    reorder_level_str = request.form.get('reorder_level') 
-    cost_per_unit_str = request.form.get('cost_per_unit')
-    reorder_level = float(reorder_level_str) if reorder_level_str else None
-    cost_per_unit = float(cost_per_unit_str) if cost_per_unit_str else None
-    supplier = request.form.get('supplier') or None
+    
+    try:
+    
+        name = request.form.get('name') # Get updated name from form
+        category = request.form.get('category') or None # Get updated category (or None if empty)
+        unit = request.form.get('unit') or None # Get updated unit (or None if empty)
+        reorder_level_str = request.form.get('reorder_level') 
+        cost_per_unit_str = request.form.get('cost_per_unit')
+        reorder_level = float(reorder_level_str) if reorder_level_str else None
+        cost_per_unit = float(cost_per_unit_str) if cost_per_unit_str else None
+        supplier = request.form.get('supplier') or None
+    
+    except ValueError:
+        return render_template('error.html', # if there's a value error (e.g., user entered text in reorder level), show error page.
+            title="Invalid Input",
+            message = "Reorder Level and Cost must be valid numbers.",
+            back_link=True, back_link_url=f"/edit-material/{material_id}", back_link_label="Go back"
+        ), 400
+
+
 
     result = update_raw_material(material_id, name=name, category=category, unit=unit,
                                  reorder_level=reorder_level, cost_per_unit=cost_per_unit, supplier=supplier) # call function, with updated details. 
@@ -769,13 +797,31 @@ def export_shipped_batches_excel():
 @requires_auth
 def create_batch():
 
+
+    """
+    Adds batches to database based on form submission.
+    This is a complex form that allows users to create a new batch by selecting a product recipe, 
+    specifying the quantity to produce, and optionally adding notes.
+
+    uses GET to show the form, and POST to process the form submission.
+    
+    """
+
     if request.method == 'POST':
         # When form is submitted, get all the form data and add to database
-        product_name = request.form.get('product_name')
-        quantity = float(request.form.get('quantity'))
-        Notes = request.form.get('notes') or None
-        batch_id_str = request.form.get('batch_id')
-        batch_id = int(batch_id_str) if batch_id_str else None
+        try:
+            product_name = request.form.get('product_name')
+            quantity = float(request.form.get('quantity'))
+            Notes = request.form.get('notes') or None
+            batch_id_str = request.form.get('batch_id')
+            batch_id = int(batch_id_str) if batch_id_str else None
+
+        except ValueError:
+            return render_template('error.html',
+                title="Invalid Input",
+                message="Quantity and batch ID must be valid numbers.",
+                back_link=True, back_link_url="/create-batch", back_link_label="Go back to Create Batch"
+            ), 400
         
         try:
 
@@ -840,6 +886,8 @@ def view_recipes():
     - Recipe name and notes appear only on the FIRST row of each recipe
     - Subsequent rows for the same recipe show only materials (name blank)
     - This makes it easy to see which materials belong to which recipe
+
+    GET route
     """
 
     # ========================================
@@ -858,18 +906,23 @@ def view_recipes():
             back_link=True, back_link_url="/", back_link_label="Back to Home"
     )
 
-    df_display = df.copy()
-    duplicate_mask = df_display['recipe_product_name'].duplicated()
-    df_display.loc[duplicate_mask, 'recipe_product_name'] = ''
-    df_display.loc[duplicate_mask, 'notes'] = ''
-    recipe_count = df['recipe_product_name'].nunique()
-    recipes = df_display.to_dict(orient='records')
+    # extra df display alteration to show recipe name and notes only on the first row of each recipe, 
+    # for better readability in the HTML table. 
+    # this is just for display purposes, it doesn't change the actual data in the database or how we process it.
+    
+    df_display = df.copy() #make copy of dataframe for display
+    duplicate_mask = df_display['recipe_product_name'].duplicated() # create mask for duplicate recipe names, will have all rows except the first occurrence of each recipe name marked as True.
+    df_display.loc[duplicate_mask, 'recipe_product_name'] = '' # make them invisible. 
+    df_display.loc[duplicate_mask, 'notes'] = '' # also make notes invisible for duplicate rows, 
+    recipe_count = df['recipe_product_name'].nunique() # count unique recipe names
+    recipes = df_display.to_dict(orient='records') # convert to list of dictionaries for HTML display, like usual.
 
     return render_template("recipes.html",
         recipes=recipes,
         recipe_count=recipe_count,
         back_link=True, back_link_url="/", back_link_label="Back to Home"
     )
+
 
 
 # NEW: Excel export route for recipes
@@ -879,10 +932,7 @@ def export_recipes_excel():
     """
     Export all recipes and their materials to Excel file
  
-   
 
-    Note: DataFrame has one row per material per recipe
-    (A recipe with 3 materials will have 3 rows)
     """
     df = get_all_recipes()  # Get all recipes with materials
 
@@ -897,24 +947,8 @@ def export_recipes_excel():
 
 
 
-# ========================
-# ADD NEW RECIPE ROUTE
-# ========================
-#
-# PURPOSE:
-# This route handles the "Add New Recipe" functionality, allowing users to create
-# new recipes with multiple materials/ingredients. Recipes define what materials
-# are needed to produce a product (e.g., "Matcha Latte" needs Matcha Powder + Milk).
-#
-# HOW IT WORKS:
-# 1. GET request: Display the form with dynamic material inputs
-# 2. POST request: Process the form, validate data, and save to database
-#
-# COMPLEXITY NOTE:
-# Unlike simple forms (like add-material), recipes require MULTIPLE materials.
-# We use JavaScript on the frontend to dynamically add/remove material rows,
-# then parse them on the backend using indexed form field names (material_name_0, etc.)
-#
+
+
 
 @app.route('/add-recipe', methods=['GET', 'POST'])
 @requires_auth
@@ -940,25 +974,26 @@ def add_recipe_route():
     FORM FIELD NAMING CONVENTION:
     - Material rows use indexed names: material_name_0, quantity_0, material_name_1, etc.
     - This allows parsing an arbitrary number of materials on the backend
+
+   
+    COMPLEXITY NOTE:
+    Unlike simple forms (like add-material), recipes require MULTIPLE materials.
+    We use JavaScript on the frontend to dynamically add/remove material rows,
+    then parse them on the backend using indexed form field names (material_name_0, etc.)
+
     """
 
-    # ========================
-    # HANDLE POST REQUEST (Form Submission)
-    # ========================
     if request.method == 'POST':
 
-        # -----------------------
-        # Step 1: Extract basic recipe info
-        # -----------------------
-        # Get the product name (required field)
+
         product_name = request.form.get('product_name')
 
-        # Get optional notes field (None if empty)
         notes = request.form.get('notes') or None
 
-        # -----------------------
-        # Step 2: Parse dynamic material fields
-        # -----------------------
+       
+
+        #  Parse dynamic material fields
+      
         # Materials are submitted with indexed field names:
         # material_name_0, quantity_0, material_name_1, quantity_1, etc.
         #
@@ -978,8 +1013,7 @@ def add_recipe_route():
             if not material_name:
                 break
 
-            # Skip empty rows (user added row but didn't fill it in)
-            # This prevents errors from blank material entries
+            # proccess the quantiy (convert to float)and material name, and add to materials list if valid
             if material_name.strip() and quantity_str:
                 try:
                     # Convert quantity to float for decimal support
@@ -992,39 +1026,40 @@ def add_recipe_route():
                         'quantity_needed': quantity
                     })
                 except ValueError:
-                    # If quantity can't be converted to number, skip this row
-                    # Could also return an error here if strict validation needed
-                    pass
+                    return render_template('error.html',
+                        title="Invalid Input",
+                        message=f"Quantity for material '{material_name}' must be a valid number.",
+                        back_link=True, back_link_url="/add-recipe", back_link_label="Go back and fix it"
+                    ), 400
 
             # Move to next index
             index += 1
 
-        # -----------------------
-        # Step 3: Validate required data
-        # -----------------------
+        
+
+        #Validate required data
         # Check that we have both a product name and at least one material
         if not product_name or not materials:
-            # Return error if missing required fields
             return render_template('error.html',
                 title="Missing Required Fields",
                 message="Please provide a product name and at least one material.",
                 back_link=True, back_link_url="/add-recipe", back_link_label="Go back and try again"
             ), 400
 
-        # -----------------------
-        # Step 4: Call database function to save recipe
-        # -----------------------
-        try:
-            # add_recipe() is imported from inventory_app.py
-            # It inserts into 'recipes' table and 'recipe_materials' table
-            result = add_recipe(product_name, materials, notes)
+        
 
+
+        #  save recipe
+        
+        try:
+            
+            result = add_recipe(product_name, materials, notes)
+            # materials is the list of dictionaries we build from form data. 
             if result:
-                # Success! Redirect to recipes page to see the new recipe
-                # Using Post/Redirect/Get pattern to prevent duplicate submissions
+                #success
                 return redirect(url_for('view_recipes'))
             else:
-                # Database function returned False/None - generic failure
+                
                 return render_template('error.html',
                     title="Error Adding Recipe",
                     message="Failed to add recipe. Please check that all materials exist in inventory.",
@@ -1041,20 +1076,9 @@ def add_recipe_route():
                 back_link=True, back_link_url="/add-recipe", back_link_label="Go back and try again"
             ), 500
 
-    # ========================
-    # HANDLE GET REQUEST (Display Form)
-    # ========================
-    # When user visits /add-recipe, show the form for creating a new recipe
-    #
-    # JAVASCRIPT FUNCTIONALITY:
-    # - addMaterial(): Adds a new material row to the form
-    # - removeMaterial(): Removes a material row (but keeps at least one)
-    # - Material rows use indexed IDs for proper form submission
-    #
-    # CSS STYLING:
-    # - Follows existing app styling patterns (green theme, rounded corners)
-    # - Material rows have visual grouping with border
-    # - Remove button is red for clear visual distinction
+   
+   
+   #GET handeling. 
 
     return render_template("add_recipe.html",
     back_link=True,

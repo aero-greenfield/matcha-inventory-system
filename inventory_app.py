@@ -675,6 +675,63 @@ def delete_batch(batch_id, reallocate=False):
     finally:
         db.close()
 
+def get_all_batches_with_id():
+    """
+    Get all batches including shipped ones, using batch_id
+
+    used for manage page
+    """
+    db = get_db_connection()
+        
+    try:   
+        query = """
+
+        SELECT batch_id, product_name, quantity, date_completed, status, notes, date_shipped
+        FROM batches
+        ORDER BY date_completed DESC
+        """
+
+        result = pd.read_sql_query(query, db.conn)
+        
+        return result
+
+    except Exception as e:
+        print(f"error getting all materials with id: {e}")
+        
+        return None
+    
+    finally:
+        db.close()
+
+def get_batch_by_id(batch_id):
+    """
+    get batch using its id, 
+    for manage page.
+
+    """
+
+    db = get_db_connection()
+    cursor = db.cursor()
+
+    try:
+        query = """
+        SELECT batch_id, product_name, quantity, date_completed, status, notes, date_shipped
+        FROM batches
+        WHERE batch_id = %s
+
+        """
+        db.execute(cursor, query, (batch_id,))
+        result = cursor.fetchone()
+        return result
+    
+    except Exception as e:
+        print(f"error getting batch by id: {e}")
+        
+        return None
+    
+    finally:
+        db.close()
+
 
 
 # ========================
