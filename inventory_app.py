@@ -1164,11 +1164,15 @@ def get_all_recipes_with_id():
 
     try:
         query = """
-        SELECT recipe_id, product_name, notes
-        FROM recipes
-        ORDER BY product_name ASC
+        SELECT DISTINCT r.recipe_id, r.product_name, r.notes
+        FROM recipes r
+        JOIN recipe_materials rm ON rm.recipe_id = r.recipe_id
+        JOIN raw_materials raw ON rm.material_id = raw.material_id
+        ORDER BY r.product_name ASC
         """
-
+# uses joins to get recipe_id, product name, and notes for all recipes, then uses DISTINCT to only get one row per recipe 
+# (since there are multiple rows per recipe in recipe_materials), orders by product name.
+# this is done because view_recipes() uses joins aswell, so they both show same list of recipes. 
         result = pd.read_sql_query(query, db.conn)
         return result
 
