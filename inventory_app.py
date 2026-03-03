@@ -1077,6 +1077,7 @@ def change_recipe(product_name, materials, notes= None):
     
 
 def delete_recipe(product_name):
+    
 
 
     "deletes recipe"
@@ -1146,5 +1147,198 @@ def delete_recipe(product_name):
         db.rollback()
         return None
     
+    finally:
+        db.close()
+
+
+def get_all_recipes_with_id():
+    """
+    returns all recipes with their recipe_id, 
+    used for manage page when editing recipe, 
+    to get recipe id from product name.
+    """
+
+
+    db = get_db_connection()
+    cursor = db.cursor()
+
+    try:
+        query = """
+        SELECT recipe_id, product_name, notes
+        FROM recipes
+        ORDER BY product_name ASC
+        """
+
+        result = pd.read_sql_query(query, db.conn)
+        return result
+
+    except Exception as e:
+        print(f"Error getting all recipes with id: {e}")
+        return None
+    
+    finally:
+        db.close()
+
+
+    
+def get_recipe_by_id(recipe_id):
+    """
+    gets recipe by id, used for managment page, 
+    
+    returns full recipe details, including materials and quantities, 
+    given recipe_id, used for manage page when editing recipe, 
+    to get recipe details from recipe id.
+    
+    """
+    db = get_db_connection()
+    cursor = db.cursor()
+
+    try:
+        query = ("""
+       SELECT r.recipe_id, 
+       r.product_name, 
+       r.notes, 
+       rm.material_id, 
+       raw.name AS material_name, 
+       rm.quantity_needed 
+       FROM recipes r
+       JOIN recipe_materials rm ON rm.recipe_id = r.recipe_id
+       JOIN raw_materials raw ON rm.material_id = raw.material_id
+       WHERE r.recipe_id = %s
+        """)
+
+        db.execute(cursor, query, (recipe_id,))
+        rows = cursor.fetchall()
+        columns = [desc[0] for desc in cursor.description]
+        df = pd.DataFrame(rows, columns=columns)
+
+        return df
+
+    except Exception as e:
+        print(f"Error: {e} \ngetting recipe by id:{recipe_id}.")
+        return None
+    
+    finally:
+        db.close()
+
+
+def update_recipe(recipe_id, product_name=None, materials=None, notes=None):
+    """
+    changes a pre exisitng recipe 
+
+    Parameters:
+        recipe_id (int): The ID of the recipe to change.
+        materials (list of dict): Each dict contains 'material_name' and 'quantity_needed'.
+        notes (str, optional): Additional notes for the recipe.
+
+    Example:
+        materials = [
+            {'material_name': 'Matcha Powder', 'quantity_needed': 10},
+            {'material_name': 'Milk', 'quantity_needed': 200}
+        ]
+        change_recipe('Matcha Latte', materials, notes='Sweetened')
+
+        
+        
+        """
+    
+    db = get_db_connection()
+    cursor = db.cursor()
+    
+    try:
+
+
+        
+        # for changing notes
+        db.execute(cursor,""" 
+        UPDATE recipes
+        SET notes = %s 
+        WHERE recipe_id = %s               
+                        
+                """,(notes, recipe_id,))
+            
+        if product_name is not None:
+            db.execute(cursor, """
+            UPDATE recipes
+            SET product_name = %s
+            WHERE recipe_id = %s
+            """, (product_name, recipe_id))
+
+
+        db.execute(cursor,"""
+        DELETE FROM recipe_materials
+        WHERE recipe_id = %s               
+                       """,(recipe_id,)) # delete old materials
+        
+
+        for material in materials: 
+            material_name = material["material_name"]
+            quantity_needed = material['quantity_needed']
+
+
+            material_info = get_raw_material(material_name)
+
+            if not material_info:
+                print(f"Warning: Material '{material_name}' not found in raw_materials.")
+                material_id = None
+
+            else:
+                material_id = material_info[0]#get material_id, first value from get_raw_material result
+
+
+            db.execute(cursor,"""
+            INSERT INTO recipe_materials (
+            
+            recipe_id,
+            material_name,
+            material_id,
+            quantity_needed)
+            VALUES (%s,%s,%s,%s)                             
+                """, (recipe_id, material_name, material_id, quantity_needed))
+        
+        db.commit()
+        print(f"Recipe with recipe_id:{recipe_id} changed successfully with {len(materials)} materials.")
+        return recipe_id
+        
+
+    except Exception as e:
+        print(f"Error: {e}")
+        db.rollback()
+        return None
+    
+    finally:
+        db.close()
+
+
+def delete_recipe_by_id(recipe_id):
+    "deletes recipe by id"
+
+    db = get_db_connection()
+    cursor = db.cursor()
+
+    try:
+        db.execute(cursor, """
+        DELETE FROM recipes
+        WHERE recipe_id = %s
+        """, (recipe_id,))
+
+        if cursor.rowcount == 0:
+            print(f"Recipe with id {recipe_id} not found.")
+            return None
+
+        db.execute(cursor, """
+        DELETE FROM recipe_materials
+        WHERE recipe_id = %s
+        """, (recipe_id,))
+
+        db.commit()
+        print(f"Deleted recipe with id {recipe_id}")
+        return True
+
+    except Exception as e:
+        print(f"Error: {e}")
+        db.rollback()
+        return None
+
     finally:
         db.close()

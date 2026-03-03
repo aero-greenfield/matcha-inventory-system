@@ -130,11 +130,11 @@ from functools import wraps  # Used for creating decorators (like @requires_auth
 
 # Import all our inventory functions from inventory_app.py
 from inventory_app import (
-    create_database, add_raw_material, get_all_batches_with_id, get_all_materials, get_all_recipes, get_batches_shipped, get_low_stock_materials,
+    create_database, add_raw_material, delete_recipe_by_id, get_all_batches_with_id, get_all_materials, get_all_recipes, get_batches_shipped, get_low_stock_materials,
     increase_raw_material, decrease_raw_material, get_raw_material, add_to_batches,
     get_batches, mark_as_shipped, delete_batch, get_recipe, add_recipe,
     change_recipe, delete_recipe, delete_raw_material, get_material_by_id, get_all_materials_with_id, update_raw_material, get_all_batches_with_id, get_batch_by_id,
-    update_batch, update_batch_status)
+    update_batch, update_batch_status, update_recipe, get_all_recipes_with_id, get_recipe_by_id)
 
 
 # Import helper functions for exporting data
@@ -1191,13 +1191,137 @@ def add_recipe_route():
 
 
 
+#==============
+#RECIPE MANAGEMENT PAGES (edit/delete recipes)
+#==============
+
+@app.route('/manage-recipes') # Page to view all recipes with edit/delete options
+@requires_auth
+def manage_recipes():
+    """
+    This is a page to view all recipes with edit/delete options.
+    simple GET, just viewing, but with buttons. 
+    """
+    df = get_all_recipes_with_id()
+    recipes = df.to_dict(orient='records') if (df is not None and not df.empty) else [] # convert to HTML format like usual. 
+    return render_template("manage_recipes.html", # load html template for this page.
+        recipes=recipes,
+        count=len(recipes),
+        back_link=True,
+        back_link_url="/",
+        back_link_label="Back to Home"
+)
+
+@app.route('/edit-recipe/<int:recipe_id>') # dynamic URL for editing a specific recipe, identified by recipe_id.
+@requires_auth
+def edit_recipe(recipe_id):
+    """
+    view edit recipe page, with form to edit recipe details and materials. 
+    this is from manage recipes page, 
+    where each recipe has an edit button that takes you to this page with the recipe_id in the URL. 
+    this page will show a form with current recipe details filled in, and allow editing of both the recipe details 
+    (name, notes) and the materials (add/remove materials, change quantities).
+    
+    GET page route
+    """
+
+    df = get_recipe_by_id(recipe_id) #get recipe details for the recipe being edited
+
+    if df is None or df.empty:
+        return render_template('error.html',
+            title="Recipe Not Found",
+            message="The recipe you requested could not be found.",
+            back_link=True, back_link_url="/manage-recipes", back_link_label="Back to Manage Recipes"
+        ), 404
+
+    # Extract recipe-level info from first row (same for all rows)
+    recipe_id_val = df['recipe_id'].iloc[0]
+    product_name = df['product_name'].iloc[0]
+    notes = df['notes'].iloc[0]
+
+    # Extract materials list — one dict per row
+    materials = df[['material_name', 'quantity_needed']].to_dict(orient='records') # html friendly format. 
+
+    msg = request.args.get('msg', '')
+    err = request.args.get('err', '')
+
+    return render_template("edit_recipe.html",
+        recipe_id=recipe_id_val,
+        product_name=product_name,
+        notes=notes,
+        materials=materials,
+        msg=msg,
+        err=err,
+        back_link=True,
+        back_link_url="/manage-recipes",
+        back_link_label="Back to Manage Recipes"
+    )
 
 
 
+    
+@app.route('/edit-recipe/<int:recipe_id>/update', methods=['POST']) # POST route for processing the edit recipe form submission, where recipe_id identifies which recipe to update.
+@requires_auth
+def update_recipe_route(recipe_id):
+    """
+    updates the recipe details and materials based on the form submission
+    from the edit recipe page.
+
+    POST route for processing edit recipe submission. 
+    """
+    try:
+        
+        notes = request.form.get('notes') or None
+
+        product_name = request.form.get('product_name') 
+
+        materials = [] # materials come in as indexed fields, so we have to parse same as recipe
+        index = 0
+        while True:
+            material_name = request.form.get(f'material_name_{index}')
+            quantity_str = request.form.get(f'quantity_{index}')
+            if not material_name: #loop until out of material name
+                break
+            if material_name.strip() and quantity_str: # if we have a material name and quantity, add to materials list
+                try:
+                    materials.append({ #as a dictionary. 
+                        'material_name': material_name.strip(),
+                        'quantity_needed': float(quantity_str)
+                    })
+                except ValueError:
+                    return render_template('error.html',
+                        title="Invalid Input",
+                        message=f"Quantity for '{material_name}' must be a valid number.",
+                        back_link=True, back_link_url=f"/edit-recipe/{recipe_id}", back_link_label="Go back"
+                    ), 400
+            index += 1
+
+    except ValueError:
+        return render_template('error.html',
+            title="Invalid Input",
+            message="Quantity must be a valid number",
+            back_link=True, back_link_url=f"/edit-recipe/{recipe_id}", back_link_label="Go back to Edit Recipe"
+        ), 400
+    
+    result = update_recipe(recipe_id, product_name=product_name, notes=notes, materials=materials)
+    
+
+    if result:
+        return redirect(url_for('edit_recipe', recipe_id=recipe_id, msg='Recipe details updated successfully'))
+    else:
+        return redirect(url_for('edit_recipe', recipe_id=recipe_id, err='Failed to update recipe details'))
 
 
 
-
+@app.route('/edit-recipe/<int:recipe_id>/delete', methods=['POST'])
+@requires_auth
+def delete_recipe_route(recipe_id):
+    """
+    simply deletes the recipe from database,
+    POST route
+    """
+    delete_recipe_by_id(recipe_id)
+    return redirect(url_for('manage_recipes'))
 
 
 
