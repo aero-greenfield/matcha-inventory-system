@@ -28,7 +28,8 @@ except ImportError:
 # Railway automatically sets DATABASE_URL environment variable
 DATABASE_URL = os.getenv('DATABASE_URL')
 
-
+print(f"🔍 database.py: DATABASE_URL = GOOD" if DATABASE_URL else 'None')
+print(f"🔍 database.py: PSYCOPG2_AVAILABLE = GOOD")
 
 
 def get_connection():
@@ -52,7 +53,7 @@ def get_connection():
        # ========================================
        # CLOUD MODE: Use PostgreSQL
        # ========================================
-       print(" get_connection: Using PostgreSQL")
+       print("🔍 get_connection: Using PostgreSQL")
 
        if not PSYCOPG2_AVAILABLE:
            raise ImportError(
@@ -65,7 +66,7 @@ def get_connection():
        # Fix: Replace "postgres://" with "postgresql://"
        connection_string = DATABASE_URL.replace('postgres://', 'postgresql://', 1)
 
-       
+       print(f"🔍 get_connection: Connecting to {connection_string[:50]}...")
 
        # Connect to PostgreSQL
        return psycopg2.connect(connection_string)
@@ -74,7 +75,7 @@ def get_connection():
        # ========================================
        # LOCAL MODE: Use SQLite
        # ========================================
-       print(" get_connection: Using SQLite (data/inventory.db)")
+       print("🔍 get_connection: Using SQLite (data/inventory.db)")
        return sqlite3.connect('data/inventory.db')
 
 
@@ -114,9 +115,9 @@ class DatabaseConnection:
             raw_connection: Either sqlite3.Connection or psycopg2.Connection
         """
         self.conn = raw_connection
-        self.is_postgres = DATABASE_URL is not None
+        self.is_postgres = DATABASE_URL is not None 
 
-        print(f"[DEBUG] DatabaseConnection: Initialized ({'PostgreSQL' if self.is_postgres else 'SQLite'} mode)")
+        print(f"🔍 DatabaseConnection: Initialized ({'PostgreSQL' if self.is_postgres else 'SQLite'} mode)")
 
 
     def cursor(self):
@@ -197,12 +198,12 @@ class DatabaseConnection:
             # PostgreSQL: Use LASTVAL() function
             cursor.execute("SELECT LASTVAL()")
             result = cursor.fetchone()[0]
-            print(f"[DEBUG] get_last_insert_id (PostgreSQL): {result}")
+            print(f"🔍 get_last_insert_id (PostgreSQL): {result}")
             return result
         else:
             # SQLite: Use cursor.lastrowid property
             result = cursor.lastrowid
-            print(f"[DEBUG] get_last_insert_id (SQLite): {result}")
+            print(f"🔍 get_last_insert_id (SQLite): {result}")
             return result
 
 

@@ -186,15 +186,15 @@ def update_raw_material(material_id, name=None, category=None, stock_level=None,
     db = get_db_connection()
     cursor = db.cursor()
 
-    field = {}
+    field = {} # dictionary to hold fields to update, only the ones that are not None
 
+    #iterate through params, if not None, add to field dict to update
     for key, value in [("name", name), ("category", category), ("stock_level", stock_level), ("unit", unit), ("reorder_level", reorder_level), ("cost_per_unit", cost_per_unit), ("supplier", supplier)]:
         if value is not None:
-            field[key] = value
+            field[key] = value 
 
-    if not field:
+    if not field: #empty dictionary, no fields to update
         print("No fields to update")
-        db.close()
         return
 
     try:
@@ -207,13 +207,16 @@ def update_raw_material(material_id, name=None, category=None, stock_level=None,
 
         db.commit()
         print(f"Updated material with id:{material_id}")
-        db.close()
+        
         return True
 
     except Exception as e:
         print(f"Error changing material details: {e}")
         db.rollback()
         return None
+    
+    finally:
+        db.close()
 
 
 
@@ -732,8 +735,86 @@ def get_batch_by_id(batch_id):
     finally:
         db.close()
 
+def update_batch(batch_id, product_name=None, quantity=None, date_completed=None, notes=None):
+    """
+    changes the details of batch, BESIDES STATUS, doesnt change status. 
+    
+    note: similar to update_materials func
+    """
+
+    db = get_db_connection()
+    cursor = db.cursor()
+
+    field = {} # dictionary to hold fields to update, only the ones that are not None
+
+    #iterate through params, if not None, add to field dict to update
+    for key, value in [("product_name", product_name), ("quantity", quantity), ("date_completed", date_completed), ("notes", notes)]:
+        if value is not None:
+            field[key] = value 
+
+    if not field: #empty dictionary, no fields to update
+        print("No fields to update")
+        return
+
+    try:
+        for key in field: #for each key and its value, update the batch.
+            db.execute(cursor,f"""
+            UPDATE batches
+            SET {key} = %s
+            WHERE batch_id = %s
+            """, (field[key], batch_id,))         
+        db.commit()
+        print(f"Updated batch with id:{batch_id}")
+
+        return True
+    
+    except Exception as e:
+        print(f"Error changing batch details: {e}")
+        db.rollback()
+        return None
+    
+    finally:
+        db.close()
 
 
+def update_batch_status(batch_id, new_status):
+    """
+    changes the status of batch, only changes status, not other details.
+    """
+
+    db = get_db_connection()
+    cursor = db.cursor()
+
+    try:
+        if new_status == 'Shipped':
+            db.execute(cursor, """
+            UPDATE batches
+            SET status = %s, date_shipped = %s
+            WHERE batch_id = %s
+            """, (new_status, datetime.now().strftime('%Y-%m-%d'), batch_id))
+        else:
+            # Reverting to Ready. clear the shipped date
+            db.execute(cursor, """
+            UPDATE batches
+            SET status = %s, date_shipped = NULL
+            WHERE batch_id = %s
+            """, (new_status, batch_id))
+
+        if cursor.rowcount == 0:
+            print(f"Batch {batch_id} not found.")
+            return None
+
+        db.commit()
+        print(f"Batch {batch_id} status updated to {new_status}")
+        return True
+
+    except Exception as e:
+        print(f"Error updating batch status: {e}")
+        db.rollback()
+        return None
+
+    finally:
+        db.close()
 # ========================
 # RECIPE FUNCTIONS
 # ========================

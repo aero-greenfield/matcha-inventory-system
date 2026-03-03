@@ -1,0 +1,48 @@
+{% extends "base.html" %}
+
+{% block title %}Manage Batches{% endblock %}
+
+{% block extra_styles %}
+<style>
+.data-table { width: 100%; border-collapse: collapse; margin: 20px 0; }
+.data-table th, .data-table td { padding: 12px; text-align: left; border-bottom: 1px solid #ddd; }
+.data-table th { background: #97bc62; color: white; font-weight: bold; }
+.data-table tr:hover { background: #f0f8f0; }
+.edit-btn { background: #97bc62; color: white; padding: 6px 12px; border-radius: 4px; text-decoration: none; font-size: 14px; }
+.edit-btn:hover { background: #7da34f; }
+.status-shipped { color: #4a7c59; font-weight: bold; }
+.status-ready { color: #e67e22; font-weight: bold; }
+</style>
+{% endblock %}
+
+{% block content %}
+<h1>🔧 Manage Batches</h1>
+
+{% if batches %}
+<p>Total batches: {{ count }}</p>
+<table class="data-table">
+    <thead>
+        <tr>
+            <th>ID</th><th>Product Name</th><th>Quantity</th><th>Date Completed</th>
+            <th>Status</th><th>Notes</th><th>Date Shipped</th><th>Action</th>
+        </tr>
+    </thead>
+    <tbody>
+        {% for row in batches %}
+        <tr>
+            <td>{{ row.batch_id }}</td>
+            <td>{{ row.product_name }}</td>
+            <td>{{ row.quantity }}</td>
+            <td>{{ row.date_completed or '' }}</td>
+            <td class="status-{{ row.status | lower if row.status else '' }}">{{ row.status or '' }}</td>
+            <td>{{ row.notes or '' }}</td>
+            <td>{{ row.date_shipped or '' }}</td>
+            <td><a href="/edit-batch/{{ row.batch_id | int }}" class="edit-btn">Edit</a></td>
+        </tr>
+        {% endfor %}
+    </tbody>
+</table>
+{% else %}
+<p style="color:#666;">No batches found. <a href="/create-batch">Create your first batch</a></p>
+{% endif %}
+{% endblock %}

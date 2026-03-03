@@ -130,10 +130,11 @@ from functools import wraps  # Used for creating decorators (like @requires_auth
 
 # Import all our inventory functions from inventory_app.py
 from inventory_app import (
-    create_database, add_raw_material, get_all_materials, get_all_recipes, get_batches_shipped, get_low_stock_materials,
+    create_database, add_raw_material, get_all_batches_with_id, get_all_materials, get_all_recipes, get_batches_shipped, get_low_stock_materials,
     increase_raw_material, decrease_raw_material, get_raw_material, add_to_batches,
     get_batches, mark_as_shipped, delete_batch, get_recipe, add_recipe,
-    change_recipe, delete_recipe, delete_raw_material, get_material_by_id, get_all_materials_with_id, update_raw_material)
+    change_recipe, delete_recipe, delete_raw_material, get_material_by_id, get_all_materials_with_id, update_raw_material, get_all_batches_with_id, get_batch_by_id,
+    update_batch, update_batch_status)
 
 
 # Import helper functions for exporting data
@@ -863,10 +864,112 @@ def create_batch():
 )
 
 
+#========================
+#MANAGMENT OF BATCHES 
+#======================
+    
+@app.route('/manage-batches') # Page to view all batches with edit/delete options 
+@requires_auth
+def manage_batches():
+    """
+    This is a page to view all batches with edit/delete options.
+    simple GET, just viewing, but with buttons. 
+    """
+    df = get_all_batches_with_id()
+    batches = df.to_dict(orient='records') if (df is not None and not df.empty) else [] # convert to HTML format like usual. 
+    return render_template("manage_batches.html", # load html template for this page.
+        batches=batches,
+        count=len(batches),
+        back_link=True,
+        back_link_url="/",
+        back_link_label="Back to Home"
+)
 
+@app.route('/edit-batch/<int:batch_id>') # dynamic URL for editing a specific batch, identified by batch_id. 
+@requires_auth
+def edit_batch(batch_id):
+    """
+    edit batch details, not status, this is from manage batches page,
+      where each batch has an edit button that takes you to 
+      this page with the batch_id in the URL. this page will show a form
+        with current batch details filled in
+
+        GET page route
+    """
+
+    batch = get_batch_by_id(batch_id) # get batch details for the batch being edited.
+    if not batch:
+        return render_template('error.html', # if batch not found, show error page.
+            title="Batch Not Found",
+            message="The batch you requested could not be found.",
+            back_link=True, back_link_url="/manage-batches", back_link_label="Back to Manage Batches"
+        ), 404
+    
+    msg = request.args.get('msg', '') # get success message from URL parameters, if any (e.g., after updating batch details)
+    err = request.args.get('err', '') # get error message from URL parameters, if any (e.g., if updating batch details failed)
+
+    return render_template("edit_batch.html", # show the edit batch form, with current batch details and any success/error messages.
+        batch = batch,
+        msg=msg, err=err,
+        back_link=True,
+        back_link_url="/manage-batches",
+        back_link_label="Back to Manage Batches" )
+
+
+
+@app.route('/edit-batch/<int:batch_id>/update-details', methods=['POST']) # POST route for processing the edit batch form submission, where batch_id identifies which batch to update.
+@requires_auth
+def update_batch_details(batch_id):
+    """
+    processes the form submission from edit batch page to update batch details (not status). 
+    this is a POST route that takes the updated details from the form and updates the batch in the database, then redirects back to the edit batch page with a success or error message.
+    """
+    try:
+        product_name = request.form.get('product_name')
+        quantity_str = request.form.get('quantity')
+        notes = request.form.get('notes') or None
+        quantity = float(quantity_str) if quantity_str else None
+
+    except ValueError:
+        return render_template('error.html',
+            title="Invalid Input",
+            message="Quantity must be a valid number.",
+            back_link=True, back_link_url=f"/edit-batch/{batch_id}", back_link_label="Go back to Edit Batch"
+        ), 400
+    
+    result = update_batch(batch_id, product_name=product_name, quantity=quantity, notes=notes)
+
+    if result:
+        return redirect(url_for('edit_batch', batch_id=batch_id, msg='Batch details updated successfully'))
+    else:
+        return redirect(url_for('edit_batch', batch_id=batch_id, err='Failed to update batch details'))
+
+
+@app.route('/edit-batch/<int:batch_id>/change-status', methods=['POST']) 
+@requires_auth
+def change_batch_status(batch_id):
+    """
+    Change the status of a batch  
+     
+    This is a POST route that takes the new status from the form submission in the edit batch page, updates the batch status in the database, and redirects back to the edit batch page with a success or error message.
+    """
+
+    new_status = request.form.get('status') # Get the new status from the form submission (e.g., "ready", "shipped", etc.)
+
+    result = update_batch_status(batch_id, new_status)
+    if result:
+        return redirect(url_for('edit_batch', batch_id=batch_id, msg=f'Batch status updated to {new_status}'))
+    
+    else:
+        return redirect(url_for('edit_batch', batch_id=batch_id, err='Failed to update batch status'))
     
 
-
+@app.route('/edit-batch/<int:batch_id>/delete', methods=['POST'])
+@requires_auth
+def delete_batch_route(batch_id):
+    reallocate = request.form.get('reallocate') == 'true'
+    delete_batch(batch_id, reallocate=reallocate)
+    return redirect(url_for('manage_batches'))
 
 
 
