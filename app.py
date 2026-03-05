@@ -1023,14 +1023,23 @@ def update_batch_details(batch_id):
     """
     try:
         product_name = request.form.get('product_name')
+        product_name = product_name.strip() if product_name else None
         quantity_str = request.form.get('quantity')
-        notes = request.form.get('notes') or None
+        notes = request.form.get('notes') 
+        notes = notes.strip() if notes else None
         quantity = float(quantity_str) if quantity_str else None
 
     except ValueError:
         return render_template('error.html',
             title="Invalid Input",
             message="Quantity must be a valid number.",
+            back_link=True, back_link_url=f"/edit-batch/{batch_id}", back_link_label="Go back to Edit Batch"
+        ), 400
+
+    if quantity is not None and quantity <= 0:
+        return render_template('error.html',
+            title="Invalid Input",
+            message="Quantity must be greater than 0.",
             back_link=True, back_link_url=f"/edit-batch/{batch_id}", back_link_label="Go back to Edit Batch"
         ), 400
     
@@ -1185,12 +1194,23 @@ def add_recipe_route():
 
     if request.method == 'POST':
 
-
+        
         product_name = request.form.get('product_name')
 
-        notes = request.form.get('notes') or None
+        product_name = product_name.strip() if product_name else None # cant be none
 
-       
+        notes = request.form.get('notes')#can be none
+
+        notes = notes.strip() if notes else None
+        
+        if not product_name:
+            return render_template('error.html',
+                title="Invalid Input",
+                message="Product name cannot be blank.",
+                back_link=True, back_link_url="/add-recipe", back_link_label="Go back"
+                 ), 400
+    
+
 
         #  Parse dynamic material fields
       
@@ -1208,6 +1228,8 @@ def add_recipe_route():
             # Try to get material at current index
             material_name = request.form.get(f'material_name_{index}')
             quantity_str = request.form.get(f'quantity_{index}')
+
+            
 
             # If no material name found at this index, we've processed all materials
             if not material_name:
@@ -1368,9 +1390,15 @@ def update_recipe_route(recipe_id):
     """
     try:
         
-        notes = request.form.get('notes') or None
+        notes = request.form.get('notes') 
+
+        notes = notes.strip() if notes else None
 
         product_name = request.form.get('product_name') 
+
+        product_name = product_name.strip() if product_name else None
+
+        
 
         materials = [] # materials come in as indexed fields, so we have to parse same as recipe
         index = 0
@@ -1398,6 +1426,20 @@ def update_recipe_route(recipe_id):
             title="Invalid Input",
             message="Quantity must be a valid number",
             back_link=True, back_link_url=f"/edit-recipe/{recipe_id}", back_link_label="Go back to Edit Recipe"
+        ), 400
+    
+    if not product_name:
+        return render_template('error.html',
+            title="Invalid Input",
+            message="Product name cannot be blank.",
+            back_link=True, back_link_url=f"/edit-recipe/{recipe_id}", back_link_label="Go back"
+        ), 400
+
+    if not materials:
+        return render_template('error.html',
+            title="Invalid Input",
+            message="Recipe must have at least one material.",
+            back_link=True, back_link_url=f"/edit-recipe/{recipe_id}", back_link_label="Go back"
         ), 400
     
     result = update_recipe(recipe_id, product_name=product_name, notes=notes, materials=materials)
