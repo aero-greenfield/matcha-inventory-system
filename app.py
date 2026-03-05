@@ -489,7 +489,7 @@ def add_material_route():
                 back_link=True, back_link_url="/add-material", back_link_label="Go back"
             ), 400
         
-        if cost_per_unit < 0 or reorder_level < 0 or stock_level < 0:
+        if cost_per_unit <= 0 or reorder_level <= 0 or stock_level <= 0:
             return render_template('error.html',
                 title="Invalid Input",
                 message="Stock Level, Reorder Level, and Cost must be valid numbers and more than 0",
