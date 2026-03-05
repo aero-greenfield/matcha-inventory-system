@@ -1,41 +1,282 @@
 {% extends "base.html" %}
 
-{% block title %}Botanik Inventory{% endblock %}
+{% block title %}Botaniks — Home{% endblock %}
+
+{% block page_title %}Home{% endblock %}
 
 {% block extra_styles %}
 <style>
-h1 { text-align: center; }
-.menu-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 25px; margin-top: 30px; }
-.menu-section { background: #f8f9fa; padding: 20px; border-radius: 10px; border-left: 5px solid #97bc62; }
-.menu-section h2 { color: #2c5f2d; margin-top: 0; font-size: 20px; }
-.menu-item { display: block; background: white; padding: 15px; margin: 10px 0; border-radius: 8px; text-decoration: none; color: #2c5f2d; border: 2px solid #e0e0e0; transition: all 0.3s; }
-.menu-item:hover { background: #97bc62; color: white; transform: translateX(5px); border-color: #97bc62; }
-.emoji { font-size: 20px; margin-right: 10px; }
+    .home-hero {
+        padding: 40px 0 32px;
+        border-bottom: 1px solid var(--border);
+        margin-bottom: 36px;
+    }
+    .home-hero h1 {
+        font-size: 26px;
+        margin-bottom: 10px;
+    }
+    .home-hero p {
+        color: var(--text-dim);
+        font-size: 13px;
+        max-width: 520px;
+        line-height: 1.7;
+        margin-bottom: 0;
+    }
+    .home-hero .badge {
+        display: inline-block;
+        background: var(--green-muted);
+        border: 1px solid var(--green-dim);
+        color: var(--green);
+        font-size: 10px;
+        letter-spacing: 0.1em;
+        text-transform: uppercase;
+        padding: 3px 10px;
+        border-radius: 20px;
+        margin-bottom: 16px;
+    }
+
+    .section-grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+        gap: 16px;
+        margin-bottom: 40px;
+    }
+
+    .guide-card {
+        background: var(--surface);
+        border: 1px solid var(--border);
+        border-radius: 8px;
+        padding: 20px;
+        transition: border-color 150ms ease;
+    }
+    .guide-card:hover { border-color: var(--border-light); }
+
+    .guide-card-header {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        margin-bottom: 14px;
+    }
+    .guide-card-icon {
+        width: 32px; height: 32px;
+        border-radius: 6px;
+        background: var(--surface2);
+        border: 1px solid var(--border);
+        display: flex; align-items: center; justify-content: center;
+        font-size: 15px;
+        flex-shrink: 0;
+    }
+    .guide-card h2 {
+        font-size: 13px;
+        font-weight: 600;
+        color: var(--text);
+        margin: 0;
+        letter-spacing: 0.01em;
+    }
+
+    .guide-card p {
+        font-size: 12px;
+        color: var(--text-dim);
+        line-height: 1.65;
+        margin-bottom: 16px;
+    }
+
+    .guide-links {
+        display: flex;
+        flex-direction: column;
+        gap: 4px;
+    }
+    .guide-link {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        padding: 6px 10px;
+        border-radius: 5px;
+        text-decoration: none;
+        color: var(--text-mid);
+        font-size: 12px;
+        transition: background 150ms ease, color 150ms ease;
+    }
+    .guide-link:hover {
+        background: var(--surface2);
+        color: var(--text);
+    }
+    .guide-link::before {
+        content: '→';
+        font-size: 11px;
+        color: var(--text-faint);
+        flex-shrink: 0;
+    }
+
+    .workflow-section {
+        margin-bottom: 40px;
+    }
+    .workflow-section h2 {
+        font-size: 13px;
+        color: var(--text-dim);
+        font-weight: 500;
+        letter-spacing: 0.08em;
+        text-transform: uppercase;
+        margin-bottom: 16px;
+        padding-bottom: 10px;
+        border-bottom: 1px solid var(--border);
+    }
+
+    .workflow-steps {
+        display: grid;
+        grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+        gap: 12px;
+    }
+    .workflow-step {
+        background: var(--surface);
+        border: 1px solid var(--border);
+        border-radius: 8px;
+        padding: 16px;
+        position: relative;
+    }
+    .step-num {
+        font-size: 10px;
+        font-weight: 600;
+        color: var(--green-dim);
+        letter-spacing: 0.1em;
+        text-transform: uppercase;
+        margin-bottom: 8px;
+    }
+    .workflow-step h3 {
+        font-family: 'Syne', sans-serif;
+        font-size: 13px;
+        font-weight: 600;
+        color: var(--text);
+        margin-bottom: 6px;
+    }
+    .workflow-step p {
+        font-size: 11.5px;
+        color: var(--text-dim);
+        line-height: 1.6;
+    }
+
+    .tip-box {
+        background: var(--surface);
+        border: 1px solid var(--border);
+        border-left: 3px solid var(--green-dim);
+        border-radius: 8px;
+        padding: 16px 20px;
+        margin-bottom: 16px;
+        font-size: 12.5px;
+        color: var(--text-dim);
+        line-height: 1.65;
+    }
+    .tip-box strong { color: var(--text-mid); font-weight: 500; }
 </style>
 {% endblock %}
 
 {% block content %}
-<h1>Botanik Inventory Management System</h1>
-<div class="menu-grid">
-    <div class="menu-section">
-        <h2>📦 Inventory & Materials</h2>
-        <a href="/inventory" class="menu-item"><span class="emoji">📋</span> View All Materials</a>
-        <a href="/low-stock" class="menu-item"><span class="emoji">⚠️</span> Low Stock Alerts</a>
-        <a href="/add-material" class="menu-item"><span class="emoji">➕</span> Add New Material</a>
-        <a href="/manage-materials" class="menu-item"><span class="emoji">🔧</span> Manage Materials</a>
+
+<div class="home-hero">
+    <div class="badge">Botaniks Inventory</div>
+    <h1>Welcome to the dashboard</h1>
+    <p>Manage raw materials, production batches, and product recipes for your matcha manufacturing operation. Use the sidebar to navigate between sections.</p>
+</div>
+
+<!-- Quick nav cards -->
+<div class="section-grid">
+
+    <div class="guide-card">
+        <div class="guide-card-header">
+            <div class="guide-card-icon">▤</div>
+            <h2>Inventory</h2>
+        </div>
+        <p>Track all raw materials, their stock levels, reorder points, and suppliers. Get alerts when stock runs low.</p>
+        <div class="guide-links">
+            <a href="/inventory" class="guide-link">View all materials</a>
+            <a href="/add-material" class="guide-link">Add a new material</a>
+            <a href="/low-stock" class="guide-link">Check low stock</a>
+            <a href="/manage-materials" class="guide-link">Edit or delete materials</a>
+        </div>
     </div>
-    <div class="menu-section">
-        <h2>🏭 Batch Management</h2>
-        <a href="/batches" class="menu-item"><span class="emoji">📋</span> View Ready Batches</a>
-        <a href="/create-batch" class="menu-item"><span class="emoji">➕</span> Create New Batch</a>
-        <a href="/shipped-batches" class="menu-item"><span class="emoji">🚚</span> View Shipped Batches</a>
-        <a href="/manage-batches" class="menu-item"><span class="emoji">🔧</span> Manage Batches</a>
+
+    <div class="guide-card">
+        <div class="guide-card-header">
+            <div class="guide-card-icon">◫</div>
+            <h2>Batches</h2>
+        </div>
+        <p>Create production batches from recipes. Track batch status from creation through to shipping.</p>
+        <div class="guide-links">
+            <a href="/batches" class="guide-link">View active batches</a>
+            <a href="/create-batch" class="guide-link">Create a batch</a>
+            <a href="/shipped-batches" class="guide-link">Shipped batch history</a>
+            <a href="/manage-batches" class="guide-link">Edit or delete batches</a>
+        </div>
     </div>
-    <div class="menu-section">
-        <h2>📖 Recipes</h2>
-        <a href="/recipes" class="menu-item"><span class="emoji">📋</span> View All Recipes</a>
-        <a href="/add-recipe" class="menu-item"><span class="emoji">➕</span> Add New Recipe</a>
-        <a href="/manage-recipes" class="menu-item"><span class="emoji">🔧</span> Manage Recipes</a>
+
+    <div class="guide-card">
+        <div class="guide-card-header">
+            <div class="guide-card-icon">≡</div>
+            <h2>Recipes</h2>
+        </div>
+        <p>Define product recipes that specify which raw materials and quantities are needed per production run.</p>
+        <div class="guide-links">
+            <a href="/recipes" class="guide-link">View all recipes</a>
+            <a href="/add-recipe" class="guide-link">Create a recipe</a>
+            <a href="/manage-recipes" class="guide-link">Edit or delete recipes</a>
+        </div>
+    </div>
+
+    <div class="guide-card">
+        <div class="guide-card-header">
+            <div class="guide-card-icon">↓</div>
+            <h2>Exports</h2>
+        </div>
+        <p>Download Excel spreadsheets of your inventory, batches, low stock alerts, or recipes at any time.</p>
+        <div class="guide-links">
+            <a href="/export/inventory-excel" class="guide-link">Inventory spreadsheet</a>
+            <a href="/export/batches-excel" class="guide-link">Batches spreadsheet</a>
+            <a href="/export/low-stock-excel" class="guide-link">Low stock report</a>
+            <a href="/export/recipes-excel" class="guide-link">Recipes spreadsheet</a>
+        </div>
+    </div>
+
+</div>
+
+<!-- Typical workflow -->
+<div class="workflow-section">
+    <h2>Typical workflow</h2>
+    <div class="workflow-steps">
+        <div class="workflow-step">
+            <div class="step-num">Step 01</div>
+            <h3>Add materials</h3>
+            <p>Start by adding your raw materials under Inventory — name, category, stock level, unit, and reorder threshold.</p>
+        </div>
+        <div class="workflow-step">
+            <div class="step-num">Step 02</div>
+            <h3>Create recipes</h3>
+            <p>Define a recipe for each product. Specify which materials it uses and the quantity required per batch.</p>
+        </div>
+        <div class="workflow-step">
+            <div class="step-num">Step 03</div>
+            <h3>Run batches</h3>
+            <p>Create a batch from a recipe. The system tracks each batch's status — ready, in progress, or shipped.</p>
+        </div>
+        <div class="workflow-step">
+            <div class="step-num">Step 04</div>
+            <h3>Ship & export</h3>
+            <p>Mark batches as shipped when dispatched. Export any data to Excel for records or reporting.</p>
+        </div>
     </div>
 </div>
+
+<!-- Tips -->
+<div class="workflow-section">
+    <h2>Tips</h2>
+    <div class="tip-box">
+        <strong>Low stock alerts</strong> — Set a reorder level on each material. The Low Stock page shows everything below that threshold so you can reorder before running out.
+    </div>
+    <div class="tip-box">
+        <strong>Manage pages</strong> — Every section has a Manage page where you can edit or delete existing records. Changes to materials or recipes don't retroactively affect already-created batches.
+    </div>
+    <div class="tip-box">
+        <strong>Exports</strong> — Excel exports are a live snapshot. Run them at any point for up-to-date records. Useful for end-of-month reporting or handing off to a supplier.
+    </div>
+</div>
+
 {% endblock %}

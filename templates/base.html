@@ -1,24 +1,528 @@
 <!DOCTYPE html>
-<html>
+<html lang="en">
 <head>
     <meta charset="UTF-8">
-    <title>{% block title %}Botanik{% endblock %}</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{% block title %}Botaniks{% endblock %}</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=DM+Mono:wght@300;400;500&family=Syne:wght@400;500;600;700&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
     {% block extra_styles %}{% endblock %}
+    <style>
+        *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+        :root {
+            --bg:           #0e0f0c;
+            --surface:      #161714;
+            --surface2:     #1e1f1b;
+            --surface3:     #252621;
+            --border:       #2a2b27;
+            --border-light: #333430;
+            --green:        #a8c66c;
+            --green-dim:    #6b8a3a;
+            --green-muted:  rgba(168,198,108,0.08);
+            --red:          #e06c75;
+            --red-muted:    rgba(224,108,117,0.1);
+            --text:         #e8e6df;
+            --text-mid:     #b8b5ac;
+            --text-dim:     #888680;
+            --text-faint:   #4a4a46;
+            --sidebar-width: 240px;
+            --topbar-height: 52px;
+            --radius:        6px;
+            --transition:    200ms cubic-bezier(0.4,0,0.2,1);
+        }
+
+        html, body {
+            height: 100%;
+            background-color: var(--bg);
+            background-image:
+                /* faint matcha-green ambient glow — top-left */
+                radial-gradient(ellipse 70% 55% at 18% 8%,  rgba(110, 150, 60, 0.07) 0%, transparent 70%),
+                /* secondary warm-green bleed — bottom-right */
+                radial-gradient(ellipse 55% 65% at 88% 92%, rgba(80, 120, 40, 0.05) 0%, transparent 65%),
+                /* very subtle mid glow to avoid harsh flat center */
+                radial-gradient(ellipse 40% 40% at 55% 48%, rgba(90, 130, 50, 0.025) 0%, transparent 60%),
+                /* grain/noise texture overlay */
+                url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='256' height='256'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.75' numOctaves='4' stitchTiles='stitch'/%3E%3CfeColorMatrix type='saturate' values='0'/%3E%3C/filter%3E%3Crect width='256' height='256' filter='url(%23n)' opacity='0.035'/%3E%3C/svg%3E");
+            background-size: 100% 100%, 100% 100%, 100% 100%, 256px 256px;
+            color: var(--text);
+            font-family: 'DM Mono', monospace;
+            font-size: 13px;
+            line-height: 1.6;
+            -webkit-font-smoothing: antialiased;
+        }
+
+        /* ─── Layout ─── */
+        .app-wrapper {
+            display: grid;
+            grid-template-columns: var(--sidebar-width) 1fr;
+            grid-template-rows: var(--topbar-height) 1fr;
+            min-height: 100vh;
+            transition: grid-template-columns var(--transition);
+        }
+        .app-wrapper.collapsed { grid-template-columns: 0px 1fr; }
+
+        /* ─── Top bar ─── */
+        .topbar {
+            grid-column: 1 / -1;
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            padding: 0 20px;
+            background: var(--surface);
+            border-bottom: 1px solid var(--border);
+            position: sticky;
+            top: 0;
+            z-index: 100;
+        }
+
+        .topbar-toggle {
+            display: flex; align-items: center; justify-content: center;
+            width: 28px; height: 28px;
+            background: none; border: none; cursor: pointer;
+            color: var(--text-mid);
+            border-radius: var(--radius);
+            flex-shrink: 0;
+            transition: background var(--transition), color var(--transition);
+        }
+        .topbar-toggle:hover { background: var(--surface2); color: var(--text); }
+
+        .topbar-brand {
+            font-family: 'Syne', sans-serif;
+            font-size: 15px; font-weight: 600;
+            color: var(--text);
+            letter-spacing: 0.02em;
+            text-decoration: none;
+            white-space: nowrap; overflow: hidden;
+        }
+
+        .topbar-divider { width: 1px; height: 16px; background: var(--border); flex-shrink: 0; }
+
+        .topbar-page-title {
+            font-size: 12px;
+            color: var(--text-dim);
+            white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+        }
+
+        /* ─── Sidebar ─── */
+        .sidebar {
+            grid-row: 2; grid-column: 1;
+            background: linear-gradient(180deg, #181a16 0%, var(--surface) 100%);
+            border-right: 1px solid var(--border);
+            overflow-x: hidden; overflow-y: auto;
+            width: var(--sidebar-width);
+            transition: width var(--transition), opacity var(--transition);
+        }
+        .app-wrapper.collapsed .sidebar {
+            width: 0; opacity: 0; border-right-color: transparent; pointer-events: none;
+        }
+        .sidebar::-webkit-scrollbar { width: 4px; }
+        .sidebar::-webkit-scrollbar-track { background: transparent; }
+        .sidebar::-webkit-scrollbar-thumb { background: var(--border); border-radius: 2px; }
+
+        .sidebar-inner { width: var(--sidebar-width); padding: 16px 0 24px; }
+
+        .nav-section { margin-bottom: 6px; }
+
+        .nav-section-label {
+            display: block;
+            padding: 10px 16px 4px;
+            font-size: 10px; font-weight: 500;
+            letter-spacing: 0.12em;
+            color: var(--text-dim);
+            text-transform: uppercase;
+            white-space: nowrap;
+        }
+
+        .nav-link {
+            display: flex; align-items: center;
+            padding: 7px 16px 7px 18px;
+            color: var(--text-mid);
+            text-decoration: none;
+            font-size: 12.5px;
+            white-space: nowrap;
+            border-left: 2px solid transparent;
+            transition: background 150ms ease, color 150ms ease, border-color 150ms ease;
+            position: relative;
+        }
+        .nav-link:hover { background: var(--surface2); color: var(--text); }
+        .nav-link.active {
+            color: var(--green);
+            border-left-color: var(--green);
+            background: var(--green-muted);
+        }
+        .nav-link.active:hover { background: rgba(168,198,108,0.12); }
+        .nav-link.active::after {
+            content: '';
+            position: absolute; right: 12px;
+            width: 4px; height: 4px;
+            border-radius: 50%;
+            background: var(--green-dim);
+        }
+
+        /* ─── Hamburger → X ─── */
+        .icon-menu { display: flex; flex-direction: column; gap: 4px; pointer-events: none; }
+        .icon-menu span {
+            display: block; width: 16px; height: 1.5px;
+            background: currentColor; border-radius: 1px;
+            transition: transform var(--transition), opacity var(--transition), width var(--transition);
+            transform-origin: center;
+        }
+        .app-wrapper:not(.collapsed) .icon-menu span:nth-child(1) { transform: translateY(5.5px) rotate(45deg); }
+        .app-wrapper:not(.collapsed) .icon-menu span:nth-child(2) { opacity: 0; width: 0; }
+        .app-wrapper:not(.collapsed) .icon-menu span:nth-child(3) { transform: translateY(-5.5px) rotate(-45deg); }
+
+        /* ─── Main content ─── */
+        .main-content {
+            grid-row: 2; grid-column: 2;
+            overflow-y: auto;
+            padding: 28px 32px;
+            min-width: 0;
+        }
+        .content-inner { max-width: 1080px; }
+        .main-content::-webkit-scrollbar { width: 6px; }
+        .main-content::-webkit-scrollbar-track { background: transparent; }
+        .main-content::-webkit-scrollbar-thumb { background: var(--border); border-radius: 3px; }
+
+        /* ════════════════════════════════════
+           COMPONENT STYLES
+           (defined after extra_styles block,
+           so these win over template overrides)
+        ════════════════════════════════════ */
+
+        /* ─── Headings ─── */
+        h1 {
+            font-family: 'Syne', sans-serif;
+            font-size: 20px; font-weight: 600;
+            color: var(--text);
+            margin-bottom: 6px;
+            letter-spacing: -0.01em;
+        }
+        h2 {
+            font-family: 'Syne', sans-serif;
+            font-size: 15px; font-weight: 600;
+            color: var(--text);
+            margin-bottom: 12px;
+        }
+        h1 + p, h2 + p { color: var(--text-dim); font-size: 12px; margin-bottom: 20px; }
+
+        /* ─── Tables ─── */
+        .data-table {
+            width: 100%;
+            border-collapse: collapse;
+            margin: 16px 0;
+            font-size: 12.5px;
+        }
+        .data-table th {
+            background: var(--surface2) !important;
+            color: var(--text-dim) !important;
+            font-weight: 500;
+            font-size: 11px;
+            letter-spacing: 0.06em;
+            text-transform: uppercase;
+            padding: 10px 14px !important;
+            border-bottom: 1px solid var(--border) !important;
+            text-align: left;
+        }
+        .data-table td {
+            padding: 10px 14px !important;
+            color: var(--text-mid) !important;
+            border-bottom: 1px solid var(--border) !important;
+            background: transparent !important;
+        }
+        .data-table tbody tr:hover td {
+            background: var(--surface2) !important;
+            color: var(--text) !important;
+        }
+        .data-table tbody tr:last-child td { border-bottom: none !important; }
+
+        /* table wrapper card */
+        .table-card {
+            background: var(--surface);
+            border: 1px solid var(--border);
+            border-radius: var(--radius);
+            overflow: hidden;
+            margin: 16px 0;
+        }
+        .table-card .data-table { margin: 0; }
+
+        /* ─── Forms ─── */
+        .form-group { margin-bottom: 16px !important; }
+
+        label {
+            display: block;
+            margin-bottom: 5px !important;
+            font-size: 11px !important;
+            font-weight: 500 !important;
+            letter-spacing: 0.06em;
+            text-transform: uppercase;
+            color: var(--text-dim) !important;
+        }
+
+        input[type="text"],
+        input[type="number"],
+        input[type="email"],
+        input[type="password"],
+        input[type="date"],
+        select,
+        textarea {
+            width: 100%;
+            padding: 9px 12px !important;
+            background: var(--surface2) !important;
+            border: 1px solid var(--border) !important;
+            border-radius: var(--radius) !important;
+            color: var(--text) !important;
+            font-family: 'DM Mono', monospace !important;
+            font-size: 13px !important;
+            outline: none;
+            transition: border-color 150ms ease, background 150ms ease;
+            -webkit-appearance: none;
+            appearance: none;
+        }
+        input:focus, select:focus, textarea:focus {
+            border-color: var(--green-dim) !important;
+            background: var(--surface3) !important;
+        }
+        input::placeholder, textarea::placeholder { color: var(--text-faint) !important; }
+        select option { background: var(--surface2); color: var(--text); }
+
+        /* form card wrapper */
+        .form-card {
+            background: var(--surface);
+            border: 1px solid var(--border);
+            border-radius: var(--radius);
+            padding: 24px;
+            max-width: 540px;
+            margin-top: 16px;
+        }
+
+        /* ─── Buttons ─── */
+        button,
+        .btn,
+        input[type="submit"] {
+            background: var(--surface2) !important;
+            color: var(--text) !important;
+            border: 1px solid var(--border) !important;
+            padding: 8px 18px !important;
+            border-radius: var(--radius) !important;
+            font-family: 'DM Mono', monospace !important;
+            font-size: 12.5px !important;
+            cursor: pointer;
+            text-decoration: none;
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+            transition: background 150ms ease, border-color 150ms ease, color 150ms ease;
+        }
+        button:hover,
+        .btn:hover,
+        input[type="submit"]:hover {
+            background: var(--surface3) !important;
+            border-color: var(--border-light) !important;
+            color: var(--text) !important;
+        }
+
+        /* primary / green button */
+        button[type="submit"],
+        .btn-primary,
+        .export-btn {
+            background: var(--green-muted) !important;
+            border-color: var(--green-dim) !important;
+            color: var(--green) !important;
+        }
+        button[type="submit"]:hover,
+        .btn-primary:hover,
+        .export-btn:hover {
+            background: rgba(168,198,108,0.14) !important;
+            border-color: var(--green) !important;
+        }
+
+        /* danger button */
+        .btn-danger,
+        button.btn-danger {
+            background: var(--red-muted) !important;
+            border-color: rgba(224,108,117,0.3) !important;
+            color: var(--red) !important;
+        }
+        .btn-danger:hover { background: rgba(224,108,117,0.16) !important; }
+
+        /* ship/small action button */
+        .btn-ship,
+        button.btn-ship {
+            padding: 4px 10px !important;
+            font-size: 11.5px !important;
+            background: var(--green-muted) !important;
+            border-color: var(--green-dim) !important;
+            color: var(--green) !important;
+        }
+        .btn-ship:hover { background: rgba(168,198,108,0.14) !important; }
+
+        /* ─── Export / action row ─── */
+        .export-btn {
+            display: inline-flex !important;
+            text-decoration: none;
+            margin: 0 0 16px !important;
+        }
+
+        /* ─── Empty states ─── */
+        .empty-state {
+            padding: 40px 0;
+            color: var(--text-dim);
+            font-size: 13px;
+        }
+        .empty-state a { color: var(--green); text-decoration: none; }
+        .empty-state a:hover { text-decoration: underline; }
+
+        /* catch template inline empty-state styles */
+        p[style*="color:#666"] {
+            color: var(--text-dim) !important;
+        }
+        p[style*="color:#666"] a { color: var(--green) !important; }
+
+        /* ─── Stat pill ─── */
+        .stat-pill {
+            display: inline-block;
+            background: var(--surface2);
+            border: 1px solid var(--border);
+            border-radius: 20px;
+            padding: 3px 12px;
+            font-size: 11.5px;
+            color: var(--text-dim);
+            margin-bottom: 16px;
+        }
+
+        /* ─── Page header row ─── */
+        .page-header {
+            display: flex;
+            align-items: baseline;
+            gap: 14px;
+            margin-bottom: 20px;
+            padding-bottom: 16px;
+            border-bottom: 1px solid var(--border);
+        }
+        .page-header h1 { margin: 0; }
+
+        /* ─── Alerts / flash ─── */
+        .alert {
+            padding: 10px 14px;
+            border-radius: var(--radius);
+            margin-bottom: 16px;
+            font-size: 12.5px;
+            border: 1px solid var(--border);
+            background: var(--surface2);
+            color: var(--text-mid);
+        }
+        .alert-success { background: var(--green-muted); border-color: var(--green-dim); color: var(--green); }
+        .alert-error   { background: var(--red-muted);   border-color: rgba(224,108,117,0.3); color: var(--red); }
+
+        /* ─── Error page ─── */
+        .error-box {
+            background: var(--surface) !important;
+            border: 1px solid var(--border) !important;
+            border-left: 3px solid var(--red) !important;
+            border-radius: var(--radius) !important;
+            padding: 28px !important;
+            max-width: 520px;
+            margin-top: 20px;
+        }
+        .error-box h1 { color: var(--red) !important; }
+        .error-box code {
+            background: var(--surface2) !important;
+            color: var(--text-mid) !important;
+            padding: 2px 6px !important;
+            border-radius: 3px !important;
+        }
+
+        /* ─── Links ─── */
+        a { color: var(--text-mid); }
+        a:hover { color: var(--text); }
+
+        /* ─── Scrollbar global ─── */
+        ::-webkit-scrollbar { width: 6px; height: 6px; }
+        ::-webkit-scrollbar-track { background: transparent; }
+        ::-webkit-scrollbar-thumb { background: var(--border); border-radius: 3px; }
+    </style>
 </head>
 <body>
-<div class="container">
 
-    <a href="/" class="logo">
-        <img src="{{ url_for('static', filename='images/logo.png') }}" alt="Botanik Logo">
-    </a>
+<div class="app-wrapper" id="appWrapper">
 
-    {% if back_link %}
-    <a href="{{ back_link_url }}" class="back-link">← {{ back_link_label }}</a>
-    {% endif %}
+    <!-- Top bar -->
+    <header class="topbar">
+        <button class="topbar-toggle" id="sidebarToggle" aria-label="Toggle sidebar">
+            <span class="icon-menu" aria-hidden="true">
+                <span></span><span></span><span></span>
+            </span>
+        </button>
+        <a href="/" class="topbar-brand">Botaniks</a>
+        <div class="topbar-divider"></div>
+        <span class="topbar-page-title">
+            {% block page_title %}{% if page_title %}{{ page_title }}{% else %}Dashboard{% endif %}{% endblock %}
+        </span>
+    </header>
 
-    {% block content %}{% endblock %}
+    <!-- Sidebar -->
+    <nav class="sidebar" aria-label="Main navigation">
+        <div class="sidebar-inner">
+
+            <div class="nav-section">
+                <span class="nav-section-label">Inventory</span>
+                <a href="/inventory"        class="nav-link {% if request.path == '/inventory' %}active{% endif %}">View Inventory</a>
+                <a href="/add-material"     class="nav-link {% if request.path == '/add-material' %}active{% endif %}">Add Material</a>
+                <a href="/low-stock"        class="nav-link {% if request.path == '/low-stock' %}active{% endif %}">Low Stock</a>
+                <a href="/manage-materials" class="nav-link {% if request.path == '/manage-materials' %}active{% endif %}">Manage Materials</a>
+            </div>
+
+            <div class="nav-section">
+                <span class="nav-section-label">Batches</span>
+                <a href="/batches"          class="nav-link {% if request.path == '/batches' %}active{% endif %}">View Batches</a>
+                <a href="/create-batch"     class="nav-link {% if request.path == '/create-batch' %}active{% endif %}">Create Batch</a>
+                <a href="/shipped-batches"  class="nav-link {% if request.path == '/shipped-batches' %}active{% endif %}">Shipped Batches</a>
+                <a href="/manage-batches"   class="nav-link {% if request.path == '/manage-batches' %}active{% endif %}">Manage Batches</a>
+            </div>
+
+            <div class="nav-section">
+                <span class="nav-section-label">Recipes</span>
+                <a href="/recipes"          class="nav-link {% if request.path == '/recipes' %}active{% endif %}">View Recipes</a>
+                <a href="/add-recipe"       class="nav-link {% if request.path == '/add-recipe' %}active{% endif %}">Add Recipe</a>
+                <a href="/manage-recipes"   class="nav-link {% if request.path == '/manage-recipes' %}active{% endif %}">Manage Recipes</a>
+            </div>
+
+            <div class="nav-section">
+                <span class="nav-section-label">Exports</span>
+                <a href="/export/inventory-excel" class="nav-link {% if request.path == '/export/inventory-excel' %}active{% endif %}">Inventory Excel</a>
+                <a href="/export/batches-excel"   class="nav-link {% if request.path == '/export/batches-excel' %}active{% endif %}">Batches Excel</a>
+                <a href="/export/low-stock-excel" class="nav-link {% if request.path == '/export/low-stock-excel' %}active{% endif %}">Low Stock Excel</a>
+                <a href="/export/recipes-excel"   class="nav-link {% if request.path == '/export/recipes-excel' %}active{% endif %}">Recipes Excel</a>
+            </div>
+
+        </div>
+    </nav>
+
+    <!-- Main content -->
+    <main class="main-content">
+        <div class="content-inner">
+            {% block content %}{% endblock %}
+        </div>
+    </main>
 
 </div>
+
+<script>
+    (function () {
+        var wrapper = document.getElementById('appWrapper');
+        var KEY = 'botaniks_sidebar_collapsed';
+        function apply(c) { wrapper.classList.toggle('collapsed', c); }
+        apply(localStorage.getItem(KEY) === 'true');
+        document.getElementById('sidebarToggle').addEventListener('click', function () {
+            var c = !wrapper.classList.contains('collapsed');
+            apply(c);
+            localStorage.setItem(KEY, c);
+        });
+    })();
+</script>
+
 </body>
 </html>
