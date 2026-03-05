@@ -33,6 +33,7 @@
                 <form method="POST" action="/batches/{{ row['batch_id'] }}/mark-shipped"
                       onsubmit="return confirm('Mark this batch as shipped?')">
                     <button type="submit" class="btn-ship">Ship</button>
+                    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
                 </form>
             </td>
         </tr>

@@ -20,5 +20,6 @@ button:hover { background: #7da34f; }
     <div class="form-group"><label>Notes (Optional)</label><input type="text" name="notes"></div>
     <div class="form-group"><label>Batch ID (Optional)</label><input type="number" name="batch_id" min="1"></div>
     <button type="submit">Create Batch</button>
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
 </form>
 {% endblock %}

@@ -64,6 +64,7 @@ textarea { resize: vertical; height: 60px; }
         <button type="button" class="add-btn" onclick="addMaterial()">+ Add Another Material</button>
         <br><br>
         <button type="submit" class="btn btn-green">Save Changes</button>
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
     </form>
 </div>
 
@@ -73,6 +74,7 @@ textarea { resize: vertical; height: 60px; }
     <form method="POST" action="/edit-recipe/{{ recipe_id }}/delete"
           onsubmit="return confirm('Delete recipe {{ product_name }}? This cannot be undone.')">
         <button type="submit" class="btn btn-red">Delete Recipe</button>
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
     </form>
 </div>
 

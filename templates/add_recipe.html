@@ -52,6 +52,7 @@ button[type="submit"]:hover { background: #7da34f; }
     <button type="button" class="add-btn" onclick="addMaterial()">+ Add Another Material</button>
     <br><br>
     <button type="submit">Create Recipe</button>
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
 </form>
 
 <script>

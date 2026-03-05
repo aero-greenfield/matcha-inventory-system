@@ -48,6 +48,7 @@ textarea { resize: vertical; height: 80px; }
             <textarea name="notes">{{ batch[5] or '' }}</textarea>
         </div>
         <button type="submit" class="btn btn-green">Save Changes</button>
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
     </form>
 </div>
 
@@ -60,6 +61,7 @@ textarea { resize: vertical; height: 80px; }
             <label><input type="radio" name="status" value="Shipped" {% if batch[4] == 'Shipped' %}checked{% endif %}> Shipped</label>
         </div>
         <button type="submit" class="btn btn-green">Update Status</button>
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
     </form>
 </div>
 
@@ -73,6 +75,7 @@ textarea { resize: vertical; height: 80px; }
             <label for="reallocate" style="font-weight:normal;">Reallocate materials back to inventory</label>
         </div>
         <button type="submit" class="btn btn-red">Delete Batch</button>
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
     </form>
 </div>
 {% endblock %}
