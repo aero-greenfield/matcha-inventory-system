@@ -1,0 +1,43 @@
+{% extends "base.html" %}
+
+{% block title %}Audit Log{% endblock %}
+
+{% block extra_styles %}
+<style>
+.data-table { width: 100%; border-collapse: collapse; margin: 20px 0; }
+.data-table th, .data-table td { padding: 12px; text-align: left; border-bottom: 1px solid #ddd; }
+.data-table th { background: #6c757d; color: white; }
+.data-table tr:hover { background: #e2e3e5; }
+.data-table td.action { font-weight: bold; white-space: nowrap; }
+.data-table td.timestamp { color: #666; white-space: nowrap; }
+.data-table td.details { word-break: break-word; }
+</style>
+{% endblock %}
+
+{% block content %}
+<h1>Audit Log</h1>
+<p>Showing last {{ count }} entries.</p>
+
+{% if logs %}
+<table class="data-table">
+    <thead>
+        <tr>
+            <th>Timestamp</th>
+            <th>Action</th>
+            <th>Details</th>
+        </tr>
+    </thead>
+    <tbody>
+        {% for row in logs %}
+        <tr>
+            <td class="timestamp">{{ row['timestamp'] }}</td>
+            <td class="action">{{ row['action'] }}</td>
+            <td class="details">{{ row['details'] }}</td>
+        </tr>
+        {% endfor %}
+    </tbody>
+</table>
+{% else %}
+<p style="color:#666;">No audit log entries found.</p>
+{% endif %}
+{% endblock %}

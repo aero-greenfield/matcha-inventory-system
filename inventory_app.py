@@ -7,6 +7,43 @@ from database import get_db_connection
 import pandas as pd
 from datetime import datetime
 import os
+import logging
+
+#LOGGING SET UP
+
+def log_action(action, details=None):
+    """
+    Writes an entry to the audit_log table.
+    Called from app.py after any successful data mutation.
+    
+    action: short string describing what happened (e.g. 'material_added')
+    details: optional string with relevant context (e.g. 'name=Matcha, stock=100')
+    """
+    db = get_db_connection()
+    cursor = db.cursor()
+    try:
+        db.execute(cursor, """
+            INSERT INTO audit_log (action, details)
+            VALUES (%s, %s)
+        """, (action, details))
+        db.commit()
+    except Exception as e:
+        logging.error(f"Failed to write audit log: {e}")
+    finally:
+        db.close()
+
+def view_logs():
+    """
+    View audit log — shows all recorded actions with timestamps.
+    GET route, read-only.
+    """
+    db = get_db_connection()
+    query = """SELECT action, details, timestamp 
+                FROM audit_log 
+                ORDER BY timestamp DESC LIMIT 200"""
+    df = pd.read_sql_query(query, db.conn)
+    db.close()
+    return df
 
 # ========================
 # DATABASE SETUP
@@ -115,7 +152,7 @@ def add_raw_material(name, category, stock_level, unit, reorder_level, cost_per_
         return db.get_last_insert_id(cursor)
 
     except Exception as e:
-        print(f"Error: {e}")
+        logging.error(f"Error: {e}")
         db.rollback()
         return None
     finally:
@@ -173,7 +210,7 @@ def get_material_by_id(material_id):
         return result
 
     except Exception as e:
-        print(f"Error: {e}")
+        logging.error(f"Error: {e}")
         return None
 
     finally:
@@ -211,7 +248,7 @@ def update_raw_material(material_id, name=None, category=None, stock_level=None,
         return True
 
     except Exception as e:
-        print(f"Error changing material details: {e}")
+        logging.error(f"Error changing material details: {e}")
         db.rollback()
         return None
     
@@ -270,7 +307,7 @@ def increase_raw_material(material_id, increase_amount):
         return new_stock_level
 
     except Exception as e:
-        print(f"Error: {e}")
+        logging.error(f"Error: {e}")
         db.rollback()
         return None
 
@@ -296,7 +333,7 @@ def get_raw_material(name):
         return result
 
     except Exception as e:
-        print(f"Error: {e}")
+        logging.error(f"Error: {e}")
         db.rollback()
         return None
 
@@ -323,7 +360,7 @@ def get_all_materials_with_id():
         return result
 
     except Exception as e:
-        print(f"error getting all materials with id: {e}")
+        logging.error(f"error getting all materials with id: {e}")
         db.close()
         return None
 
@@ -372,7 +409,7 @@ def decrease_raw_material(material_id, decrease_amount):
         return new_stock_level
 
     except Exception as e:
-        print(f"Error: {e}")
+        logging.error(f"Error: {e}")
         db.rollback()
         return None
 
@@ -395,7 +432,7 @@ def delete_raw_material(material_id):
         print(f"Deleted material with ID {material_id} from raw materials")
 
     except Exception as e:
-        print(f"Error: {e}")
+        logging.error(f"Error: {e}")
         db.rollback()
         return None
 
@@ -515,13 +552,13 @@ def add_to_batches(product_name, quantity, notes=None, batch_id = None, deduct_r
 
     except ValueError as e:
         # Re-raise ValueError so app.py can catch it and show to user
-        print(f"Error adding to batches: {e}")
+        logging.error(f"Error adding to batches: {e}")
         db.rollback()
         raise  # ← Re-raises the ValueError to app.py
 
     except Exception as e:
         # If any error occurs during the process, print it and undo all changes
-        print(f"Error adding to batches: {e}")
+        logging.error(f"Error adding to batches: {e}")
         db.rollback()  # Rollback ensures database stays consistent
         return None
 
@@ -585,7 +622,7 @@ def mark_as_shipped(batch_id):
         return True
 
     except Exception as e:
-        print(f" Error: {e}")
+        logging.error(f" Error: {e}")
         db.rollback()
         return False
     finally:
@@ -672,7 +709,7 @@ def delete_batch(batch_id, reallocate=False):
 
     except Exception as e:
         db.rollback()
-        print(f"Error deleting batch: {e}")
+        logging.error(f"Error deleting batch: {e}")
         return None
 
     finally:
@@ -699,7 +736,7 @@ def get_all_batches_with_id():
         return result
 
     except Exception as e:
-        print(f"error getting all materials with id: {e}")
+        logging.error(f"error getting all materials with id: {e}")
         
         return None
     
@@ -728,7 +765,7 @@ def get_batch_by_id(batch_id):
         return result
     
     except Exception as e:
-        print(f"error getting batch by id: {e}")
+        logging.error(f"error getting batch by id: {e}")
         
         return None
     
@@ -769,7 +806,7 @@ def update_batch(batch_id, product_name=None, quantity=None, date_completed=None
         return True
     
     except Exception as e:
-        print(f"Error changing batch details: {e}")
+        logging.error(f"Error changing batch details: {e}")
         db.rollback()
         return None
     
@@ -809,7 +846,7 @@ def update_batch_status(batch_id, new_status):
         return True
 
     except Exception as e:
-        print(f"Error updating batch status: {e}")
+        logging.error(f"Error updating batch status: {e}")
         db.rollback()
         return None
 
@@ -865,7 +902,7 @@ def get_recipe(product_name):
 
 
     except Exception as e:
-        print(f"Error: {e} \ngetting recipe:{product_name}.")
+        logging.error(f"Error: {e} \ngetting recipe:{product_name}.")
         return None
     
     finally:
@@ -975,7 +1012,7 @@ def add_recipe(product_name, materials, notes=None):
 
 
     except Exception as e:
-        print(f"Error: {e}")
+        logging.error(f"Error: {e}")
         db.rollback()
         return None
     
@@ -1068,7 +1105,7 @@ def change_recipe(product_name, materials, notes= None):
         
 
     except Exception as e:
-        print(f"Error: {e}")
+        logging.error(f"Error: {e}")
         db.rollback()
         return None
     
@@ -1143,7 +1180,7 @@ def delete_recipe(product_name):
         print(f"Deleted {product_name} from recipe log, {product_name}'s recipe:\n{df}")
     
     except Exception as e:
-        print(f"Error: {e}")
+        logging.error(f"Error: {e}")
         db.rollback()
         return None
     
@@ -1177,7 +1214,7 @@ def get_all_recipes_with_id():
         return result
 
     except Exception as e:
-        print(f"Error getting all recipes with id: {e}")
+        logging.error(f"Error getting all recipes with id: {e}")
         return None
     
     finally:
@@ -1219,7 +1256,7 @@ def get_recipe_by_id(recipe_id):
         return df
 
     except Exception as e:
-        print(f"Error: {e} \ngetting recipe by id:{recipe_id}.")
+        logging.error(f"Error: {e} \ngetting recipe by id:{recipe_id}.")
         return None
     
     finally:
@@ -1306,7 +1343,7 @@ def update_recipe(recipe_id, product_name=None, materials=None, notes=None):
         
 
     except Exception as e:
-        print(f"Error: {e}")
+        logging.error(f"Error: {e}")
         db.rollback()
         return None
     
@@ -1340,7 +1377,7 @@ def delete_recipe_by_id(recipe_id):
         return True
 
     except Exception as e:
-        print(f"Error: {e}")
+        logging.error(f"Error: {e}")
         db.rollback()
         return None
 

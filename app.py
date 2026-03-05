@@ -113,6 +113,7 @@ except ImportError:
 # Flask core imports - these are the building blocks of our web app
 from unicodedata import category 
 
+
 from flask import Flask, request, redirect, url_for, jsonify, send_file, render_template
 
 # - Flask: The main application class
@@ -126,7 +127,7 @@ import os  # Operating system functions (file paths, environment variables)
 from datetime import datetime  # For timestamps in exports
 from functools import wraps  # Used for creating decorators (like @requires_auth)
 
-
+from flask_wtf.csrf import CSRFProtect # security necesity. 
 
 # Import all our inventory functions from inventory_app.py
 from inventory_app import (
@@ -134,7 +135,7 @@ from inventory_app import (
     increase_raw_material, decrease_raw_material, get_raw_material, add_to_batches,
     get_batches, mark_as_shipped, delete_batch, get_recipe, add_recipe,
     change_recipe, delete_recipe, delete_raw_material, get_material_by_id, get_all_materials_with_id, update_raw_material, get_all_batches_with_id, get_batch_by_id,
-    update_batch, update_batch_status, update_recipe, get_all_recipes_with_id, get_recipe_by_id)
+    update_batch, update_batch_status, update_recipe, get_all_recipes_with_id, get_recipe_by_id, log_action, view_logs)
 
 
 # Import helper functions for exporting data
@@ -143,16 +144,29 @@ from inventory_app import (
 
 from helper_functions import (export_to_csv, export_to_excel,)
 
+# logging for actions. 
+import logging
 
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s %(levelname)s: %(message)s'
+)
 
+"""
+instead of print statements for actions (ex. adding batche, etc). it logs them with time stamp. will show up in render logs. 
 
+use logging.info("...") instead of print
+""" 
 
 # =======================
 # CREATE FLASK APP
 # =======================
 
 app = Flask(__name__)  # creates flask instance, so this web app name is 'app' which can be used to run the server and define routes.
- 
+
+# CSRFprotect 
+app.config['SECRET_KEY'] = os.environ.get('SECRET_KEY', 'dev-secret-key')
+csrf = CSRFProtect(app)
 
 # WHAT IS 'app':
 # Think of 'app' as your web server. When you do @app.route('/inventory'),
@@ -180,11 +194,11 @@ try:
     from database import get_connection, get_db_connection
     conn = get_connection()
     conn.close()
-    print("[SUCCESS] Database connection successful")
+    logging.info("[SUCCESS] Database connection successful")
     if not DATABASE_URL:
         create_database()  # SQLite: always ensure tables exist
 except:
-    print("[INIT] Initializing database...")
+    logging.info("[INIT] Initializing database...")
     create_database()
 
 
@@ -264,6 +278,7 @@ def requires_auth(f):
 
         # Check if auth exists AND is valid
         if not auth or not check_auth(auth.username, auth.password):
+            logging.warning(f"Failed auth attempt for user: {auth.username if auth else 'no credentials'}")
             return authenticate()  # Show login prompt
 
         # Authentication successful! Run the original function
@@ -325,6 +340,26 @@ def index():
 
 #???:
 # does this actually create buttons for pages? is the html code in idex. html responsible for the buttons?
+
+#=================
+#LOGGING PAGE
+#===============
+
+@app.route('/audit-log')
+@requires_auth
+def view_audit_log():
+    df = view_logs()
+    logs = df.to_dict(orient='records') if not df.empty else []
+    return render_template("audit_log.html",
+        logs=logs,
+        count=len(logs),
+        back_link=True,
+        back_link_url="/",
+        back_link_label="Back to Home"
+    )
+
+
+
 
 
 
@@ -517,6 +552,8 @@ def add_material_route():
         # actual page we're on, which is /inventory. also, redirecting after POST is a common 
         # best practice to prevent form resubmission if user refreshes the page.
         if result:
+            logging.info(f"Material added: '{name}' | category={category}, stock={stock_level}, unit={unit}")
+            log_action('material_added', f"name={name}, category={category}, stock={stock_level}, unit={unit}")
             # if succesful data addition. Redirect to inventory page to show updated inventory with new material.
             return redirect(url_for('view_inventory'))
         else:
@@ -694,7 +731,9 @@ def adjust_stock(material_id):
         result = decrease_raw_material(material_id, amount) # Call function to decrease stock (returns new stock level or None if failed)
 
     if result is not None:
-        return redirect(url_for('edit_material', material_id=material_id, msg=f'Stock updated to {result}')) # if successful, REDIRECT back to edit materil page. 
+        logging.info(f"Stock adjusted: material_id={material_id}, action={action}, amount={amount}, new_stock={result}")
+        log_action('stock_adjusted', f"material_id={material_id}, action={action}, amount={amount}, new_stock={result}")
+        return redirect(url_for('edit_material', material_id=material_id, msg=f'Stock updated to {result}')) # if successful, REDIRECT back to edit materil page.
     else:
         return redirect(url_for('edit_material', material_id=material_id, err='Stock update failed. Check there is enough stock to decrease.'))
     
@@ -746,6 +785,8 @@ def update_material_details(material_id):
                                  reorder_level=reorder_level, cost_per_unit=cost_per_unit, supplier=supplier) # call function, with updated details. 
 
     if result:
+        logging.info(f"Material details updated: material_id={material_id}, name={name}, category={category}, unit={unit}")
+        log_action('material_updated', f"material_id={material_id}, name={name}, category={category}")
         return redirect(url_for('edit_material', material_id=material_id, msg='Details updated successfully'))
     else:
         return redirect(url_for('edit_material', material_id=material_id, err='Failed to update details'))
@@ -755,7 +796,10 @@ def update_material_details(material_id):
 # Route to handle deleting a material from inventory
 @requires_auth
 def delete_material(material_id):
+    
     delete_raw_material(material_id)
+    logging.info(f"Material deleted: material_id={material_id}")
+    log_action('material_deleted', f"material_id={material_id}")
     return redirect(url_for('manage_materials'))
 
 
@@ -806,6 +850,8 @@ def mark_batch_as_shipped(batch_id):
     
     """
     mark_as_shipped(batch_id) # call function to update batch status in database.
+    logging.info(f"Batch marked as shipped: batch_id={batch_id}")
+    log_action('batch_shipped', f"batch_id={batch_id}")
     return redirect(url_for('view_batches')) # after marking as shipped, redirect back to batches page to see updated status.
 
 
@@ -930,6 +976,8 @@ def create_batch():
         try:
             result = add_to_batches(product_name, quantity, notes=notes, batch_id=batch_id, deduct_resources=True)
             if result:
+                logging.info(f"Batch created: product='{product_name}', quantity={quantity}, batch_id={batch_id}")
+                log_action('batch_created', f"product={product_name}, quantity={quantity}, batch_id={result}")
                 return redirect(url_for('view_batches'))
             else:
                 return render_template('error.html',
@@ -946,6 +994,7 @@ def create_batch():
             ), 400
 
         except Exception as e:
+            logging.error(f"create_batch: {e}")
             return render_template('error.html',
                 title="Unexpected Error",
                 message=str(e),
@@ -1046,6 +1095,8 @@ def update_batch_details(batch_id):
     result = update_batch(batch_id, product_name=product_name, quantity=quantity, notes=notes)
 
     if result:
+        logging.info(f"Batch details updated: batch_id={batch_id}, product_name={product_name}, quantity={quantity}")
+        log_action('batch_updated', f"batch_id={batch_id}, product_name={product_name}, quantity={quantity}")
         return redirect(url_for('edit_batch', batch_id=batch_id, msg='Batch details updated successfully'))
     else:
         return redirect(url_for('edit_batch', batch_id=batch_id, err='Failed to update batch details'))
@@ -1064,6 +1115,8 @@ def change_batch_status(batch_id):
 
     result = update_batch_status(batch_id, new_status)
     if result:
+        logging.info(f"Batch status changed: batch_id={batch_id}, new_status={new_status}")
+        log_action('batch_status_changed', f"batch_id={batch_id}, new_status={new_status}")
         return redirect(url_for('edit_batch', batch_id=batch_id, msg=f'Batch status updated to {new_status}'))
     
     else:
@@ -1074,7 +1127,10 @@ def change_batch_status(batch_id):
 @requires_auth
 def delete_batch_route(batch_id):
     reallocate = request.form.get('reallocate') == 'true'
+    
     delete_batch(batch_id, reallocate=reallocate)
+    logging.info(f"Batch deleted: batch_id={batch_id}, reallocate={reallocate}")
+    log_action('batch_deleted', f"batch_id={batch_id}, reallocate={reallocate}")
     return redirect(url_for('manage_batches'))
 
 
@@ -1279,6 +1335,8 @@ def add_recipe_route():
             # materials is the list of dictionaries we build from form data. 
             if result:
                 #success
+                logging.info(f"Recipe added: '{product_name}' with {len(materials)} materials")
+                log_action('recipe_added', f"product_name={product_name}, materials={len(materials)}")
                 return redirect(url_for('view_recipes'))
             else:
                 
@@ -1289,6 +1347,7 @@ def add_recipe_route():
                 ), 500
 
         except Exception as e:
+            logging.error(f"add_recipe_route: {e}")
             # Catch any unexpected errors and display them
             # In production, you might want to log this and show a generic message
             return render_template('error.html',
@@ -1446,6 +1505,8 @@ def update_recipe_route(recipe_id):
     
 
     if result:
+        logging.info(f"Recipe updated: recipe_id={recipe_id}, product_name={product_name}")
+        log_action('recipe_updated', f"recipe_id={recipe_id}, product_name={product_name}")
         return redirect(url_for('edit_recipe', recipe_id=recipe_id, msg='Recipe details updated successfully'))
     else:
         return redirect(url_for('edit_recipe', recipe_id=recipe_id, err='Failed to update recipe details'))
@@ -1459,7 +1520,10 @@ def delete_recipe_route(recipe_id):
     simply deletes the recipe from database,
     POST route
     """
+    
     delete_recipe_by_id(recipe_id)
+    logging.info(f"Recipe deleted: recipe_id={recipe_id}")
+    log_action('recipe_deleted', f"recipe_id={recipe_id}")
     return redirect(url_for('manage_recipes'))
 
 
@@ -1479,6 +1543,7 @@ def health_check():
         db.close() # close connection after check
         db_status = 'connected' # status is connected if all above steps work. 
     except Exception as e:
+        logging.error(f"health_check: {e}")
         db_status = f'error: {str(e)}'
     return jsonify({'status': 'healthy', 'db': db_status, 'service': 'matcha-inventory', 'timestamp': datetime.now().isoformat()})
 
@@ -1523,6 +1588,8 @@ This cycle repeats for every request (page load, form submission, etc.)
 """
 
 if __name__ == '__main__':
+
+    
     """
     START THE WEB SERVER
     ====================

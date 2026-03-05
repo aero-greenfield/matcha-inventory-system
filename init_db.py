@@ -25,17 +25,25 @@ HOW TO RUN using subapase postgresql database
 
 ##################new try except block for new load env variable#####################
 ## this is for SUPABASE POSTGRESQL DATABASE CONNECTION ## (new main database)
+
+import os
+
 try:
     from dotenv import load_dotenv
-    load_dotenv()
+    load_dotenv()  # ← load .env FIRST
     print("🔍 Loaded environment variables from .env file")
-
 except ImportError:
     print("🔍 python-dotenv not installed, skipping .env loading")
-    pass 
- 
-from database import get_connection 
- 
+    pass
+
+DATABASE_URL = os.getenv('DATABASE_URL')  # ← THEN read it
+print(f"DATABASE_URL = {DATABASE_URL}")
+
+from database import get_connection
+
+
+
+
 def init_database(): 
    """ 
   Creates all database tables. 
@@ -138,6 +146,32 @@ def init_database():
    """) 
     
    print("  ✅ batch_materials table created") 
+
+
+
+   #=============================
+   # TABLE 6: audit-logs
+   #============================
+
+   if DATABASE_URL:
+    cursor.execute("""
+    CREATE TABLE IF NOT EXISTS audit_log (
+        id SERIAL PRIMARY KEY,
+        action TEXT NOT NULL,
+        details TEXT,
+        timestamp TIMESTAMPTZ DEFAULT NOW()
+    )
+    """)
+   else:
+    cursor.execute("""
+    CREATE TABLE IF NOT EXISTS audit_log (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        action TEXT NOT NULL,
+        details TEXT,
+        timestamp TEXT DEFAULT (datetime('now'))
+    )
+    """)
+   
     
    # ======================================== 
    # Save all changes 
