@@ -321,7 +321,7 @@ def index():
     The index is the home page of app, provides links to other pages in dashboard.
     """
     
-    return render_template("index.html") #retrun the html file for the home page. 
+    return render_template("index.html") #return the html file for the home page. 
 
 #???:
 # does this actually create buttons for pages? is the html code in idex. html responsible for the buttons?
@@ -438,24 +438,79 @@ def add_material_route():
         - float() for decimal numbers (stock_level, cost_per_unit)
         - int() for whole numbers (if needed)
         """
-        try:
-            # get new material data from html input from add_material.html, and call add_raw_material() to add it to database.
-            result = add_raw_material(
-                name=request.form.get('name'),  # Get value from <input name="name"> handled in add_material.html
-                category=request.form.get('category'), 
-                stock_level=float(request.form.get('stock_level', 0)),  # Convert to number
-                unit=request.form.get('unit'),
-                reorder_level=float(request.form.get('reorder_level', 0)),
-                cost_per_unit=float(request.form.get('cost_per_unit', 0)),
-                supplier=request.form.get('supplier') or None  # Optional field
-            )
+        #input string parsing
+        name = request.form.get('name') # Get value from <input name="name"> handled in add_material.html
+        category=request.form.get('category')
+        unit=request.form.get('unit')
+        supplier=request.form.get('supplier')
+
+        name = name.strip() if name else None
+        category = category.strip() if category else None
+        unit = unit.strip() if unit else None
+        supplier = supplier.strip() if supplier else None
+
         
+        
+        #string input validation ( cant be none)
+        if not name:
+                return render_template('error.html',
+                    title="Invalid Input",
+                    message="Material name cannot be blank.",
+                    back_link=True, back_link_url="/add-material", back_link_label="Go back"
+                ), 400
+        
+        if not category:
+                return render_template('error.html',
+                    title="Invalid Input",
+                    message="Material Category cannot be blank.",
+                    back_link=True, back_link_url="/add-material", back_link_label="Go back"
+                ), 400
+        
+        if not unit:
+                return render_template('error.html',
+                    title="Invalid Input",
+                    message="Material Unit cannot be blank.",
+                    back_link=True, back_link_url="/add-material", back_link_label="Go back"
+                ), 400
+        
+    
+        #supplier can be blank
+
+        # numeric input validation (cant be <0 )
+        try: 
+            cost_per_unit=float(request.form.get('cost_per_unit', 0)) # Convert to number ( if cant get anything, return 0)
+            stock_level=float(request.form.get('stock_level', 0))
+            reorder_level=float(request.form.get('reorder_level', 0))
+
         except ValueError:
-            return render_template('error.html', # if there's a value error (e.g., user entered text in stock level), show error page.
+            return render_template('error.html',
                 title="Invalid Input",
-                message = "Stock Level, Reorder Level, and Cost must be valid numbers.",
+                message="Stock Level, Reorder Level, and Cost must be valid numbers.",
                 back_link=True, back_link_url="/add-material", back_link_label="Go back"
-        ), 400
+            ), 400
+        
+        if cost_per_unit < 0 or reorder_level < 0 or stock_level < 0:
+            return render_template('error.html',
+                title="Invalid Input",
+                message="Stock Level, Reorder Level, and Cost must be valid numbers and more than 0",
+                back_link=True, back_link_url="/add-material", back_link_label="Go back"
+            ), 400
+        
+
+
+        #function call.
+        
+        
+            # get new material data from html input from add_material.html, and call add_raw_material() to add it to database.
+        result = add_raw_material(
+                name=name,  
+                category= category, 
+                stock_level=stock_level,  
+                unit= unit,
+                reorder_level=reorder_level,
+                cost_per_unit= cost_per_unit,
+                supplier= supplier # Optional field
+            )    
 
         # after getting data, use REDIRECT to go back to inventory page. this is needed because if we just return the inventory page 
         # html here, the URL would still be /add-material, which is not ideal. we want the URL to reflect the 
@@ -467,6 +522,8 @@ def add_material_route():
         else:
             # Failed! Return error message with 500 status code
             return ("Error adding material", 500)
+
+        
 
    
  #note: we dont need if request.method == 'GET' here, because if it's not POST, it must be GET (since we only specified those two methods). 
@@ -610,12 +667,23 @@ def adjust_stock(material_id):
     try:
 
         amount = float(request.form.get('amount', 0)) # Get the amount to adjust (convert to number), this is from the form input in edit_material.html 
-    
+
+        
+
+
     except ValueError:
         return render_template('error.html', # if not found, show error page.
             title="Invalid Input",
             message="Please enter a valid number for the stock adjustment.",
-            back_link=True, back_link_url="/manage-materials", back_link_label="Back to Manage Materials"
+            back_link=True, back_link_url=f"/edit-material/{material_id}", back_link_label="Back to Edit Material"
+        ), 400
+    
+    #input validation: > =0
+    if amount <= 0:
+        return render_template('error.html', # if not found, show error page.
+            title="Invalid Input",
+            message="Please enter a valid number more than 0.",
+            back_link=True, back_link_url=f"/edit-material/{material_id}", back_link_label="Back to Edit Material"
         ), 400
     
     action = request.form.get('action') # Get the action (increase or decrease) from the form submission, this is from the submit button name in edit_material.html, where we have two buttons with name="action" and value="increase" or "decrease".
@@ -644,13 +712,17 @@ def update_material_details(material_id):
     try:
     
         name = request.form.get('name') # Get updated name from form
-        category = request.form.get('category') or None # Get updated category (or None if empty)
-        unit = request.form.get('unit') or None # Get updated unit (or None if empty)
-        reorder_level_str = request.form.get('reorder_level') 
+        name = name.strip() if name else None#validate
+        category = request.form.get('category')  # Get updated category (or None if empty)
+        category = category.strip() if category else None#validate
+        unit = request.form.get('unit') # Get updated unit (or None if empty)
+        unit = unit.strip() if unit else None #validate
+        reorder_level_str = request.form.get('reorder_level')
         cost_per_unit_str = request.form.get('cost_per_unit')
-        reorder_level = float(reorder_level_str) if reorder_level_str else None
-        cost_per_unit = float(cost_per_unit_str) if cost_per_unit_str else None
-        supplier = request.form.get('supplier') or None
+        reorder_level = float(reorder_level_str) if reorder_level_str else None#validate
+        cost_per_unit = float(cost_per_unit_str) if cost_per_unit_str else None#validate
+        supplier = request.form.get('supplier')
+        supplier = supplier.strip() if supplier else None 
     
     except ValueError:
         return render_template('error.html', # if there's a value error (e.g., user entered text in reorder level), show error page.
@@ -658,6 +730,15 @@ def update_material_details(material_id):
             message = "Reorder Level and Cost must be valid numbers.",
             back_link=True, back_link_url=f"/edit-material/{material_id}", back_link_label="Go back"
         ), 400
+    
+    #numeric input validation( cant be be zero or less)
+    if (reorder_level is not None and reorder_level <= 0)  or (cost_per_unit is not None and cost_per_unit<= 0):
+        return render_template('error.html', # if there's a value error (e.g., user entered text in reorder level), show error page.
+            title="Invalid Input",
+            message = "Reorder Level and Cost must be greater than 0.",
+            back_link=True, back_link_url=f"/edit-material/{material_id}", back_link_label="Go back"
+        ), 400
+    
 
 
 
@@ -793,27 +874,33 @@ def export_shipped_batches_excel():
 
 
 
-# craete a new batch
 @app.route('/create-batch', methods=['GET', 'POST'])
 @requires_auth
 def create_batch():
-
-
     """
     Adds batches to database based on form submission.
-    This is a complex form that allows users to create a new batch by selecting a product recipe, 
-    specifying the quantity to produce, and optionally adding notes.
-
     uses GET to show the form, and POST to process the form submission.
-    
     """
 
     if request.method == 'POST':
-        # When form is submitted, get all the form data and add to database
+
+        # test parsing
+        product_name = request.form.get('product_name')
+        product_name = product_name.strip() if product_name else None
+        notes = request.form.get('notes')
+        notes = notes.strip() if notes else None
+
+        # Text validation 
+        if not product_name:
+            return render_template('error.html',
+                title="Invalid Input",
+                message="Product name cannot be blank.",
+                back_link=True, back_link_url="/create-batch", back_link_label="Go back to Create Batch"
+            ), 400
+
+        #  numeric parsing 
         try:
-            product_name = request.form.get('product_name')
             quantity = float(request.form.get('quantity'))
-            Notes = request.form.get('notes') or None
             batch_id_str = request.form.get('batch_id')
             batch_id = int(batch_id_str) if batch_id_str else None
 
@@ -823,15 +910,28 @@ def create_batch():
                 message="Quantity and batch ID must be valid numbers.",
                 back_link=True, back_link_url="/create-batch", back_link_label="Go back to Create Batch"
             ), 400
-        
-        try:
 
-            result = add_to_batches(product_name, quantity, notes=Notes, batch_id = batch_id, deduct_resources=True)
-            # If successful, redirect to batches page, otherwise show error
+        # numeric validation 
+        if quantity <= 0:
+            return render_template('error.html',
+                title="Invalid Input",
+                message="Quantity must be greater than zero.",
+                back_link=True, back_link_url="/create-batch", back_link_label="Go back to Create Batch"
+            ), 400
+
+        if batch_id is not None and batch_id <= 0:
+            return render_template('error.html',
+                title="Invalid Input",
+                message="Batch ID must be a positive number.",
+                back_link=True, back_link_url="/create-batch", back_link_label="Go back to Create Batch"
+            ), 400
+
+        # call function
+        try:
+            result = add_to_batches(product_name, quantity, notes=notes, batch_id=batch_id, deduct_resources=True)
             if result:
                 return redirect(url_for('view_batches'))
-            else: 
-                #show generic error page
+            else:
                 return render_template('error.html',
                     title="Error",
                     message="Failed to create batch. Check terminal for details.",
@@ -839,8 +939,6 @@ def create_batch():
                 ), 500
 
         except ValueError as e:
-            #show the specific error message from add_to_batches
-            # For example, if not enough materials, show that message
             return render_template('error.html',
                 title="Error",
                 message=str(e),
@@ -848,21 +946,17 @@ def create_batch():
             ), 400
 
         except Exception as e:
-            # Catch-all for unexpected errors
             return render_template('error.html',
                 title="Unexpected Error",
                 message=str(e),
                 back_link=True, back_link_url="/create-batch", back_link_label="Go back to Create Batch"
             ), 500
-        
 
-    # If it's a GET request, show the form to create a new batch
     return render_template("create_batch.html",
-    back_link=True,
-    back_link_url="/",
-    back_link_label="Back to Home"
-)
-
+        back_link=True,
+        back_link_url="/",
+        back_link_label="Back to Home"
+    )
 
 #========================
 #MANAGMENT OF BATCHES 
@@ -884,6 +978,9 @@ def manage_batches():
         back_link_url="/",
         back_link_label="Back to Home"
 )
+
+
+
 
 @app.route('/edit-batch/<int:batch_id>') # dynamic URL for editing a specific batch, identified by batch_id. 
 @requires_auth
