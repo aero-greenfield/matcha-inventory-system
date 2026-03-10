@@ -569,6 +569,12 @@ def add_to_batches(product_name, quantity, notes=None, batch_id=None, deduct_res
                 SET stock_level = stock_level - %s
                 WHERE material_id = %s
                     """,(required_amount, material_id,))
+                
+                if cursor.rowcount == 0:
+                    raise ValueError(
+                    f"Failed to deduct stock for '{material_name}' (id={material_id}). "
+                    "The material may have been deleted or the recipe has a broken reference."
+    )
 
                 #add to batch_materials
                 db.execute(cursor, """
