@@ -165,8 +165,12 @@ use logging.info("...") instead of print
 app = Flask(__name__)  # creates flask instance, so this web app name is 'app' which can be used to run the server and define routes.
 
 # CSRFprotect 
-app.config['SECRET_KEY'] = os.environ.get('SECRET_KEY', 'dev-secret-key')
+secret = os.environ.get('SECRET_KEY')
+if not secret:
+    raise RuntimeError("SECRET_KEY environment variable must be set")
+app.config['SECRET_KEY'] = secret
 csrf = CSRFProtect(app)
+
 
 # WHAT IS 'app':
 # Think of 'app' as your web server. When you do @app.route('/inventory'),
@@ -805,7 +809,12 @@ def update_material_details(material_id):
 @requires_auth
 def delete_material(material_id):
     
-    delete_raw_material(material_id)
+    result = delete_raw_material(material_id)
+    if not result:
+        return render_template('error.html',
+            title="Delete Failed",
+            message="Could not delete material. Please try again.",
+        ), 500
     logging.info(f"Material deleted: material_id={material_id}")
     log_action('material_deleted', f"material_id={material_id}")
     return redirect(url_for('manage_materials'))
@@ -857,7 +866,12 @@ def mark_batch_as_shipped(batch_id):
     click button, mark batch as shipped. this is a POST route
     
     """
-    mark_as_shipped(batch_id) # call function to update batch status in database.
+    result = mark_as_shipped(batch_id) # call function to update batch status in database.
+    if not result:
+        return render_template('error.html',
+            title="Ship Failed",
+            message="Could not mark batch as shipped. The batch may not exist.",
+        ), 500
     logging.info(f"Batch marked as shipped: batch_id={batch_id}")
     log_action('batch_shipped', f"batch_id={batch_id}")
     return redirect(url_for('view_batches')) # after marking as shipped, redirect back to batches page to see updated status.
@@ -1002,10 +1016,10 @@ def create_batch():
             ), 400
 
         except Exception as e:
-            logging.error(f"create_batch: {e}")
+            logging.error(f"create_batch: {e}", exc_info=True)
             return render_template('error.html',
                 title="Unexpected Error",
-                message=str(e),
+                message="An unexpected error occurred. Please try again.",
                 back_link=True, back_link_url="/create-batch", back_link_label="Go back to Create Batch"
             ), 500
 
@@ -1136,7 +1150,12 @@ def change_batch_status(batch_id):
 def delete_batch_route(batch_id):
     reallocate = request.form.get('reallocate') == 'true'
     
-    delete_batch(batch_id, reallocate=reallocate)
+    result = delete_batch(batch_id, reallocate=reallocate)
+    if not result:
+        return render_template('error.html',
+            title="Delete Failed",
+            message="Could not delete batch. The batch may not exist.",
+        ), 500
     logging.info(f"Batch deleted: batch_id={batch_id}, reallocate={reallocate}")
     log_action('batch_deleted', f"batch_id={batch_id}, reallocate={reallocate}")
     return redirect(url_for('manage_batches'))
@@ -1355,13 +1374,10 @@ def add_recipe_route():
                 ), 500
 
         except Exception as e:
-            logging.error(f"add_recipe_route: {e}")
-            # Catch any unexpected errors and display them
-            # In production, you might want to log this and show a generic message
+            logging.error(f"add_recipe_route: {e}", exc_info=True)
             return render_template('error.html',
                 title="Error Adding Recipe",
-                message="An error occurred.",
-                error_detail=str(e),
+                message="An unexpected error occurred. Please try again.",
                 back_link=True, back_link_url="/add-recipe", back_link_label="Go back and try again"
             ), 500
 
@@ -1529,7 +1545,12 @@ def delete_recipe_route(recipe_id):
     POST route
     """
     
-    delete_recipe_by_id(recipe_id)
+    result = delete_recipe_by_id(recipe_id)
+    if not result:
+        return render_template('error.html',
+            title="Delete Failed",
+            message="Could not delete recipe. Please try again.",
+        ), 500
     logging.info(f"Recipe deleted: recipe_id={recipe_id}")
     log_action('recipe_deleted', f"recipe_id={recipe_id}")
     return redirect(url_for('manage_recipes'))
@@ -1551,8 +1572,8 @@ def health_check():
         db.close() # close connection after check
         db_status = 'connected' # status is connected if all above steps work. 
     except Exception as e:
-        logging.error(f"health_check: {e}")
-        db_status = f'error: {str(e)}'
+        logging.error(f"health_check: {e}", exc_info=True)
+        db_status = 'error'
     return jsonify({'status': 'healthy', 'db': db_status, 'service': 'matcha-inventory', 'timestamp': datetime.now().isoformat()})
 
 

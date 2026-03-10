@@ -437,16 +437,22 @@ def delete_raw_material(material_id):
 
     try:
         db.execute(cursor, """
+        DELETE FROM recipe_materials
+        WHERE material_id = %s
+        """, (material_id,))
+
+
+        db.execute(cursor, """
         DELETE FROM raw_materials
         WHERE material_id = %s
-                       """,(material_id,))
-        
+        """, (material_id,))
 
         if cursor.rowcount == 0:
             raise ValueError(f"Material ID {material_id} not found — nothing deleted")
-        
+
         db.commit()
         logging.info(f"Deleted material with ID {material_id} from raw materials")
+        return True
 
     except Exception as e:
         logging.error(f"Error: {e}")
@@ -476,7 +482,10 @@ def add_to_batches(product_name, quantity, notes=None, batch_id = None, deduct_r
         recipe_df = get_recipe(product_name)
 
         if recipe_df is None or recipe_df.empty:
-            raise ValueError(f"No recipe found for {product_name}")  #make sure there is a recipe for that product
+            raise ValueError(
+                f"Recipe '{product_name}' has no materials. "
+                "A material may have been deleted — please recreate it or update the recipe."
+            )
             
         date_completed = datetime.now().strftime('%Y-%m-%d %H:%M:%S')    
         
@@ -725,6 +734,7 @@ def delete_batch(batch_id, reallocate=False):
                 raise ValueError(f"batch ID {batch_id} not found — nothing deleted")
             db.commit()
             logging.info(f"Successfully deleted batch {batch_id}.")
+            return True
 
 
 
@@ -1389,18 +1399,17 @@ def delete_recipe_by_id(recipe_id):
 
     try:
         db.execute(cursor, """
+        DELETE FROM recipe_materials
+        WHERE recipe_id = %s
+        """, (recipe_id,))
+
+        db.execute(cursor, """
         DELETE FROM recipes
         WHERE recipe_id = %s
         """, (recipe_id,))
 
         if cursor.rowcount == 0:
             raise ValueError(f"Recipe with id {recipe_id} not found.")
-            
-
-        db.execute(cursor, """
-        DELETE FROM recipe_materials
-        WHERE recipe_id = %s
-        """, (recipe_id,))
 
         db.commit()
         logging.info(f"Deleted recipe with id {recipe_id}")
