@@ -900,6 +900,39 @@ def update_batch_status(batch_id, new_status):
 
     finally:
         db.close()
+
+
+def get_batch_materials(batch_id):
+    """
+    Gets all batch materials for specific batch_id
+
+    """
+    db = get_db_connection()
+    cursor = db.cursor()
+
+    try:
+
+        query="""
+        SELECT rm.name AS material_name, bm.quantity_used, rm.unit
+        FROM batch_materials bm
+        JOIN raw_materials rm ON bm.material_id = rm.material_id
+        WHERE bm.batch_id = %s
+        ORDER BY rm.name ASC
+        """
+        db.execute(cursor, query, (batch_id,))
+        result = cursor.fetchall()
+        return result if result else []
+
+    except Exception as e:
+        logging.error(f"Error getting batch materials: {e}")
+        return []
+    
+    finally:
+        db.close()
+
+
+
+    
 # ========================
 # RECIPE FUNCTIONS
 # ========================

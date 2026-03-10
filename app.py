@@ -135,7 +135,7 @@ from inventory_app import (
     increase_raw_material, decrease_raw_material, get_raw_material, add_to_batches,
     get_batches, mark_as_shipped, delete_batch, get_recipe, add_recipe,
     change_recipe, delete_recipe, delete_raw_material, get_material_by_id, get_all_materials_with_id, update_raw_material, get_all_batches_with_id, get_batch_by_id,
-    update_batch, update_batch_status, update_recipe, get_all_recipes_with_id, get_recipe_by_id, log_action, view_logs)
+    update_batch, update_batch_status, update_recipe, get_all_recipes_with_id, get_recipe_by_id, log_action, view_logs, get_batch_materials)
 
 
 # Import helper functions for exporting data
@@ -876,6 +876,16 @@ def mark_batch_as_shipped(batch_id):
     log_action('batch_shipped', f"batch_id={batch_id}")
     return redirect(url_for('view_batches')) # after marking as shipped, redirect back to batches page to see updated status.
 
+
+@app.route('/batches/<int:batch_id>/materials')
+@requires_auth
+def batch_materials(batch_id):
+    rows = get_batch_materials(batch_id)
+    materials = [
+        {'material_name': r[0], 'quantity_used': r[1], 'unit': r[2]}
+        for r in rows
+    ]
+    return jsonify(materials)
 
 
 

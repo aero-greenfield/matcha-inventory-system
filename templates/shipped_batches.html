@@ -2,6 +2,55 @@
 
 {% block title %}Shipped Batches{% endblock %}
 
+{% block extra_styles %}
+<style>
+.materials-toggle {
+    background: none;
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    padding: 4px 10px;
+    font-size: 12px;
+    color: var(--text-muted);
+    cursor: pointer;
+}
+.materials-toggle:hover {
+    background: var(--content-bg);
+    color: var(--text);
+}
+.materials-row td {
+    padding: 0 !important;
+    border-bottom: 1px solid var(--border);
+}
+.materials-detail {
+    padding: 12px 24px 12px 32px;
+    background: #f0faf6;
+}
+.materials-inner-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 13px;
+}
+.materials-inner-table th {
+    padding: 7px 12px;
+    text-align: left;
+    font-size: 11px;
+    font-weight: 600;
+    color: var(--text-muted);
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    border-bottom: 1px solid var(--border);
+}
+.materials-inner-table td {
+    padding: 7px 12px;
+    color: var(--text);
+    border-bottom: 1px solid #e2f2ec;
+}
+.materials-inner-table tbody tr:last-child td {
+    border-bottom: none;
+}
+</style>
+{% endblock %}
+
 {% block content %}
 
 <div class="page-header">
@@ -15,10 +64,18 @@
 {% if batches %}
 <div class="table-container">
     <table class="data-table">
-        <thead><tr>{% for col in columns %}<th>{{ col }}</th>{% endfor %}</tr></thead>
+        <thead><tr>{% for col in columns %}<th>{{ col }}</th>{% endfor %}<th></th></tr></thead>
         <tbody>
             {% for row in batches %}
-            <tr>{% for col in columns %}<td>{{ row[col] }}</td>{% endfor %}</tr>
+            <tr>
+                {% for col in columns %}<td>{{ row[col] }}</td>{% endfor %}
+                <td><button class="materials-toggle" data-batch-id="{{ row['batch_id'] }}">&#9654; Materials</button></td>
+            </tr>
+            <tr class="materials-row" id="materials-{{ row['batch_id'] }}" style="display:none;">
+                <td colspan="{{ columns|length + 1 }}">
+                    <div class="materials-detail">Loading...</div>
+                </td>
+            </tr>
             {% endfor %}
         </tbody>
     </table>
@@ -28,5 +85,46 @@
     <p>No shipped batches found.</p>
 </div>
 {% endif %}
+
+<script>
+document.querySelectorAll('.materials-toggle').forEach(function(btn) {
+  btn.addEventListener('click', function() {
+    var batchId = this.dataset.batchId;
+    var row = document.getElementById('materials-' + batchId);
+    var detail = row.querySelector('.materials-detail');
+    var isOpen = row.style.display !== 'none';
+
+    if (isOpen) {
+      row.style.display = 'none';
+      this.innerHTML = '&#9654; Materials';
+      return;
+    }
+
+    if (!detail.dataset.loaded) {
+      fetch('/batches/' + batchId + '/materials')
+        .then(function(r) { return r.json(); })
+        .then(function(materials) {
+          if (materials.length === 0) {
+            detail.innerHTML = '<em>No materials recorded for this batch.</em>';
+          } else {
+            var html = '<table class="materials-inner-table"><thead><tr><th>Material</th><th>Quantity Used</th><th>Unit</th></tr></thead><tbody>';
+            materials.forEach(function(m) {
+              html += '<tr><td>' + m.material_name + '</td><td>' + m.quantity_used + '</td><td>' + m.unit + '</td></tr>';
+            });
+            html += '</tbody></table>';
+            detail.innerHTML = html;
+          }
+          detail.dataset.loaded = 'true';
+        })
+        .catch(function() {
+          detail.innerHTML = '<em>Failed to load materials.</em>';
+        });
+    }
+
+    row.style.display = '';
+    this.innerHTML = '&#9660; Materials';
+  });
+});
+</script>
 
 {% endblock %}
