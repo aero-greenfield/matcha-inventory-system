@@ -512,8 +512,9 @@ def add_material_route():
         #supplier can be blank
 
         # numeric input validation (cant be <0 )
-        try: 
-            cost_per_unit=float(request.form.get('cost_per_unit', 0)) # Convert to number ( if cant get anything, return 0)
+        try:
+            cost_per_unit_str = request.form.get('cost_per_unit')
+            cost_per_unit = float(cost_per_unit_str) if cost_per_unit_str else None
             stock_level=float(request.form.get('stock_level', 0))
             reorder_level=float(request.form.get('reorder_level', 0))
 
@@ -523,11 +524,18 @@ def add_material_route():
                 message="Stock Level, Reorder Level, and Cost must be valid numbers.",
                 back_link=True, back_link_url="/add-material", back_link_label="Go back"
             ), 400
-        
-        if cost_per_unit <= 0 or reorder_level <= 0 or stock_level <= 0:
+
+        if reorder_level <= 0 or stock_level <= 0:
             return render_template('error.html',
                 title="Invalid Input",
-                message="Stock Level, Reorder Level, and Cost must be valid numbers and more than 0",
+                message="Stock Level and Reorder Level must be valid numbers and more than 0",
+                back_link=True, back_link_url="/add-material", back_link_label="Go back"
+            ), 400
+
+        if cost_per_unit is not None and cost_per_unit <= 0:
+            return render_template('error.html',
+                title="Invalid Input",
+                message="Cost per Unit must be greater than 0",
                 back_link=True, back_link_url="/add-material", back_link_label="Go back"
             ), 400
         
