@@ -143,7 +143,7 @@ def create_database():
 # RAW MATERIALS FUNCTIONS
 # ========================
  
-def add_raw_material(name, category, stock_level, unit, reorder_level, cost_per_unit, supplier=None):
+def add_raw_material(name, category, stock_level, unit, reorder_level, cost_per_unit=None, supplier=None):
     # adds material to raw_materials
 
     db = get_db_connection()
