@@ -68,4 +68,11 @@
     </form>
 </div>
 
+<script src="{{ url_for('static', filename='js/autocomplete.js') }}"></script>
+<script>
+document.addEventListener('DOMContentLoaded', () => {
+    attachAutocomplete(document.querySelector('[name="product_name"]'), fetchRecipes);
+});
+</script>
+
 {% endblock %}

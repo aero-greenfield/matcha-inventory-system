@@ -63,6 +63,7 @@
     </form>
 </div>
 
+<script src="{{ url_for('static', filename='js/autocomplete.js') }}"></script>
 <script>
 let materialCount = {{ materials | length }};
 
@@ -83,6 +84,7 @@ function addMaterial() {
         <button type="button" class="btn btn-danger" onclick="removeMaterial(${materialCount})" style="align-self:flex-end;padding:9px 12px;">&#x2715;</button>
     `;
     container.appendChild(newRow);
+    attachAutocomplete(newRow.querySelector(`[name="material_name_${materialCount}"]`), fetchMaterials);
     materialCount++;
 }
 
@@ -95,6 +97,12 @@ function removeMaterial(index) {
     const row = document.getElementById('material-row-' + index);
     if (row) row.remove();
 }
+
+document.addEventListener('DOMContentLoaded', () => {
+    document.querySelectorAll('[name^="material_name_"]').forEach(input => {
+        attachAutocomplete(input, fetchMaterials);
+    });
+});
 </script>
 
 {% endblock %}

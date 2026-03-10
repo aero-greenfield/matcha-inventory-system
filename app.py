@@ -1547,6 +1547,27 @@ def health_check():
         db_status = f'error: {str(e)}'
     return jsonify({'status': 'healthy', 'db': db_status, 'service': 'matcha-inventory', 'timestamp': datetime.now().isoformat()})
 
+
+# api for drop down autocomplete search on recipes, (required js to impliment)
+@app.route('/api/materials')
+@requires_auth
+def api_materials():
+    df = get_all_materials()
+    if df.empty:
+        return jsonify([])
+    return jsonify(df['name'].dropna().sort_values().tolist())
+
+
+# api for drop down autocomplete search on batches, (required js to impliment)
+#automatically detects users search when making batch
+@app.route('/api/recipes')
+@requires_auth
+def api_recipes():
+    df = get_all_recipes()
+    if df.empty:
+        return jsonify([])
+    return jsonify(df['recipe_product_name'].dropna().drop_duplicates().sort_values().tolist())
+
 # ========================
 # START THE APP
 # ========================
