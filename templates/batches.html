@@ -2,45 +2,45 @@
 
 {% block title %}Batches{% endblock %}
 
-{% block extra_styles %}
-<style>
-.data-table { width: 100%; border-collapse: collapse; margin: 20px 0; }
-.data-table th, .data-table td { padding: 12px; text-align: left; border-bottom: 1px solid #ddd; }
-.data-table th { background: #dc3545; color: white; }
-.data-table tr:hover { background: #fff3cd; }
-.export-btn { display: inline-block; background: #97bc62; color: white; padding: 10px 20px; border-radius: 5px; text-decoration: none; margin: 10px 0; }
-.export-btn:hover { background: #7da34f; }
-.btn-ship { background: #4a7c59; color: white; border: none; padding: 4px 10px; border-radius: 4px; cursor: pointer; font-size: 0.85rem; }
-.btn-ship:hover { background: #3a6147; }
-</style>
-{% endblock %}
-
 {% block content %}
-<h1>📦 Batches</h1>
-<p>Total batches: {{ count }}</p>
+
+<div class="page-header">
+    <div>
+        <h1>Batches</h1>
+        <p class="page-subtitle">Ready batches awaiting shipment</p>
+    </div>
+    <div style="display:flex;gap:10px;">
+        <a href="/export/batches-excel" class="btn btn-secondary">&#8595; Export Excel</a>
+        <a href="/create-batch" class="btn btn-primary">+ New Batch</a>
+    </div>
+</div>
 
 {% if batches %}
-<a href="/export/batches-excel" class="export-btn">📥 Export to Excel</a>
-<table class="data-table">
-    <thead>
-        <tr>{% for col in columns %}<th>{{ col }}</th>{% endfor %}<th>Actions</th></tr>
-    </thead>
-    <tbody>
-        {% for row in batches %}
-        <tr>
-            {% for col in columns %}<td>{{ row[col] }}</td>{% endfor %}
-            <td>
-                <form method="POST" action="/batches/{{ row['batch_id'] }}/mark-shipped"
-                      onsubmit="return confirm('Mark this batch as shipped?')">
-                    <button type="submit" class="btn-ship">Ship</button>
-                    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-                </form>
-            </td>
-        </tr>
-        {% endfor %}
-    </tbody>
-</table>
+<div class="table-container">
+    <table class="data-table">
+        <thead>
+            <tr>{% for col in columns %}<th>{{ col }}</th>{% endfor %}<th>Actions</th></tr>
+        </thead>
+        <tbody>
+            {% for row in batches %}
+            <tr>
+                {% for col in columns %}<td>{{ row[col] }}</td>{% endfor %}
+                <td>
+                    <form method="POST" action="/batches/{{ row['batch_id'] }}/mark-shipped"
+                          onsubmit="return confirm('Mark this batch as shipped?')" style="display:inline;">
+                        <button type="submit" class="btn btn-primary" style="padding:5px 12px;font-size:12px;">Ship</button>
+                        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                    </form>
+                </td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+</div>
 {% else %}
-<p style="color:#666;">No batches available. <a href="/create-batch">Create your first batch</a></p>
+<div class="table-container" style="padding:40px 24px;text-align:center;color:var(--text-muted);">
+    <p>No batches available. <a href="/create-batch" style="color:var(--accent);">Create your first batch</a></p>
+</div>
 {% endif %}
+
 {% endblock %}

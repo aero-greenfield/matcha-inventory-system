@@ -2,45 +2,61 @@
 
 {% block title %}Low Stock{% endblock %}
 
-{% block extra_styles %}
-<style>
-.data-table { width: 100%; border-collapse: collapse; margin: 20px 0; }
-.data-table th, .data-table td { padding: 12px; text-align: left; border-bottom: 1px solid #ddd; }
-.data-table th { background: #dc3545; color: white; }
-.data-table tr:hover { background: #fff3cd; }
-.export-btn { display: inline-block; background: #97bc62; color: white; padding: 10px 20px; border-radius: 5px; text-decoration: none; margin: 10px 0; }
-.export-btn:hover { background: #7da34f; }
-</style>
-{% endblock %}
-
 {% block content %}
-<h1>⚠️ Low Stock Alerts</h1>
+
+<div class="page-header">
+    <div>
+        <h1>Low Stock Alerts</h1>
+        <p class="page-subtitle">
+            {% if materials %}{{ count }} material(s) need reordering{% else %}All materials adequately stocked{% endif %}
+        </p>
+    </div>
+    {% if materials %}
+    <a href="/export/low-stock-excel" class="btn btn-secondary">&#8595; Export Excel</a>
+    {% endif %}
+</div>
 
 {% if materials %}
-<p style="color:red;font-size:18px;">⚠️ {{ count }} material(s) need reordering:</p>
-<a href="/export/low-stock-excel" class="export-btn">📥 Export to Excel</a>
-<table class="data-table">
-    <thead>
-        <tr>
-            <th>Name</th><th>Category</th><th>Stock Level</th>
-            <th>Unit</th><th>Reorder Level</th><th>Cost Per Unit</th><th>Supplier</th>
-        </tr>
-    </thead>
-    <tbody>
-        {% for row in materials %}
-        <tr>
-            <td>{{ row.name }}</td>
-            <td>{{ row.category }}</td>
-            <td>{{ row.stock_level }}</td>
-            <td>{{ row.unit }}</td>
-            <td>{{ row.reorder_level }}</td>
-            <td>{{ row.cost_per_unit }}</td>
-            <td>{{ row.supplier }}</td>
-        </tr>
-        {% endfor %}
-    </tbody>
-</table>
+<div class="table-container">
+    <table class="data-table">
+        <thead>
+            <tr>
+                <th>Name</th>
+                <th>Category</th>
+                <th>Stock Level</th>
+                <th>Unit</th>
+                <th>Reorder Level</th>
+                <th>Cost Per Unit</th>
+                <th>Supplier</th>
+                <th>Status</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for row in materials %}
+            <tr>
+                <td><strong>{{ row.name }}</strong></td>
+                <td>{{ row.category }}</td>
+                <td>{{ row.stock_level }}</td>
+                <td>{{ row.unit }}</td>
+                <td>{{ row.reorder_level }}</td>
+                <td>{{ row.cost_per_unit }}</td>
+                <td>{{ row.supplier }}</td>
+                <td>
+                    {% if row.stock_level == 0 %}
+                        <span class="badge badge-out">Out of Stock</span>
+                    {% else %}
+                        <span class="badge badge-low">Low Stock</span>
+                    {% endif %}
+                </td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+</div>
 {% else %}
-<p style="color:green;font-size:18px;">✅ All materials are adequately stocked!</p>
+<div class="table-container" style="padding:40px 24px;text-align:center;color:var(--text-muted);">
+    <p>All materials are adequately stocked.</p>
+</div>
 {% endif %}
+
 {% endblock %}

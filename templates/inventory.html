@@ -1,46 +1,63 @@
 {% extends "base.html" %}
 
-{% block title %}Inventory{% endblock %}
-
-{% block extra_styles %}
-<style>
-.data-table { width: 100%; border-collapse: collapse; margin: 20px 0; }
-.data-table th, .data-table td { padding: 12px; text-align: left; border-bottom: 1px solid #ddd; }
-.data-table th { background: #97bc62; color: white; font-weight: bold; }
-.data-table tr:hover { background: #f0f8f0; }
-.export-btn { display: inline-block; background: #97bc62; color: white; padding: 10px 20px; border-radius: 5px; text-decoration: none; margin: 10px 0; }
-.export-btn:hover { background: #7da34f; }
-</style>
-{% endblock %}
+{% block title %}Raw Materials{% endblock %}
 
 {% block content %}
-<h1>📦 Current Inventory</h1>
-<p>Total materials: {{ count }}</p>
+
+<div class="page-header">
+    <div>
+        <h1>Raw Materials</h1>
+        <p class="page-subtitle">Manage your raw material inventory</p>
+    </div>
+    <div style="display:flex;gap:10px;align-items:center;">
+        <a href="/export/inventory-excel" class="btn btn-secondary">&#8595; Export Excel</a>
+        <a href="/add-material" class="btn btn-primary">+ Add Material</a>
+    </div>
+</div>
 
 {% if materials %}
-<a href="/export/inventory-excel" class="export-btn">📥 Export to Excel</a>
-<table class="data-table">
-    <thead>
-        <tr>
-            <th>Name</th><th>Category</th><th>Stock Level</th>
-            <th>Unit</th><th>Reorder Level</th><th>Cost Per Unit</th><th>Supplier</th>
-        </tr>
-    </thead>
-    <tbody>
-        {% for row in materials %}
-        <tr>
-            <td>{{ row.name }}</td>
-            <td>{{ row.category }}</td>
-            <td>{{ row.stock_level }}</td>
-            <td>{{ row.unit }}</td>
-            <td>{{ row.reorder_level }}</td>
-            <td>{{ row.cost_per_unit }}</td>
-            <td>{{ row.supplier }}</td>
-        </tr>
-        {% endfor %}
-    </tbody>
-</table>
+<div class="table-container">
+    <table class="data-table">
+        <thead>
+            <tr>
+                <th>Name</th>
+                <th>Category</th>
+                <th>Stock Level</th>
+                <th>Unit</th>
+                <th>Reorder Level</th>
+                <th>Cost Per Unit</th>
+                <th>Supplier</th>
+                <th>Status</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for row in materials %}
+            <tr>
+                <td><strong>{{ row.name }}</strong></td>
+                <td>{{ row.category }}</td>
+                <td>{{ row.stock_level }}</td>
+                <td>{{ row.unit }}</td>
+                <td>{{ row.reorder_level }}</td>
+                <td>{{ row.cost_per_unit }}</td>
+                <td>{{ row.supplier }}</td>
+                <td>
+                    {% if row.stock_level == 0 %}
+                        <span class="badge badge-out">Out of Stock</span>
+                    {% elif row.stock_level <= row.reorder_level %}
+                        <span class="badge badge-low">Low Stock</span>
+                    {% else %}
+                        <span class="badge badge-in-stock">In Stock</span>
+                    {% endif %}
+                </td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+</div>
 {% else %}
-<p style="color:#666;">No materials in inventory. <a href="/add-material">Add your first material</a></p>
+<div class="table-container" style="padding:40px 24px;text-align:center;color:var(--text-muted);">
+    <p>No materials in inventory. <a href="/add-material" style="color:var(--accent);">Add your first material</a></p>
+</div>
 {% endif %}
+
 {% endblock %}

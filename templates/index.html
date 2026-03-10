@@ -1,45 +1,79 @@
 {% extends "base.html" %}
 
-{% block title %}Botanik Inventory{% endblock %}
-
-{% block extra_styles %}
-<style>
-h1 { text-align: center; }
-.menu-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 25px; margin-top: 30px; }
-.menu-section { background: #f8f9fa; padding: 20px; border-radius: 10px; border-left: 5px solid #97bc62; }
-.menu-section h2 { color: #2c5f2d; margin-top: 0; font-size: 20px; }
-.menu-item { display: block; background: white; padding: 15px; margin: 10px 0; border-radius: 8px; text-decoration: none; color: #2c5f2d; border: 2px solid #e0e0e0; transition: all 0.3s; }
-.menu-item:hover { background: #97bc62; color: white; transform: translateX(5px); border-color: #97bc62; }
-.emoji { font-size: 20px; margin-right: 10px; }
-</style>
-{% endblock %}
+{% block title %}Dashboard{% endblock %}
 
 {% block content %}
-<h1>Botanik Inventory Management System</h1>
-<div class="menu-grid">
-    <div class="menu-section">
-        <h2>📦 Inventory & Materials</h2>
-        <a href="/inventory" class="menu-item"><span class="emoji">📋</span> View All Materials</a>
-        <a href="/low-stock" class="menu-item"><span class="emoji">⚠️</span> Low Stock Alerts</a>
-        <a href="/add-material" class="menu-item"><span class="emoji">➕</span> Add New Material</a>
-        <a href="/manage-materials" class="menu-item"><span class="emoji">🔧</span> Manage Materials</a>
-    </div>
-    <div class="menu-section">
-        <h2>🏭 Batch Management</h2>
-        <a href="/batches" class="menu-item"><span class="emoji">📋</span> View Ready Batches</a>
-        <a href="/create-batch" class="menu-item"><span class="emoji">➕</span> Create New Batch</a>
-        <a href="/shipped-batches" class="menu-item"><span class="emoji">🚚</span> View Shipped Batches</a>
-        <a href="/manage-batches" class="menu-item"><span class="emoji">🔧</span> Manage Batches</a>
-    </div>
-    <div class="menu-section">
-        <h2>📖 Recipes</h2>
-        <a href="/recipes" class="menu-item"><span class="emoji">📋</span> View All Recipes</a>
-        <a href="/add-recipe" class="menu-item"><span class="emoji">➕</span> Add New Recipe</a>
-        <a href="/manage-recipes" class="menu-item"><span class="emoji">🔧</span> Manage Recipes</a>
-    </div>
-    <div class="menu-section">
-        <h2>🗒️ System</h2>
-        <a href="/audit-log" class="menu-item"><span class="emoji">🔍</span> View Audit Log</a>
+
+<div class="page-header">
+    <div>
+        <h1>Dashboard</h1>
+        <p class="page-subtitle">Botaniks Inventory Management System</p>
     </div>
 </div>
+
+<div class="stats-grid">
+    <div class="stat-card">
+        <div class="stat-label">Total Materials</div>
+        <div class="stat-value">{{ total_materials if total_materials is defined else '—' }}</div>
+    </div>
+    <div class="stat-card">
+        <div class="stat-label">Low Stock Alerts</div>
+        <div class="stat-value" style="color:var(--accent);">{{ low_stock_count if low_stock_count is defined else '—' }}</div>
+    </div>
+    <div class="stat-card">
+        <div class="stat-label">Active Batches</div>
+        <div class="stat-value">{{ batch_count if batch_count is defined else '—' }}</div>
+    </div>
+    <div class="stat-card">
+        <div class="stat-label">Recipes</div>
+        <div class="stat-value">{{ recipe_count if recipe_count is defined else '—' }}</div>
+    </div>
+</div>
+
+<div class="table-container" style="padding:20px 24px 24px;">
+    <p style="font-size:12px;font-weight:600;text-transform:uppercase;letter-spacing:.06em;color:var(--text-muted);margin-bottom:14px;">Quick Links</p>
+    <div class="dash-grid">
+        <a href="/inventory" class="dash-link">
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/></svg>
+            Raw Materials
+        </a>
+        <a href="/low-stock" class="dash-link">
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg>
+            Low Stock Alerts
+        </a>
+        <a href="/add-material" class="dash-link">
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="16"/><line x1="8" y1="12" x2="16" y2="12"/></svg>
+            Add Material
+        </a>
+        <a href="/manage-materials" class="dash-link">
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="8" y1="6" x2="21" y2="6"/><line x1="8" y1="12" x2="21" y2="12"/><line x1="8" y1="18" x2="21" y2="18"/><line x1="3" y1="6" x2="3.01" y2="6"/><line x1="3" y1="12" x2="3.01" y2="12"/><line x1="3" y1="18" x2="3.01" y2="18"/></svg>
+            Manage Materials
+        </a>
+        <a href="/batches" class="dash-link">
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 3h18v4H3zM3 10h18v4H3zM3 17h18v4H3z"/></svg>
+            Batches
+        </a>
+        <a href="/create-batch" class="dash-link">
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="16"/><line x1="8" y1="12" x2="16" y2="12"/></svg>
+            New Batch
+        </a>
+        <a href="/shipped-batches" class="dash-link">
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="1" y="3" width="15" height="13"/><polygon points="16 8 20 8 23 11 23 16 16 16 16 8"/><circle cx="5.5" cy="18.5" r="2.5"/><circle cx="18.5" cy="18.5" r="2.5"/></svg>
+            Shipped Batches
+        </a>
+        <a href="/recipes" class="dash-link">
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
+            All Recipes
+        </a>
+        <a href="/add-recipe" class="dash-link">
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="16"/><line x1="8" y1="12" x2="16" y2="12"/></svg>
+            Add Recipe
+        </a>
+        <a href="/audit-log" class="dash-link">
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/></svg>
+            Audit Log
+        </a>
+    </div>
+</div>
+
 {% endblock %}

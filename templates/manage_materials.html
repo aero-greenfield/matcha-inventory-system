@@ -2,45 +2,51 @@
 
 {% block title %}Manage Materials{% endblock %}
 
-{% block extra_styles %}
-<style>
-.data-table { width: 100%; border-collapse: collapse; margin: 20px 0; }
-.data-table th, .data-table td { padding: 12px; text-align: left; border-bottom: 1px solid #ddd; }
-.data-table th { background: #97bc62; color: white; font-weight: bold; }
-.data-table tr:hover { background: #f0f8f0; }
-.edit-btn { background: #97bc62; color: white; padding: 6px 12px; border-radius: 4px; text-decoration: none; font-size: 14px; }
-.edit-btn:hover { background: #7da34f; }
-</style>
-{% endblock %}
-
 {% block content %}
-<h1>🔧 Manage Materials</h1>
+
+<div class="page-header">
+    <div>
+        <h1>Manage Materials</h1>
+        <p class="page-subtitle">Edit or remove materials from inventory</p>
+    </div>
+    <a href="/add-material" class="btn btn-primary">+ Add Material</a>
+</div>
 
 {% if materials %}
-<p>Total materials: {{ count }}</p>
-<table class="data-table">
-    <thead>
-        <tr>
-            <th>Name</th><th>Category</th><th>Stock</th><th>Unit</th>
-            <th>Reorder Level</th><th>Cost/Unit</th><th>Supplier</th><th>Action</th>
-        </tr>
-    </thead>
-    <tbody>
-        {% for row in materials %}
-        <tr>
-            <td>{{ row.name }}</td>
-            <td>{{ row.category or '' }}</td>
-            <td>{{ row.stock_level }}</td>
-            <td>{{ row.unit or '' }}</td>
-            <td>{{ row.reorder_level or '' }}</td>
-            <td>{{ row.cost_per_unit or '' }}</td>
-            <td>{{ row.supplier or '' }}</td>
-            <td><a href="/edit-material/{{ row.material_id | int }}" class="edit-btn">Edit</a></td>
-        </tr>
-        {% endfor %}
-    </tbody>
-</table>
+<div class="table-container">
+    <table class="data-table">
+        <thead>
+            <tr>
+                <th>Name</th>
+                <th>Category</th>
+                <th>Stock</th>
+                <th>Unit</th>
+                <th>Reorder Level</th>
+                <th>Cost / Unit</th>
+                <th>Supplier</th>
+                <th></th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for row in materials %}
+            <tr>
+                <td><strong>{{ row.name }}</strong></td>
+                <td>{{ row.category or '' }}</td>
+                <td>{{ row.stock_level }}</td>
+                <td>{{ row.unit or '' }}</td>
+                <td>{{ row.reorder_level or '' }}</td>
+                <td>{{ row.cost_per_unit or '' }}</td>
+                <td>{{ row.supplier or '' }}</td>
+                <td><a href="/edit-material/{{ row.material_id | int }}" class="btn btn-secondary" style="padding:5px 12px;font-size:12px;">Edit</a></td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+</div>
 {% else %}
-<p style="color:#666;">No materials found. <a href="/add-material">Add your first material</a></p>
+<div class="table-container" style="padding:40px 24px;text-align:center;color:var(--text-muted);">
+    <p>No materials found. <a href="/add-material" style="color:var(--accent);">Add your first material</a></p>
+</div>
 {% endif %}
+
 {% endblock %}

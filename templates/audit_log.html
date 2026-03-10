@@ -2,42 +2,40 @@
 
 {% block title %}Audit Log{% endblock %}
 
-{% block extra_styles %}
-<style>
-.data-table { width: 100%; border-collapse: collapse; margin: 20px 0; }
-.data-table th, .data-table td { padding: 12px; text-align: left; border-bottom: 1px solid #ddd; }
-.data-table th { background: #6c757d; color: white; }
-.data-table tr:hover { background: #e2e3e5; }
-.data-table td.action { font-weight: bold; white-space: nowrap; }
-.data-table td.timestamp { color: #666; white-space: nowrap; }
-.data-table td.details { word-break: break-word; }
-</style>
-{% endblock %}
-
 {% block content %}
-<h1>Audit Log</h1>
-<p>Showing last {{ count }} entries.</p>
+
+<div class="page-header">
+    <div>
+        <h1>Audit Log</h1>
+        <p class="page-subtitle">Showing last {{ count }} entries</p>
+    </div>
+</div>
 
 {% if logs %}
-<table class="data-table">
-    <thead>
-        <tr>
-            <th>Timestamp</th>
-            <th>Action</th>
-            <th>Details</th>
-        </tr>
-    </thead>
-    <tbody>
-        {% for row in logs %}
-        <tr>
-            <td class="timestamp">{{ row['timestamp'] }}</td>
-            <td class="action">{{ row['action'] }}</td>
-            <td class="details">{{ row['details'] }}</td>
-        </tr>
-        {% endfor %}
-    </tbody>
-</table>
+<div class="table-container">
+    <table class="data-table">
+        <thead>
+            <tr>
+                <th>Timestamp</th>
+                <th>Action</th>
+                <th>Details</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for row in logs %}
+            <tr>
+                <td style="white-space:nowrap;color:var(--text-muted);">{{ row['timestamp'] }}</td>
+                <td style="white-space:nowrap;font-weight:500;">{{ row['action'] }}</td>
+                <td style="word-break:break-word;">{{ row['details'] }}</td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+</div>
 {% else %}
-<p style="color:#666;">No audit log entries found.</p>
+<div class="table-container" style="padding:40px 24px;text-align:center;color:var(--text-muted);">
+    <p>No audit log entries found.</p>
+</div>
 {% endif %}
+
 {% endblock %}

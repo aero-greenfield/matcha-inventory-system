@@ -66,7 +66,7 @@ def get_connection():
        # Fix: Replace "postgres://" with "postgresql://"
        connection_string = DATABASE_URL.replace('postgres://', 'postgresql://', 1)
 
-       print(f"🔍 get_connection: Connecting to {connection_string[:50]}...")
+       
 
        # Connect to PostgreSQL
        return psycopg2.connect(connection_string)
