@@ -250,9 +250,12 @@ def update_raw_material(material_id, name=None, category=None, stock_level=None,
             SET {key} = %s
             WHERE material_id = %s
             """, (field[key], material_id,))
-
+        
+        
+            if cursor.rowcount == 0:
+                    raise ValueError(f"material ID {material_id} not found — nothing updated")
         db.commit()
-        print(f"Updated material with id:{material_id}")
+        logging.info(f"Updated material with id:{material_id}")
         
         return True
 
@@ -437,8 +440,13 @@ def delete_raw_material(material_id):
         DELETE FROM raw_materials
         WHERE material_id = %s
                        """,(material_id,))
+        
+
+        if cursor.rowcount == 0:
+            raise ValueError(f"Material ID {material_id} not found — nothing deleted")
+        
         db.commit()
-        print(f"Deleted material with ID {material_id} from raw materials")
+        logging.info(f"Deleted material with ID {material_id} from raw materials")
 
     except Exception as e:
         logging.error(f"Error: {e}")
@@ -656,7 +664,7 @@ def delete_batch(batch_id, reallocate=False):
         row = cursor.fetchone()
 
         if not row:
-            print(f"Batch ID {batch_id} not found in batches.")
+            logging.info(f"Batch ID {batch_id} not found in batches.")
             return None
 
 
@@ -696,10 +704,13 @@ def delete_batch(batch_id, reallocate=False):
                 DELETE FROM batches
                 WHERE batch_id = %s
             """, (batch_id,))
-
+            #make sure it deleted it
+            if cursor.rowcount == 0:
+                raise ValueError(f"batch ID {batch_id} not found — nothing deleted")
+            
             db.commit()
 
-            print(
+            logging.info(
                 f"Successfully deleted batch {batch_id}.\n"
                 f"Reallocated materials: {materials_added}"
                 )
@@ -709,9 +720,11 @@ def delete_batch(batch_id, reallocate=False):
                 DELETE FROM batches
                 WHERE batch_id = %s
             """, (batch_id,))
-
+            #check it deleted
+            if cursor.rowcount == 0:
+                raise ValueError(f"batch ID {batch_id} not found — nothing deleted")
             db.commit()
-            print(f"Successfully deleted batch {batch_id}.")
+            logging.info(f"Successfully deleted batch {batch_id}.")
 
 
 
@@ -799,7 +812,7 @@ def update_batch(batch_id, product_name=None, quantity=None, date_completed=None
             field[key] = value 
 
     if not field: #empty dictionary, no fields to update
-        print("No fields to update")
+        logging.info("No fields to update")
         return
 
     try:
@@ -809,8 +822,11 @@ def update_batch(batch_id, product_name=None, quantity=None, date_completed=None
             SET {key} = %s
             WHERE batch_id = %s
             """, (field[key], batch_id,))         
+        
+        if cursor.rowcount == 0:
+                raise ValueError(f"batch ID {batch_id} not found — nothing updated")
         db.commit()
-        print(f"Updated batch with id:{batch_id}")
+        logging.info(f"Updated batch with id:{batch_id}")
 
         return True
     
@@ -847,11 +863,10 @@ def update_batch_status(batch_id, new_status):
             """, (new_status, batch_id))
 
         if cursor.rowcount == 0:
-            print(f"Batch {batch_id} not found.")
-            return None
+                raise ValueError(f"batch ID {batch_id} not found — nothing updated")
 
         db.commit()
-        print(f"Batch {batch_id} status updated to {new_status}")
+        logging.info(f"Batch {batch_id} status updated to {new_status}")
         return True
 
     except Exception as e:
@@ -1110,6 +1125,7 @@ def change_recipe(product_name, materials, notes= None):
             VALUES (%s,%s,%s,%s)                             
                 """, (recipe_id, material_name, material_id, quantity_needed))
         
+
         db.commit()
         print(f"Recipe '{product_name}' changed successfully with {len(materials)} materials.")
         return recipe_id
@@ -1348,8 +1364,11 @@ def update_recipe(recipe_id, product_name=None, materials=None, notes=None):
             VALUES (%s,%s,%s,%s)                             
                 """, (recipe_id, material_name, material_id, quantity_needed))
         
+
+            if cursor.rowcount == 0:
+                    raise ValueError(f"recipe ID {recipe_id} not found — nothing inserted")
         db.commit()
-        print(f"Recipe with recipe_id:{recipe_id} changed successfully with {len(materials)} materials.")
+        logging.info(f"Recipe with recipe_id:{recipe_id} changed successfully with {len(materials)} materials.")
         return recipe_id
         
 
@@ -1375,8 +1394,8 @@ def delete_recipe_by_id(recipe_id):
         """, (recipe_id,))
 
         if cursor.rowcount == 0:
-            print(f"Recipe with id {recipe_id} not found.")
-            return None
+            raise ValueError(f"Recipe with id {recipe_id} not found.")
+            
 
         db.execute(cursor, """
         DELETE FROM recipe_materials
@@ -1384,7 +1403,7 @@ def delete_recipe_by_id(recipe_id):
         """, (recipe_id,))
 
         db.commit()
-        print(f"Deleted recipe with id {recipe_id}")
+        logging.info(f"Deleted recipe with id {recipe_id}")
         return True
 
     except Exception as e:
