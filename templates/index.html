@@ -2,6 +2,161 @@
 
 {% block title %}Dashboard{% endblock %}
 
+{% block extra_styles %}
+<style>
+/* ── How to Use section ─────────────────────────── */
+.htu-section { margin-top: 24px; }
+
+.htu-toggle {
+    display: flex;
+    align-items: baseline;
+    gap: 8px;
+    cursor: pointer;
+    user-select: none;
+    margin-bottom: 14px;
+}
+
+.htu-toggle-title {
+    font-size: 12px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: .06em;
+    color: var(--text-muted);
+}
+
+.htu-toggle-sub {
+    font-size: 12px;
+    font-weight: 400;
+    color: var(--text-muted);
+    text-transform: none;
+    letter-spacing: normal;
+}
+
+.htu-arrow {
+    font-size: 9px;
+    color: var(--text-muted);
+    transition: transform 0.2s;
+    display: inline-block;
+}
+
+.htu-arrow.open { transform: rotate(90deg); }
+
+.htu-body { display: none; }
+.htu-body.open { display: block; }
+
+/* ── Workflow strip ─────────────────────────────── */
+.htu-workflow {
+    display: flex;
+    align-items: stretch;
+    margin-bottom: 20px;
+    background: var(--card-bg);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    overflow: hidden;
+}
+
+.htu-step {
+    flex: 1;
+    padding: 16px 18px;
+    border-right: 1px solid var(--border);
+}
+
+.htu-step:last-child { border-right: none; }
+
+.htu-step-num {
+    font-size: 10px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: .06em;
+    color: var(--accent);
+    margin-bottom: 4px;
+}
+
+.htu-step-title {
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--text);
+    margin-bottom: 6px;
+}
+
+.htu-step-desc {
+    font-size: 12.5px;
+    color: var(--text-muted);
+    line-height: 1.5;
+}
+
+/* ── Task cards grid ────────────────────────────── */
+.htu-cards {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+    gap: 12px;
+    margin-bottom: 20px;
+}
+
+.htu-card {
+    background: var(--card-bg);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 16px 18px;
+}
+
+.htu-card-title {
+    font-size: 13.5px;
+    font-weight: 600;
+    color: var(--text);
+    margin-bottom: 10px;
+}
+
+.htu-card ol {
+    padding-left: 18px;
+    margin: 0;
+}
+
+.htu-card li {
+    font-size: 12.5px;
+    color: var(--text-muted);
+    line-height: 1.6;
+    margin-bottom: 2px;
+}
+
+.htu-card li a { color: var(--accent); text-decoration: none; }
+.htu-card li a:hover { text-decoration: underline; }
+
+/* ── Tips strip ─────────────────────────────────── */
+.htu-tips {
+    background: rgba(42,176,142,0.06);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 16px 20px;
+}
+
+.htu-tips-label {
+    font-size: 12px;
+    font-weight: 600;
+    color: var(--text-muted);
+    text-transform: uppercase;
+    letter-spacing: .06em;
+    margin-bottom: 10px;
+}
+
+.htu-tips-pills {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+}
+
+.htu-pill {
+    background: rgba(42,176,142,0.1);
+    border: 1px solid rgba(42,176,142,0.25);
+    border-radius: 20px;
+    padding: 4px 13px;
+    font-size: 12px;
+    color: var(--text);
+    line-height: 1.5;
+}
+</style>
+{% endblock %}
+
 {% block content %}
 
 <div class="page-header">
@@ -75,5 +230,158 @@
         </a>
     </div>
 </div>
+
+<!-- How to Use section -->
+<div class="htu-section">
+
+    <div class="htu-toggle" id="htuToggle">
+        <span class="htu-arrow" id="htuArrow">▶</span>
+        <span class="htu-toggle-title">How to Use This System</span>
+        <span class="htu-toggle-sub">— A quick reference guide for navigating the system.</span>
+    </div>
+
+    <div class="htu-body" id="htuBody">
+
+        <!-- Part 1: How it works — workflow strip -->
+        <div class="htu-workflow">
+            <div class="htu-step">
+                <div class="htu-step-num">Step 1</div>
+                <div class="htu-step-title">Materials Stock</div>
+                <div class="htu-step-desc">Raw Materials shows everything currently on hand, including quantities and units. The materials needed to make a recipe must exist here first.</div>
+            </div>
+            <div class="htu-step">
+                <div class="htu-step-num">Step 2</div>
+                <div class="htu-step-title">Recipes</div>
+                <div class="htu-step-desc">All Recipes shows every recipe you have created. New ones are built from existing Raw Materials. A recipe must exist before you can create a batch that uses it.</div>
+            </div>
+            <div class="htu-step">
+                <div class="htu-step-num">Step 3</div>
+                <div class="htu-step-title">Batches</div>
+                <div class="htu-step-desc">When a batch is made, log it with Create New Batch. Pick the recipe, and it tracks what was used, then saves the batch as "Ready".</div>
+            </div>
+            <div class="htu-step">
+                <div class="htu-step-num">Step 4</div>
+                <div class="htu-step-title">Ship It Out</div>
+                <div class="htu-step-desc">When an order ships, mark the batch as Shipped from the Batches page. It moves to the shipped log automatically.</div>
+            </div>
+            <div class="htu-step">
+                <div class="htu-step-num">Step 5</div>
+                <div class="htu-step-title">Manage</div>
+                <div class="htu-step-desc">To edit any details about Raw Materials, Batches, or Recipes, use each section's dedicated Manage page.</div>
+            </div>
+            <div class="htu-step">
+                <div class="htu-step-num">Step 6</div>
+                <div class="htu-step-title">Export</div>
+                <div class="htu-step-desc">Most list pages have an Export to Excel button at the top right. Click it to download a spreadsheet to your computer.</div>
+            </div>
+        </div>
+
+        <!-- Part 2: How to do common tasks — cards -->
+        <div class="htu-cards">
+
+            <div class="htu-card">
+                <div class="htu-card-title">Adding a new material</div>
+                <ol>
+                    <li>Go to <a href="/add-material">Add Material</a>.</li>
+                    <li>Fill in the name, stock amount, and unit (kg, g, bags, etc.).</li>
+                    <li>Set a <strong>Reorder Level</strong> — the quantity at which the system flags it as low stock.</li>
+                    <li>Supplier and cost are optional but useful for records.</li>
+                </ol>
+            </div>
+
+            <div class="htu-card">
+                <div class="htu-card-title">Creating a batch</div>
+                <ol>
+                    <li>Go to <a href="/create-batch">New Batch</a>.</li>
+                    <li>Choose a recipe from your list of recipes.</li>
+                    <li>Enter the quantity and date, then submit.</li>
+                    <li>The batch is saved with status <strong>Ready</strong>.</li>
+                </ol>
+            </div>
+
+            <div class="htu-card">
+                <div class="htu-card-title">Shipping a batch</div>
+                <ol>
+                    <li>Go to <a href="/batches">Batches</a>.</li>
+                    <li>Find the batch and click <strong>Ship</strong>.</li>
+                    <li>It moves to Shipped Batches and leaves the ready list.</li>
+                    <li>You can also change status in <a href="/manage-batches">Manage Batches</a>.</li>
+                </ol>
+            </div>
+
+            <div class="htu-card">
+                <div class="htu-card-title">Editing or deleting a record</div>
+                <ol>
+                    <li>Go to <a href="/manage-materials">Manage Materials</a>, <a href="/manage-batches">Manage Batches</a>, or <a href="/manage-recipes">Manage Recipes</a>.</li>
+                    <li>Click <strong>Edit</strong> to update details.</li>
+                    <li>Click <strong>Delete</strong> to remove it permanently.</li>
+                    <li>Deletes can't be undone — double-check before confirming.</li>
+                </ol>
+            </div>
+
+            <div class="htu-card">
+                <div class="htu-card-title">Responding to low stock</div>
+                <ol>
+                    <li>Go to <a href="/low-stock">Low Stock Alerts</a>.</li>
+                    <li>Everything listed is below its reorder threshold.</li>
+                    <li>Export the list to Excel if you need to share it.</li>
+                    <li>Once restocked, update the quantity in <a href="/manage-materials">Manage Materials</a>.</li>
+                </ol>
+            </div>
+
+            <div class="htu-card">
+                <div class="htu-card-title">Exporting to Excel</div>
+                <ol>
+                    <li>Go to any of: <a href="/inventory">Raw Materials</a>, <a href="/low-stock">Low Stock</a>, <a href="/batches">Batches</a>, <a href="/shipped-batches">Shipped</a>, or <a href="/recipes">All Recipes</a>.</li>
+                    <li>Click the <strong>Export to Excel</strong> button at the top right.</li>
+                    <li>A spreadsheet downloads to your computer automatically.</li>
+                </ol>
+            </div>
+
+        </div>
+
+        <!-- Part 3: Tips row -->
+        <div class="htu-tips">
+            <div class="htu-tips-label">Good to know &amp; in case of emergency:</div>
+            <div class="htu-tips-pills">
+                <span class="htu-pill">The data is safe and backed up nightly — a full copy of all company data is stored every night in case of emergency</span>
+                <span class="htu-pill">The Audit Log records every change made — useful if something looks off</span>
+                <span class="htu-pill">Reorder Level is just a threshold you set — the system doesn't automatically order anything</span>
+                <span class="htu-pill">Recipes need to exist before you can create a batch that uses them</span>
+                <span class="htu-pill">If the page looks wrong, try refreshing before assuming it's a bug</span>
+                <span class="htu-pill">In case of emergency — if data is altered beyond manual fixing, contact the admin to restore the database from a nightly backup</span>
+            </div>
+        </div>
+
+    </div>
+</div>
+
+<script>
+(function () {
+    var toggle = document.getElementById('htuToggle');
+    var body   = document.getElementById('htuBody');
+    var arrow  = document.getElementById('htuArrow');
+    var stored = localStorage.getItem('howToOpen');
+    var isOpen = stored === null ? true : stored === 'true';
+
+    function setState(open) {
+        isOpen = open;
+        if (open) {
+            body.classList.add('open');
+            arrow.classList.add('open');
+        } else {
+            body.classList.remove('open');
+            arrow.classList.remove('open');
+        }
+        localStorage.setItem('howToOpen', open ? 'true' : 'false');
+    }
+
+    setState(isOpen);
+
+    toggle.addEventListener('click', function () {
+        setState(!isOpen);
+    });
+}());
+</script>
 
 {% endblock %}
