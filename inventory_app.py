@@ -123,6 +123,15 @@ def create_database():
                    
                    ) """)
     
+    #Audit Log
+    cursor.execute("""
+    CREATE TABLE IF NOT EXISTS audit_log(
+                   log_id INTEGER PRIMARY KEY AUTOINCREMENT,
+                   action TEXT NOT NULL,
+                   details TEXT,
+                   timestamp DATETIME DEFAULT CURRENT_TIMESTAMP
+                   )""")
+
     # Save all table creations to the database
     conn.commit()
     conn.close()
@@ -881,10 +890,10 @@ def get_recipe(product_name):
         recipe_id = row[0]
         
         query = ("""
-        SELECT r.product_name, 
+        SELECT r.product_name,
         r.notes,
-        rm.material_id, 
-        raw.name AS material_name, 
+        rm.material_id,
+        raw.name AS material_name,
         rm.quantity_needed
         FROM recipes r
         JOIN recipe_materials rm ON r.recipe_id = rm.recipe_id
@@ -893,7 +902,10 @@ def get_recipe(product_name):
         ORDER BY rm.material_name ASC
         """)
 
-        df = pd.read_sql_query(query, db.conn, params= (recipe_id,))
+        db.execute(cursor, query, (recipe_id,))
+        rows = cursor.fetchall()
+        columns = [desc[0] for desc in cursor.description]
+        df = pd.DataFrame(rows, columns=columns)
 
         return df
         
@@ -972,10 +984,9 @@ def add_recipe(product_name, materials, notes=None):
 
         db.execute(cursor,"""
         INSERT INTO recipes (product_name, notes)
-        VALUES (%s, %s)               
+        VALUES (%s, %s)
          """,(product_name, notes))
-        db.execute(cursor,"SELECT LASTVAL()")
-        recipe_id = cursor.fetchone()[0] # get recipe_id, able to add to recipe_materials
+        recipe_id = db.get_last_insert_id(cursor) # get recipe_id, able to add to recipe_materials
 
 
 
