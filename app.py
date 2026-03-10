@@ -957,8 +957,9 @@ def create_batch():
         product_name = product_name.strip() if product_name else None
         notes = request.form.get('notes')
         notes = notes.strip() if notes else None
+        expiration_date = request.form.get('expiration_date', '').strip() or None
 
-        # Text validation 
+        # Text validation
         if not product_name:
             return render_template('error.html',
                 title="Invalid Input",
@@ -994,9 +995,19 @@ def create_batch():
                 back_link=True, back_link_url="/create-batch", back_link_label="Go back to Create Batch"
             ), 400
 
+        if expiration_date:
+            try:
+                datetime.strptime(expiration_date, '%Y-%m-%d')
+            except ValueError:
+                return render_template('error.html',
+                    title="Invalid Input",
+                    message="Invalid expiration date format. Use YYYY-MM-DD.",
+                    back_link=True, back_link_url="/create-batch", back_link_label="Go back to Create Batch"
+                ), 400
+
         # call function
         try:
-            result = add_to_batches(product_name, quantity, notes=notes, batch_id=batch_id, deduct_resources=True)
+            result = add_to_batches(product_name, quantity, notes=notes, batch_id=batch_id, deduct_resources=True, expiration_date=expiration_date)
             if result:
                 logging.info(f"Batch created: product='{product_name}', quantity={quantity}, batch_id={batch_id}")
                 log_action('batch_created', f"product={product_name}, quantity={quantity}, batch_id={result}")
@@ -1096,9 +1107,10 @@ def update_batch_details(batch_id):
         product_name = request.form.get('product_name')
         product_name = product_name.strip() if product_name else None
         quantity_str = request.form.get('quantity')
-        notes = request.form.get('notes') 
+        notes = request.form.get('notes')
         notes = notes.strip() if notes else None
         quantity = float(quantity_str) if quantity_str else None
+        expiration_date = request.form.get('expiration_date', '').strip() or None
 
     except ValueError:
         return render_template('error.html',
@@ -1113,8 +1125,18 @@ def update_batch_details(batch_id):
             message="Quantity must be greater than 0.",
             back_link=True, back_link_url=f"/edit-batch/{batch_id}", back_link_label="Go back to Edit Batch"
         ), 400
-    
-    result = update_batch(batch_id, product_name=product_name, quantity=quantity, notes=notes)
+
+    if expiration_date:
+        try:
+            datetime.strptime(expiration_date, '%Y-%m-%d')
+        except ValueError:
+            return render_template('error.html',
+                title="Invalid Input",
+                message="Invalid expiration date format. Use YYYY-MM-DD.",
+                back_link=True, back_link_url=f"/edit-batch/{batch_id}", back_link_label="Go back to Edit Batch"
+            ), 400
+
+    result = update_batch(batch_id, product_name=product_name, quantity=quantity, notes=notes, expiration_date=expiration_date)
 
     if result:
         logging.info(f"Batch details updated: batch_id={batch_id}, product_name={product_name}, quantity={quantity}")

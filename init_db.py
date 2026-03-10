@@ -119,14 +119,15 @@ def init_database():
    # ======================================== 
    cursor.execute(""" 
    CREATE TABLE IF NOT EXISTS batches( 
-       batch_id SERIAL PRIMARY KEY, 
-       product_name TEXT NOT NULL, 
-       quantity INTEGER, 
-       date_completed TEXT, 
-       status TEXT DEFAULT 'Ready', 
-       notes TEXT, 
-       date_shipped TEXT 
-   ) 
+       batch_id SERIAL PRIMARY KEY,
+       product_name TEXT NOT NULL,
+       quantity INTEGER,
+       date_completed TEXT,
+       status TEXT DEFAULT 'Ready',
+       notes TEXT,
+       date_shipped TEXT,
+       expiration_date TEXT
+   )
    """) 
     
    print("  ✅ batches table created") 

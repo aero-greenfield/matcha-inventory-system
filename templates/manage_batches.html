@@ -24,6 +24,7 @@
                 <th>Status</th>
                 <th>Notes</th>
                 <th>Date Shipped</th>
+                <th>Expiration Date</th>
                 <th></th>
             </tr>
         </thead>
@@ -45,6 +46,7 @@
                 </td>
                 <td>{{ row.notes or '' }}</td>
                 <td>{{ row.date_shipped or '' }}</td>
+                <td>{{ row.expiration_date or '—' }}</td>
                 <td><a href="/edit-batch/{{ row.batch_id | int }}" class="btn btn-secondary" style="padding:5px 12px;font-size:12px;">Edit</a></td>
             </tr>
             {% endfor %}
