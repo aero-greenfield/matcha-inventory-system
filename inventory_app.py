@@ -108,20 +108,15 @@ def create_database():
                     status TEXT DEFAULT 'Ready',
                     notes TEXT,
                     date_shipped TEXT,
-                    expiration_date TEXT
+                    expiration_date TEXT,
+                    planned_completion_date
                     
                    
                 
                    )
                    """)
     
-    # Migration: add planned_completion_date if it doesn't exist yet
-    try:
-        cursor.execute("ALTER TABLE batches ADD COLUMN planned_completion_date TEXT")
-        conn.commit()
-    except Exception:
-        pass  # column already exists
-
+    
     #Batch_materials
     cursor.execute("""
     CREATE TABLE IF NOT EXISTS batch_materials(
