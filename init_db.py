@@ -125,7 +125,8 @@ def init_database():
        status TEXT DEFAULT 'Ready',
        notes TEXT,
        date_shipped TEXT,
-       expiration_date TEXT
+       expiration_date TEXT,
+       planned_completion_date
    )
    """) 
     
