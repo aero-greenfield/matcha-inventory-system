@@ -718,7 +718,13 @@ def delete_batch(batch_id, reallocate=False):
                     "material": material_name,
                     "quantity_added": quantity_used
                     })
-
+            # delete batch materials after adding to list
+            db.execute(cursor, """
+                DELETE 
+                FROM batch_materials
+                WHERE batch_id = %s        
+                                 
+                   """,(bm_id))
             # Delete batch
             db.execute(cursor, """
                 DELETE FROM batches
