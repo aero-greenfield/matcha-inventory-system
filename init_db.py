@@ -37,7 +37,6 @@ except ImportError:
     pass
 
 DATABASE_URL = os.getenv('DATABASE_URL')  # ← THEN read it
-print(f"DATABASE_URL = {DATABASE_URL}")
 
 from database import get_connection
 

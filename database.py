@@ -28,8 +28,6 @@ except ImportError:
 # Railway automatically sets DATABASE_URL environment variable
 DATABASE_URL = os.getenv('DATABASE_URL')
 
-print(f"🔍 database.py: DATABASE_URL = GOOD" if DATABASE_URL else 'None')
-print(f"🔍 database.py: PSYCOPG2_AVAILABLE = GOOD")
 
 
 def get_connection():
@@ -53,8 +51,6 @@ def get_connection():
        # ========================================
        # CLOUD MODE: Use PostgreSQL
        # ========================================
-       print("🔍 get_connection: Using PostgreSQL")
-
        if not PSYCOPG2_AVAILABLE:
            raise ImportError(
                "DATABASE_URL is set but psycopg2 is not installed. "
@@ -75,7 +71,6 @@ def get_connection():
        # ========================================
        # LOCAL MODE: Use SQLite
        # ========================================
-       print("🔍 get_connection: Using SQLite (data/inventory.db)")
        return sqlite3.connect('data/inventory.db')
 
 
@@ -116,8 +111,6 @@ class DatabaseConnection:
         """
         self.conn = raw_connection
         self.is_postgres = DATABASE_URL is not None 
-
-        print(f"🔍 DatabaseConnection: Initialized ({'PostgreSQL' if self.is_postgres else 'SQLite'} mode)")
 
 
     def cursor(self):
@@ -198,13 +191,10 @@ class DatabaseConnection:
             # PostgreSQL: Use LASTVAL() function
             cursor.execute("SELECT LASTVAL()")
             result = cursor.fetchone()[0]
-            print(f"🔍 get_last_insert_id (PostgreSQL): {result}")
             return result
         else:
             # SQLite: Use cursor.lastrowid property
-            result = cursor.lastrowid
-            print(f"🔍 get_last_insert_id (SQLite): {result}")
-            return result
+            return cursor.lastrowid
 
 
 # ============================================================
