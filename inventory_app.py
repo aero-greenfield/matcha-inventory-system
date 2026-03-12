@@ -115,6 +115,13 @@ def create_database():
                    )
                    """)
     
+    # Migration: add planned_completion_date if it doesn't exist yet
+    try:
+        cursor.execute("ALTER TABLE batches ADD COLUMN planned_completion_date TEXT")
+        conn.commit()
+    except Exception:
+        pass  # column already exists
+
     #Batch_materials
     cursor.execute("""
     CREATE TABLE IF NOT EXISTS batch_materials(
@@ -471,18 +478,19 @@ def delete_raw_material(material_id):
 # BATCHES FUNCTIONS
 # ========================
 
-def add_to_batches(product_name, quantity, notes=None, batch_id=None, deduct_resources=True, expiration_date=None):
+def add_to_batches(product_name, quantity, notes=None, batch_id=None, deduct_resources=True, expiration_date=None, planned_completion_date=None):
     """
     adds batch to ready to ship, but asks user if they want to deduct from resources, or just add it.
+    If planned_completion_date is provided, batch is created with status 'Planned' instead of 'Ready'.
     """
     # Connect to the database
     db = get_db_connection()
     cursor = db.cursor()
-    
+
 
 
     try:
-        
+
         #get recipe data frame
         recipe_df = get_recipe(product_name)
 
@@ -491,10 +499,16 @@ def add_to_batches(product_name, quantity, notes=None, batch_id=None, deduct_res
                 f"Recipe '{product_name}' has no materials. "
                 "A material may have been deleted — please recreate it or update the recipe."
             )
-            
-        date_completed = datetime.now().strftime('%Y-%m-%d %H:%M:%S')    
-        
-        
+
+        # Determine status and date_completed based on whether a planned date was given
+        if planned_completion_date:
+            status = 'Planned'
+            date_completed = None
+        else:
+            status = 'Ready'
+            date_completed = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+
+
 
         if batch_id is not None:
 
@@ -516,18 +530,18 @@ def add_to_batches(product_name, quantity, notes=None, batch_id=None, deduct_res
                 #if it doesnt already exist and isnt None:
 
             db.execute(cursor, """
-                INSERT INTO batches (batch_id, product_name, quantity, date_completed, status, notes, expiration_date)
-                VALUES (%s, %s, %s, %s, 'Ready', %s, %s)
-            """, (batch_id, product_name, quantity, date_completed, notes, expiration_date))
+                INSERT INTO batches (batch_id, product_name, quantity, date_completed, status, notes, expiration_date, planned_completion_date)
+                VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
+            """, (batch_id, product_name, quantity, date_completed, status, notes, expiration_date, planned_completion_date))
 
 
         else:# if its None:
 
 
             db.execute(cursor, """
-                INSERT INTO batches (product_name, quantity, date_completed, status, notes, expiration_date)
-                VALUES (%s, %s, %s, 'Ready', %s, %s)
-            """, (product_name, quantity, date_completed, notes, expiration_date))
+                INSERT INTO batches (product_name, quantity, date_completed, status, notes, expiration_date, planned_completion_date)
+                VALUES (%s, %s, %s, %s, %s, %s, %s)
+            """, (product_name, quantity, date_completed, status, notes, expiration_date, planned_completion_date))
             batch_id = db.get_last_insert_id(cursor)
 
 
@@ -606,6 +620,8 @@ def add_to_batches(product_name, quantity, notes=None, batch_id=None, deduct_res
 
 def get_batches():
     """Gets all batches ready to ship"""
+    check_and_transition_planned_batches() # call func to transition planned batches to raedy 
+    #if date passed before usesr even sees page. 
     db = get_db_connection()
 
     query = """
@@ -770,12 +786,13 @@ def get_all_batches_with_id():
 
     used for manage page
     """
+    check_and_transition_planned_batches()
     db = get_db_connection()
-        
-    try:   
+
+    try:
         query = """
 
-        SELECT batch_id, product_name, quantity, date_completed, status, notes, date_shipped, expiration_date
+        SELECT batch_id, product_name, quantity, date_completed, status, notes, date_shipped, expiration_date, planned_completion_date
         FROM batches
         ORDER BY date_completed DESC
         """
@@ -804,7 +821,7 @@ def get_batch_by_id(batch_id):
 
     try:
         query = """
-        SELECT batch_id, product_name, quantity, date_completed, status, notes, date_shipped, expiration_date
+        SELECT batch_id, product_name, quantity, date_completed, status, notes, date_shipped, expiration_date, planned_completion_date
         FROM batches
         WHERE batch_id = %s
 
@@ -821,10 +838,10 @@ def get_batch_by_id(batch_id):
     finally:
         db.close()
 
-def update_batch(batch_id, product_name=None, quantity=None, date_completed=None, notes=None, expiration_date=_UNSET):
+def update_batch(batch_id, product_name=None, quantity=None, date_completed=None, notes=None, expiration_date=_UNSET, planned_completion_date=_UNSET):
     """
-    changes the details of batch, BESIDES STATUS, doesnt change status. 
-    
+    changes the details of batch, BESIDES STATUS, doesnt change status.
+
     note: similar to update_materials func
     """
 
@@ -837,9 +854,12 @@ def update_batch(batch_id, product_name=None, quantity=None, date_completed=None
     for key, value in [("product_name", product_name), ("quantity", quantity), ("date_completed", date_completed), ("notes", notes)]:
         if value is not None:
             field[key] = value
-    # expiration_date uses sentinel so None can explicitly clear the field
+    # expiration_date and planned_completion_date use sentinel so None can explicitly clear the field
     if expiration_date is not _UNSET:
         field["expiration_date"] = expiration_date
+    
+    if planned_completion_date is not _UNSET:
+        field["planned_completion_date"] = planned_completion_date
 
     if not field: #empty dictionary, no fields to update
         logging.info("No fields to update")
@@ -884,13 +904,23 @@ def update_batch_status(batch_id, new_status):
             SET status = %s, date_shipped = %s
             WHERE batch_id = %s
             """, (new_status, datetime.now().strftime('%Y-%m-%d'), batch_id))
-        else:
-            # Reverting to Ready. clear the shipped date
+
+
+        elif new_status == 'Planned':
+            # Batch is not yet done — clear completion and ship dates
             db.execute(cursor, """
             UPDATE batches
-            SET status = %s, date_shipped = NULL
+            SET status = 'Planned', date_completed = NULL, date_shipped = NULL
             WHERE batch_id = %s
-            """, (new_status, batch_id))
+            """, (batch_id,))
+            
+        else:
+            # Manually marking Ready — stamp the actual completion time
+            db.execute(cursor, """
+            UPDATE batches
+            SET status = %s, date_shipped = NULL, date_completed = %s
+            WHERE batch_id = %s
+            """, (new_status, datetime.now().strftime('%Y-%m-%d %H:%M:%S'), batch_id))
 
         if cursor.rowcount == 0:
                 raise ValueError(f"batch ID {batch_id} not found — nothing updated")
@@ -906,6 +936,51 @@ def update_batch_status(batch_id, new_status):
 
     finally:
         db.close()
+
+
+def check_and_transition_planned_batches():
+    """
+    Bulk-updates any Planned batches whose planned_completion_date has passed to Ready.
+    Called lazily from get_batches() and get_all_batches_with_id().
+    """
+    db = get_db_connection()
+    cursor = db.cursor()
+    try:
+        now = datetime.now().strftime('%Y-%m-%d %H:%M:%S') # get current time
+        db.execute(cursor, """
+            UPDATE batches
+            SET status = 'Ready', date_completed = %s 
+            WHERE status = 'Planned'
+              AND planned_completion_date IS NOT NULL
+              AND planned_completion_date <= %s
+        """, (now, now)) # sets status to ready, and date completed not null, where planned batches have completion date <= now. 
+        
+        if cursor.rowcount > 0: # check it worked
+            db.commit()
+            log_action('planned_batches_transitioned',
+                       f"{cursor.rowcount} batch(es) auto-transitioned from Planned to Ready")
+        else:
+            db.rollback()
+
+    except Exception as e:
+        logging.error(f"Error transitioning planned batches: {e}")
+        db.rollback()
+    finally:
+        db.close()
+
+
+def get_batches_planned():
+    """Gets all Planned batches ordered by planned_completion_date ascending."""
+    db = get_db_connection()
+    query = """
+    SELECT batch_id, product_name, quantity, planned_completion_date, status, notes, expiration_date
+    FROM batches
+    WHERE status = 'Planned'
+    ORDER BY planned_completion_date ASC
+    """
+    result = pd.read_sql_query(query, db.conn)
+    db.close()
+    return result
 
 
 def get_batch_materials(batch_id):

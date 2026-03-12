@@ -65,6 +65,53 @@
     </div>
 </div>
 
+{% if planned_batches %}
+<div style="margin-bottom:32px;">
+    <h2 style="font-size:16px;font-weight:600;margin-bottom:12px;color:var(--text-muted);">Planned Batches</h2>
+    <div class="table-container">
+        <table class="data-table">
+            <thead>
+                <tr>
+                    <th>Batch ID</th>
+                    <th>Product Name</th>
+                    <th>Quantity</th>
+                    <th>Planned Completion Date</th>
+                    <th>Notes</th>
+                    <th>Expiration Date</th>
+                    <th>Actions</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for row in planned_batches %}
+                <tr>
+                    <td>{{ row['batch_id'] }}</td>
+                    <td><strong>{{ row['product_name'] }}</strong></td>
+                    <td>{{ row['quantity'] }}</td>
+                    <td>{{ row['planned_completion_date'] or '—' }}</td>
+                    <td>{{ row['notes'] or '' }}</td>
+                    <td>{{ row['expiration_date'] or '—' }}</td>
+                    <td>
+                        <form method="POST" action="/edit-batch/{{ row['batch_id'] }}/change-status"
+                              onsubmit="return confirm('Mark batch as Ready now?')" style="display:inline;">
+                            <input type="hidden" name="status" value="Ready">
+                            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                            <button type="submit" class="btn btn-secondary" style="padding:5px 12px;font-size:12px;">Mark Ready</button>
+                        </form>
+                        <button class="materials-toggle" data-batch-id="{{ row['batch_id'] }}">&#9654; Materials</button>
+                    </td>
+                </tr>
+                <tr class="materials-row" id="materials-{{ row['batch_id'] }}" style="display:none;">
+                    <td colspan="7">
+                        <div class="materials-detail">Loading...</div>
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</div>
+{% endif %}
+
 {% if batches %}
 <div class="table-container">
     <table class="data-table">

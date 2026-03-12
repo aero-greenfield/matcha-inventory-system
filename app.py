@@ -135,7 +135,8 @@ from inventory_app import (
     increase_raw_material, decrease_raw_material, get_raw_material, add_to_batches,
     get_batches, mark_as_shipped, delete_batch, get_recipe, add_recipe,
     change_recipe, delete_recipe, delete_raw_material, get_material_by_id, get_all_materials_with_id, update_raw_material, get_all_batches_with_id, get_batch_by_id,
-    update_batch, update_batch_status, update_recipe, get_all_recipes_with_id, get_recipe_by_id, log_action, view_logs, get_batch_materials)
+    update_batch, update_batch_status, update_recipe, get_all_recipes_with_id, get_recipe_by_id, log_action, view_logs, get_batch_materials,
+    get_batches_planned)  
 
 
 # Import helper functions for exporting data
@@ -848,13 +849,19 @@ def view_batches():
     
     """
 
-    data = get_batches() # get all batches in df, from inventory_app.py. 
+    data = get_batches() # get all batches in df, from inventory_app.py.
     batches = data.to_dict(orient='records') if not data.empty else [] # convert to HTML friendly like usual.
-    columns = list(data.columns) if not data.empty else [] # get column names for table header in html, if data is not empty. 
+    columns = list(data.columns) if not data.empty else [] # get column names for table header in html, if data is not empty.
     #if data is empty, set columns to empty list to avoid errors in html.
     # we need to get columns separately because the batches page shows a table with dynamic columns based on the batch data, so we need to pass the column names to the html to generate the table header.
+
+    # get planned data seperatly 
+    planned_data = get_batches_planned()
+    planned_batches = planned_data.to_dict(orient='records') if not planned_data.empty else []
+
     return render_template("batches.html", # render the batches page html template.
         batches=batches, columns=columns, count=len(batches),
+        planned_batches=planned_batches,
         back_link=True, back_link_url="/", back_link_label="Back to Home"
 )
 
@@ -968,7 +975,7 @@ def create_batch():
         notes = request.form.get('notes')
         notes = notes.strip() if notes else None
         expiration_date = request.form.get('expiration_date', '').strip() or None
-
+        planned_completion_date = request.form.get('planned_completion_date', '').strip() or None
         # Text validation
         if not product_name:
             return render_template('error.html',
@@ -1015,9 +1022,27 @@ def create_batch():
                     back_link=True, back_link_url="/create-batch", back_link_label="Go back to Create Batch"
                 ), 400
 
+        # validate planned_completion_date
+        
+        if planned_completion_date:
+            try:
+                pcd = datetime.strptime(planned_completion_date, '%Y-%m-%d') #valid date
+                if pcd.date() < datetime.now().date(): # planned date cant be in the past
+                    return render_template('error.html',
+                        title="Invalid Input",
+                        message="Planned completion date cannot be in the past.",
+                        back_link=True, back_link_url="/create-batch", back_link_label="Go back to Create Batch"
+                    ), 400
+            except ValueError:
+                return render_template('error.html',
+                    title="Invalid Input",
+                    message="Invalid planned completion date format. Use YYYY-MM-DD.",
+                    back_link=True, back_link_url="/create-batch", back_link_label="Go back to Create Batch"
+                ), 400
+
         # call function
         try:
-            result = add_to_batches(product_name, quantity, notes=notes, batch_id=batch_id, deduct_resources=True, expiration_date=expiration_date)
+            result = add_to_batches(product_name, quantity, notes=notes, batch_id=batch_id, deduct_resources=True, expiration_date=expiration_date, planned_completion_date=planned_completion_date)
             if result:
                 logging.info(f"Batch created: product='{product_name}', quantity={quantity}, batch_id={batch_id}")
                 log_action('batch_created', f"product={product_name}, quantity={quantity}, batch_id={result}")
@@ -1121,6 +1146,7 @@ def update_batch_details(batch_id):
         notes = notes.strip() if notes else None
         quantity = float(quantity_str) if quantity_str else None
         expiration_date = request.form.get('expiration_date', '').strip() or None
+        planned_completion_date = request.form.get('planned_completion_date', '').strip() or None
 
     except ValueError:
         return render_template('error.html',
@@ -1146,7 +1172,19 @@ def update_batch_details(batch_id):
                 back_link=True, back_link_url=f"/edit-batch/{batch_id}", back_link_label="Go back to Edit Batch"
             ), 400
 
-    result = update_batch(batch_id, product_name=product_name, quantity=quantity, notes=notes, expiration_date=expiration_date)
+    #validate planned completion date
+    
+    if planned_completion_date:
+        try:
+            datetime.strptime(planned_completion_date, '%Y-%m-%d')
+        except ValueError:
+            return render_template('error.html',
+                title="Invalid Input",
+                message="Invalid planned completion date format. Use YYYY-MM-DD.",
+                back_link=True, back_link_url=f"/edit-batch/{batch_id}", back_link_label="Go back to Edit Batch"
+            ), 400
+
+    result = update_batch(batch_id, product_name=product_name, quantity=quantity, notes=notes, expiration_date=expiration_date, planned_completion_date=planned_completion_date)
 
     if result:
         logging.info(f"Batch details updated: batch_id={batch_id}, product_name={product_name}, quantity={quantity}")
@@ -1167,12 +1205,25 @@ def change_batch_status(batch_id):
 
     new_status = request.form.get('status') # Get the new status from the form submission (e.g., "ready", "shipped", etc.)
 
+    
+    if new_status == 'Planned': 
+        planned_completion_date = request.form.get('planned_completion_date', '').strip() or None #get planned date of completion
+        if not planned_completion_date:
+            return redirect(url_for('edit_batch', batch_id=batch_id, err='A planned completion date is required when setting status to Planned')) # there must be a planned date of competion
+        try:
+            pcd = datetime.strptime(planned_completion_date, '%Y-%m-%d') #validate planned date of competion
+            if pcd.date() < datetime.now().date(): #cant be in the past
+                return redirect(url_for('edit_batch', batch_id=batch_id, err='Planned completion date cannot be in the past'))
+        except ValueError:
+            return redirect(url_for('edit_batch', batch_id=batch_id, err='Invalid planned completion date format'))
+        update_batch(batch_id, planned_completion_date=planned_completion_date)
+
     result = update_batch_status(batch_id, new_status)
     if result:
         logging.info(f"Batch status changed: batch_id={batch_id}, new_status={new_status}")
         log_action('batch_status_changed', f"batch_id={batch_id}, new_status={new_status}")
         return redirect(url_for('edit_batch', batch_id=batch_id, msg=f'Batch status updated to {new_status}'))
-    
+
     else:
         return redirect(url_for('edit_batch', batch_id=batch_id, err='Failed to update batch status'))
     

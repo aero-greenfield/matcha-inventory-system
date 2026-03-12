@@ -23,6 +23,11 @@
             <label for="expiration_date">Expiration Date <span style="color:#888">(optional)</span></label>
             <input type="date" id="expiration_date" name="expiration_date" value="">
         </div>
+        <div class="form-group" style="max-width:300px;">
+            <label for="planned_completion_date">Planned Completion Date <span style="color:#888">(optional — creates a Planned batch)</span></label>
+            <input type="date" id="planned_completion_date" name="planned_completion_date" value="">
+            <small style="color:var(--text-muted);display:block;margin-top:4px;">If set, the batch will be created with Planned status and transition to Ready automatically on this date.</small>
+        </div>
         <button type="submit" class="btn btn-primary">Create Batch</button>
         <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
     </form>
