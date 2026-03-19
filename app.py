@@ -136,7 +136,7 @@ from inventory_app import (
     get_batches, mark_as_shipped, delete_batch, get_recipe, add_recipe,
     change_recipe, delete_recipe, delete_raw_material, get_material_by_id, get_all_materials_with_id, update_raw_material, get_all_batches_with_id, get_batch_by_id,
     update_batch, update_batch_status, update_recipe, get_all_recipes_with_id, get_recipe_by_id, log_action, view_logs, get_batch_materials,
-    get_batches_planned)  
+    get_batches_planned, get_housemade_materials, get_mix_stock)  
 
 
 # Import helper functions for exporting data
@@ -976,6 +976,7 @@ def create_batch():
         notes = notes.strip() if notes else None
         expiration_date = request.form.get('expiration_date', '').strip() or None
         planned_completion_date = request.form.get('planned_completion_date', '').strip() or None
+        batch_type = request.form.get('batch_type', 'standard').strip()
         # Text validation
         if not product_name:
             return render_template('error.html',
@@ -1039,13 +1040,20 @@ def create_batch():
                     message="Invalid planned completion date format. Use YYYY-MM-DD.",
                     back_link=True, back_link_url="/create-batch", back_link_label="Go back to Create Batch"
                 ), 400
-
+        
+        if batch_type not in ('standard', 'mix', 'finished'):
+            return render_template('error.html',
+                title="Invalid Input",
+                message="Invalid batch type. Must be standard, mix, or finished.",
+                back_link=True, back_link_url="/create-batch", back_link_label="Go back to Create Batch"
+            ), 400
+        
         # call function
         try:
-            result = add_to_batches(product_name, quantity, notes=notes, batch_id=batch_id, deduct_resources=True, expiration_date=expiration_date, planned_completion_date=planned_completion_date)
+            result = add_to_batches(product_name, quantity, notes=notes, batch_id=batch_id, deduct_resources=True, expiration_date=expiration_date, planned_completion_date=planned_completion_date, batch_type=batch_type)
             if result:
-                logging.info(f"Batch created: product='{product_name}', quantity={quantity}, batch_id={batch_id}")
-                log_action('batch_created', f"product={product_name}, quantity={quantity}, batch_id={result}")
+                logging.info(f"Batch created: product='{product_name}', quantity={quantity}, batch_id={batch_id}, batch_type={batch_type}")
+                log_action('batch_created', f"product={product_name}, quantity={quantity}, batch_id={result}, batch_type={batch_type}")
                 return redirect(url_for('view_batches'))
             else:
                 return render_template('error.html',
@@ -1069,7 +1077,11 @@ def create_batch():
                 back_link=True, back_link_url="/create-batch", back_link_label="Go back to Create Batch"
             ), 500
 
+
+    housemade_df = get_housemade_materials()
+    housemade_materials = housemade_df.to_dict(orient='records') if not housemade_df.empty else []
     return render_template("create_batch.html",
+        housemade_materials = housemade_materials,
         back_link=True,
         back_link_url="/",
         back_link_label="Back to Home"

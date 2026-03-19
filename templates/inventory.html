@@ -15,7 +15,54 @@
     </div>
 </div>
 
-{% if materials %}
+<h2 style="font-size:16px;font-weight:600;margin-bottom:12px;color:var(--text-muted);">Raw Materials</h2>
+{% if materials | rejectattr('is_housemade') | list %}
+<div class="table-container" style="margin-bottom:32px;">
+    <table class="data-table">
+        <thead>
+            <tr>
+                <th>Name</th>
+                <th>Category</th>
+                <th>Stock Level</th>
+                <th>Unit</th>
+                <th>Reorder Level</th>
+                <th>Cost Per Unit</th>
+                <th>Supplier</th>
+                <th>Status</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for row in materials if not row['is_housemade'] %}
+            <tr>
+                <td><strong>{{ row.name }}</strong></td>
+                <td>{{ row.category }}</td>
+                <td>{{ row.stock_level }}</td>
+                <td>{{ row.unit }}</td>
+                <td>{{ row.reorder_level }}</td>
+                <td>{{ row.cost_per_unit }}</td>
+                <td>{{ row.supplier }}</td>
+                <td>
+                    {% if row.stock_level == 0 %}
+                        <span class="badge badge-out">Out of Stock</span>
+                    {% elif row.stock_level <= row.reorder_level %}
+                        <span class="badge badge-low">Low Stock</span>
+                    {% else %}
+                        <span class="badge badge-in-stock">In Stock</span>
+                    {% endif %}
+                </td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+</div>
+{% else %}
+<div class="table-container" style="padding:40px 24px;text-align:center;color:var(--text-muted);margin-bottom:32px;">
+    <p>No raw materials in inventory. <a href="/add-material" style="color:var(--accent);">Add your first material</a></p>
+</div>
+{% endif %}
+
+<h2 style="font-size:16px;font-weight:600;margin-bottom:12px;color:var(--text-muted);">Housemade Materials</h2>
+{% if materials | selectattr('is_housemade', 'equalto', 1) | list %}
 <div class="table-container">
     <table class="data-table">
         <thead>
@@ -31,7 +78,7 @@
             </tr>
         </thead>
         <tbody>
-            {% for row in materials %}
+            {% for row in materials if row['is_housemade'] %}
             <tr>
                 <td><strong>{{ row.name }}</strong></td>
                 <td>{{ row.category }}</td>
@@ -56,7 +103,7 @@
 </div>
 {% else %}
 <div class="table-container" style="padding:40px 24px;text-align:center;color:var(--text-muted);">
-    <p>No materials in inventory. <a href="/add-material" style="color:var(--accent);">Add your first material</a></p>
+    <p>No housemade materials in inventory.</p>
 </div>
 {% endif %}
 
