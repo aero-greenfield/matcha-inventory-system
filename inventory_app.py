@@ -153,7 +153,7 @@ def create_database():
 # RAW MATERIALS FUNCTIONS
 # ========================
  
-def add_raw_material(name, category, stock_level, unit, reorder_level, cost_per_unit=None, supplier=None):
+def add_raw_material(name, category, stock_level, unit, reorder_level, cost_per_unit=None, supplier=None, is_housemade=False):
     # adds material to raw_materials
 
     db = get_db_connection()
@@ -161,10 +161,10 @@ def add_raw_material(name, category, stock_level, unit, reorder_level, cost_per_
 
     try:
         db.execute(cursor, """
-            INSERT INTO raw_materials (name, category, stock_level, unit, reorder_level, cost_per_unit, supplier)
-            VALUES (%s,%s,%s,%s,%s,%s,%s)
+            INSERT INTO raw_materials (name, category, stock_level, unit, reorder_level, cost_per_unit, supplier, is_housemade)
+            VALUES (%s,%s,%s,%s,%s,%s,%s,%s)
 
-                        """, (name, category, stock_level, unit, reorder_level, cost_per_unit, supplier))
+                        """, (name, category, stock_level, unit, reorder_level, cost_per_unit, supplier, is_housemade))
 
         db.commit()
         print(f"Added {name} to raw materials")
@@ -527,6 +527,9 @@ def add_to_batches(product_name, quantity, notes=None, batch_id=None, deduct_res
     """
     adds batch to ready to ship, but asks user if they want to deduct from resources, or just add it.
     If planned_completion_date is provided, batch is created with status 'Planned' instead of 'Ready'.
+    batch_type can be 'standard', 'mix', or 'finished' — used to auto-determine whether to defer deduction for planned batches.
+    if standard or mix, deduction happens immediately at batch creation regardless of planned vs ready status. and adds mixed batch to raw_materials with is_housemade = True, so they can be used in future batches.
+    if finished, deduction is deferred until promotion time for planned batches, happens immediately for ready batches.
     """
     # Connect to the database
     db = get_db_connection()
@@ -576,23 +579,20 @@ def add_to_batches(product_name, quantity, notes=None, batch_id=None, deduct_res
 
 
 
-
-                #if it doesnt already exist and isnt None:
-
+            
             db.execute(cursor, """
-                INSERT INTO batches (batch_id, product_name, quantity, date_completed, status, notes, expiration_date, planned_completion_date, batch_type)
-                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
+            INSERT INTO batches (batch_id, product_name, quantity, date_completed, status, notes, expiration_date, planned_completion_date, batch_type)
+            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
             """, (batch_id, product_name, quantity, date_completed, status, notes, expiration_date, planned_completion_date, batch_type))
 
-
-        else:# if its None:
-
-
+        
+        else:#batch_id is None, let database auto assign id
             db.execute(cursor, """
-                INSERT INTO batches (product_name, quantity, date_completed, status, notes, expiration_date, planned_completion_date, batch_type)
-                VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
+            INSERT INTO batches (product_name, quantity, date_completed, status, notes, expiration_date, planned_completion_date, batch_type)
+            VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
             """, (product_name, quantity, date_completed, status, notes, expiration_date, planned_completion_date, batch_type))
             batch_id = db.get_last_insert_id(cursor)
+               
 
 
         #Deducting resources:
@@ -645,6 +645,29 @@ def add_to_batches(product_name, quantity, notes=None, batch_id=None, deduct_res
                 INSERT INTO batch_materials (batch_id, material_id, quantity_used)
                     VALUES (%s, %s, %s)
                     """, (batch_id, material_id, required_amount))
+
+
+        
+        # ALSO IF BATCH TYPE IS MIX, ADD THE MIXED PRODUCT TO RAW_MATERIALS WITH is_housemade = True, SO IT CAN BE USED IN FUTURE BATCHES.if not already in raw_materials,
+        # otherwise if its already in raw_materials, just update the stock level by adding the quantity of the batch we just made.
+        if batch_type == 'mix': # add to raw_materials.
+            existing_mix = get_raw_material(product_name)
+            if existing_mix:
+                db.execute(cursor, """
+                    UPDATE raw_materials SET stock_level = stock_level + %s
+                    WHERE material_id = %s
+                """, (quantity, existing_mix[0]))
+            else:
+                db.execute(cursor, """
+                    INSERT INTO raw_materials (name, category, stock_level, unit, reorder_level, is_housemade)
+                    VALUES (%s, %s, %s, %s, %s, %s)
+                """, (product_name, 'Mix', quantity, 'units', 0, True))
+
+
+        
+        
+
+
 
         db.commit()
         print(f"Added {quantity} units of {product_name} (Batch {batch_id})")
