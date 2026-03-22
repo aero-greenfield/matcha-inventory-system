@@ -37,7 +37,6 @@ except ImportError:
     pass
 
 DATABASE_URL = os.getenv('DATABASE_URL')  # ← THEN read it
-print(f"DATABASE_URL = {DATABASE_URL}")
 
 from database import get_connection
 
@@ -72,7 +71,8 @@ def init_database():
        unit TEXT, 
        reorder_level REAL,  
        cost_per_unit REAL, 
-       supplier TEXT 
+       supplier TEXT,
+       is_housemade BOOLEAN DEFAULT FALSE
    ) 
    """) 
     
@@ -126,7 +126,9 @@ def init_database():
        status TEXT DEFAULT 'Ready',
        notes TEXT,
        date_shipped TEXT,
-       expiration_date TEXT
+       expiration_date TEXT,
+       batch_type TEXT DEFAULT 'standard',
+       promotion_failure_reason TEXT
    )
    """) 
     

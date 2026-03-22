@@ -2,6 +2,12 @@
 
 {% block title %}Manage Batches{% endblock %}
 
+{% block extra_styles %}
+<style>
+.badge-planned { background: #dbeafe; color: #1d4ed8; border-radius: 4px; padding: 2px 8px; font-size: 12px; font-weight: 600; }
+</style>
+{% endblock %}
+
 {% block content %}
 
 <div class="page-header">
@@ -22,9 +28,11 @@
                 <th>Quantity</th>
                 <th>Date Completed</th>
                 <th>Status</th>
+                <th>Type</th>
                 <th>Notes</th>
                 <th>Date Shipped</th>
                 <th>Expiration Date</th>
+                <th>Planned Date</th>
                 <th></th>
             </tr>
         </thead>
@@ -40,13 +48,17 @@
                         <span class="badge badge-in-stock">Shipped</span>
                     {% elif row.status == 'Ready' %}
                         <span class="badge badge-low">Ready</span>
+                    {% elif row.status == 'Planned' %}
+                        <span class="badge badge-planned">Planned</span>
                     {% else %}
                         {{ row.status or '' }}
                     {% endif %}
                 </td>
+                <td>{{ row.batch_type or 'standard' }}</td>
                 <td>{{ row.notes or '' }}</td>
                 <td>{{ row.date_shipped or '' }}</td>
                 <td>{{ row.expiration_date or '—' }}</td>
+                <td>{{ row.planned_completion_date or '—' }}</td>
                 <td><a href="/edit-batch/{{ row.batch_id | int }}" class="btn btn-secondary" style="padding:5px 12px;font-size:12px;">Edit</a></td>
             </tr>
             {% endfor %}

@@ -49,6 +49,9 @@
 .materials-inner-table tbody tr:last-child td {
     border-bottom: none;
 }
+.row-failed-promotion { background-color: #fef2f2; }
+.row-failed-promotion td { color: #991b1b; }
+.promotion-failure-note { display:block; font-size:11px; font-weight:400; color:#dc2626; margin-top:3px; }
 </style>
 {% endblock %}
 
@@ -64,6 +67,60 @@
         <a href="/create-batch" class="btn btn-primary">+ New Batch</a>
     </div>
 </div>
+
+{% if planned_batches %}
+<div style="margin-bottom:32px;">
+    <h2 style="font-size:16px;font-weight:600;margin-bottom:12px;color:var(--text-muted);">Planned Batches</h2>
+    <div class="table-container">
+        <table class="data-table">
+            <thead>
+                <tr>
+                    <th>Batch ID</th>
+                    <th>Product Name</th>
+                    <th>Type</th>
+                    <th>Quantity</th>
+                    <th>Planned Completion Date</th>
+                    <th>Notes</th>
+                    <th>Expiration Date</th>
+                    <th>Actions</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for row in planned_batches %}
+                <tr{% if row['promotion_failure_reason'] %} class="row-failed-promotion"{% endif %}>
+                    <td>{{ row['batch_id'] }}</td>
+                    <td>
+                        <strong>{{ row['product_name'] }}</strong>
+                        {% if row['promotion_failure_reason'] %}
+                        <span class="promotion-failure-note">&#9888; {{ row['promotion_failure_reason'] }}</span>
+                        {% endif %}
+                    </td>
+                    <td>{{ row['batch_type'] or 'standard' }}</td>
+                    <td>{{ row['quantity'] }}</td>
+                    <td>{{ row['planned_completion_date'] or '—' }}</td>
+                    <td>{{ row['notes'] or '' }}</td>
+                    <td>{{ row['expiration_date'] or '—' }}</td>
+                    <td>
+                        <form method="POST" action="/edit-batch/{{ row['batch_id'] }}/change-status"
+                              onsubmit="return confirm('Mark batch as Ready now?')" style="display:inline;">
+                            <input type="hidden" name="status" value="Ready">
+                            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                            <button type="submit" class="btn btn-secondary" style="padding:5px 12px;font-size:12px;">Mark Ready</button>
+                        </form>
+                        <button class="materials-toggle" data-batch-id="{{ row['batch_id'] }}">&#9654; Materials</button>
+                    </td>
+                </tr>
+                <tr class="materials-row" id="materials-{{ row['batch_id'] }}" style="display:none;">
+                    <td colspan="8">
+                        <div class="materials-detail">Loading...</div>
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</div>
+{% endif %}
 
 {% if batches %}
 <div class="table-container">

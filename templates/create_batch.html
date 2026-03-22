@@ -23,6 +23,29 @@
             <label for="expiration_date">Expiration Date <span style="color:#888">(optional)</span></label>
             <input type="date" id="expiration_date" name="expiration_date" value="">
         </div>
+        <div class="form-group" style="max-width:300px;">
+            <label for="planned_completion_date">Planned Completion Date <span style="color:#888">(optional — creates a Planned batch)</span></label>
+            <input type="date" id="planned_completion_date" name="planned_completion_date" value="">
+            <small style="color:var(--text-muted);display:block;margin-top:4px;">If set, the batch will be created with Planned status and transition to Ready automatically on this date.</small>
+        </div>
+        <div class="form-group">
+            <label>Batch Type</label>
+            <div style="display:flex;gap:8px;margin-top:4px;">
+                <button type="button" class="batch-type-btn active" data-type="standard" style="padding:7px 18px;border:1px solid var(--border);border-radius:6px;background:var(--accent);color:#fff;font-size:13px;font-weight:600;cursor:pointer;">Standard</button>
+                <button type="button" class="batch-type-btn" data-type="mix" style="padding:7px 18px;border:1px solid var(--border);border-radius:6px;background:#fff;color:var(--text);font-size:13px;font-weight:600;cursor:pointer;">Mix</button>
+                <button type="button" class="batch-type-btn" data-type="finished" style="padding:7px 18px;border:1px solid var(--border);border-radius:6px;background:#fff;color:var(--text);font-size:13px;font-weight:600;cursor:pointer;">Finished</button>
+            </div>
+        </div>
+        <input type="hidden" id="batch_type" name="batch_type" value="standard">
+        <div id="mix-stock-warning" style="display:none; margin-bottom:16px; padding:12px 16px; background:#fefce8; border:1px solid #fde68a; border-radius:8px; font-size:13px; color:#92400e;">
+            <strong>Housemade material stock:</strong>
+            <ul style="margin:6px 0 0 16px; padding:0;">
+                {% for m in housemade_materials %}
+                <li>{{ m.name }}: {{ m.stock_level }} {{ m.unit }}</li>
+                {% endfor %}
+            </ul>
+            <span style="display:block;margin-top:6px;">If this batch requires more than what is available, it will stay Planned until a mix batch is completed first.</span>
+        </div>
         <button type="submit" class="btn btn-primary">Create Batch</button>
         <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
     </form>
@@ -32,6 +55,26 @@
 <script>
 document.addEventListener('DOMContentLoaded', () => {
     attachAutocomplete(document.querySelector('[name="product_name"]'), fetchRecipes);
+
+    var batchTypeInput = document.getElementById('batch_type');
+    var mixWarning = document.getElementById('mix-stock-warning');
+    var btns = document.querySelectorAll('.batch-type-btn');
+
+    btns.forEach(function(btn) {
+        btn.addEventListener('click', function() {
+            btns.forEach(function(b) {
+                b.style.background = '#fff';
+                b.style.color = 'var(--text)';
+                b.style.borderColor = 'var(--border)';
+                b.classList.remove('active');
+            });
+            this.style.background = 'var(--accent)';
+            this.style.color = '#fff';
+            this.classList.add('active');
+            batchTypeInput.value = this.dataset.type;
+            mixWarning.style.display = this.dataset.type === 'finished' ? 'block' : 'none';
+        });
+    });
 });
 </script>
 

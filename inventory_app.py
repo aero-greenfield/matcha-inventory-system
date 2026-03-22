@@ -69,7 +69,8 @@ def create_database():
                    unit TEXT,
                    reorder_level REAL, 
                    cost_per_unit REAL,
-                   supplier TEXT
+                   supplier TEXT,
+                   is_housemade BOOLEAN DEFAULT FALSE
                      
                    )
                    """)
@@ -108,12 +109,16 @@ def create_database():
                     status TEXT DEFAULT 'Ready',
                     notes TEXT,
                     date_shipped TEXT,
-                    expiration_date TEXT
+                    expiration_date TEXT,
+                    planned_completion_date TEXT,
+                    batch_type TEXT DEFAULT 'standard',
+                    promotion_failure_reason TEXT
                     
                    
                 
                    )
                    """)
+    
     
     #Batch_materials
     cursor.execute("""
@@ -198,7 +203,7 @@ def get_all_materials():
     cursor = db.cursor()
 
     query = """
-    SELECT name, category, stock_level, unit, reorder_level, cost_per_unit, supplier
+    SELECT name, category, stock_level, unit, reorder_level, cost_per_unit, supplier, is_housemade
     FROM raw_materials
     ORDER BY category, name
     """
@@ -216,7 +221,7 @@ def get_material_by_id(material_id):
 
     try:
         db.execute(cursor, """
-        SELECT material_id, name, category, stock_level, unit, reorder_level, cost_per_unit, supplier
+        SELECT material_id, name, category, stock_level, unit, reorder_level, cost_per_unit, supplier, is_housemade
         FROM raw_materials
         WHERE material_id = %s
                        """,(material_id,))
@@ -367,7 +372,7 @@ def get_all_materials_with_id():
     try:
 
         query = """
-        SELECT material_id, name, category, stock_level, unit, reorder_level, cost_per_unit, supplier
+        SELECT material_id, name, category, stock_level, unit, reorder_level, cost_per_unit, supplier, is_housemade
         FROM raw_materials
         ORDER BY category, name
         """
@@ -467,22 +472,70 @@ def delete_raw_material(material_id):
     finally:
         db.close()
 
+
+
+def get_housemade_materials():
+    """
+    returns all materials in RM that are is_housemade == True
+    """
+    try:
+        db = get_db_connection()
+        query = """
+        SELECT name, stock_level, unit
+        FROM raw_materials
+        WHERE is_housemade = TRUE
+        ORDER BY name
+
+        """
+        result = pd.read_sql_query(query, db.conn)
+        db.close()
+        return result
+
+    except Exception as e:
+        logging.error(f"Could not get housemade_materials df: {e}")
+        return pd.DataFrame()
+    
+    finally:
+        db.close()
+
+
+
+    
+
+def get_mix_stock(material_name):
+    """Returns current stock_level for a housemade material by name. Returns 0.0 if not found."""
+    db = get_db_connection()
+    cursor = db.cursor()
+    try:
+        db.execute(cursor, """
+            SELECT stock_level FROM raw_materials
+            WHERE name = %s AND is_housemade = TRUE
+        """, (material_name,))
+        row = cursor.fetchone()
+        return float(row[0]) if row else 0.0
+    except Exception as e:
+        logging.error(f"get_mix_stock: {e}")
+        return 0.0
+    finally:
+        db.close()
+
 # ========================
 # BATCHES FUNCTIONS
 # ========================
 
-def add_to_batches(product_name, quantity, notes=None, batch_id=None, deduct_resources=True, expiration_date=None):
+def add_to_batches(product_name, quantity, notes=None, batch_id=None, deduct_resources=True, expiration_date=None, planned_completion_date=None, batch_type='standard'):
     """
     adds batch to ready to ship, but asks user if they want to deduct from resources, or just add it.
+    If planned_completion_date is provided, batch is created with status 'Planned' instead of 'Ready'.
     """
     # Connect to the database
     db = get_db_connection()
     cursor = db.cursor()
-    
+
 
 
     try:
-        
+
         #get recipe data frame
         recipe_df = get_recipe(product_name)
 
@@ -491,10 +544,21 @@ def add_to_batches(product_name, quantity, notes=None, batch_id=None, deduct_res
                 f"Recipe '{product_name}' has no materials. "
                 "A material may have been deleted — please recreate it or update the recipe."
             )
-            
-        date_completed = datetime.now().strftime('%Y-%m-%d %H:%M:%S')    
-        
-        
+
+        # Determine status and date_completed based on whether a planned date was given
+        if planned_completion_date:
+            status = 'Planned'
+            date_completed = None
+        else:
+            status = 'Ready'
+            date_completed = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+
+
+        # Auto-derive whether to defer deduction.
+        # finished + Planned = skip deduction now, will deduct at promotion time.
+        # mix and standard always deduct immediately, regardless of status.
+        defer_deduction = (batch_type == 'finished' and status == 'Planned')
+
 
         if batch_id is not None:
 
@@ -516,25 +580,25 @@ def add_to_batches(product_name, quantity, notes=None, batch_id=None, deduct_res
                 #if it doesnt already exist and isnt None:
 
             db.execute(cursor, """
-                INSERT INTO batches (batch_id, product_name, quantity, date_completed, status, notes, expiration_date)
-                VALUES (%s, %s, %s, %s, 'Ready', %s, %s)
-            """, (batch_id, product_name, quantity, date_completed, notes, expiration_date))
+                INSERT INTO batches (batch_id, product_name, quantity, date_completed, status, notes, expiration_date, planned_completion_date, batch_type)
+                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
+            """, (batch_id, product_name, quantity, date_completed, status, notes, expiration_date, planned_completion_date, batch_type))
 
 
         else:# if its None:
 
 
             db.execute(cursor, """
-                INSERT INTO batches (product_name, quantity, date_completed, status, notes, expiration_date)
-                VALUES (%s, %s, %s, 'Ready', %s, %s)
-            """, (product_name, quantity, date_completed, notes, expiration_date))
+                INSERT INTO batches (product_name, quantity, date_completed, status, notes, expiration_date, planned_completion_date, batch_type)
+                VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
+            """, (product_name, quantity, date_completed, status, notes, expiration_date, planned_completion_date, batch_type))
             batch_id = db.get_last_insert_id(cursor)
 
 
         #Deducting resources:
 
 
-        if deduct_resources:
+        if deduct_resources and not defer_deduction: # if defer_deduction, will be deducted later in promotion from planned. 
 
 
             #check in there is needed resources
@@ -606,6 +670,8 @@ def add_to_batches(product_name, quantity, notes=None, batch_id=None, deduct_res
 
 def get_batches():
     """Gets all batches ready to ship"""
+    promote_planned_batches() # call func to transition planned batches to raedy 
+    #if date passed before usesr even sees page. 
     db = get_db_connection()
 
     query = """
@@ -718,7 +784,13 @@ def delete_batch(batch_id, reallocate=False):
                     "material": material_name,
                     "quantity_added": quantity_used
                     })
-
+            # delete batch materials after adding to list
+            db.execute(cursor, """
+                DELETE 
+                FROM batch_materials
+                WHERE batch_id = %s        
+                                 
+                   """,(bm_id))
             # Delete batch
             db.execute(cursor, """
                 DELETE FROM batches
@@ -764,12 +836,13 @@ def get_all_batches_with_id():
 
     used for manage page
     """
+    promote_planned_batches()
     db = get_db_connection()
-        
-    try:   
+
+    try:
         query = """
 
-        SELECT batch_id, product_name, quantity, date_completed, status, notes, date_shipped, expiration_date
+        SELECT batch_id, product_name, quantity, date_completed, status, notes, date_shipped, expiration_date, planned_completion_date
         FROM batches
         ORDER BY date_completed DESC
         """
@@ -798,7 +871,7 @@ def get_batch_by_id(batch_id):
 
     try:
         query = """
-        SELECT batch_id, product_name, quantity, date_completed, status, notes, date_shipped, expiration_date
+        SELECT batch_id, product_name, quantity, date_completed, status, notes, date_shipped, expiration_date, planned_completion_date
         FROM batches
         WHERE batch_id = %s
 
@@ -815,10 +888,10 @@ def get_batch_by_id(batch_id):
     finally:
         db.close()
 
-def update_batch(batch_id, product_name=None, quantity=None, date_completed=None, notes=None, expiration_date=_UNSET):
+def update_batch(batch_id, product_name=None, quantity=None, date_completed=None, notes=None, expiration_date=_UNSET, planned_completion_date=_UNSET):
     """
-    changes the details of batch, BESIDES STATUS, doesnt change status. 
-    
+    changes the details of batch, BESIDES STATUS, doesnt change status.
+
     note: similar to update_materials func
     """
 
@@ -831,9 +904,12 @@ def update_batch(batch_id, product_name=None, quantity=None, date_completed=None
     for key, value in [("product_name", product_name), ("quantity", quantity), ("date_completed", date_completed), ("notes", notes)]:
         if value is not None:
             field[key] = value
-    # expiration_date uses sentinel so None can explicitly clear the field
+    # expiration_date and planned_completion_date use sentinel so None can explicitly clear the field
     if expiration_date is not _UNSET:
         field["expiration_date"] = expiration_date
+    
+    if planned_completion_date is not _UNSET:
+        field["planned_completion_date"] = planned_completion_date
 
     if not field: #empty dictionary, no fields to update
         logging.info("No fields to update")
@@ -878,13 +954,23 @@ def update_batch_status(batch_id, new_status):
             SET status = %s, date_shipped = %s
             WHERE batch_id = %s
             """, (new_status, datetime.now().strftime('%Y-%m-%d'), batch_id))
-        else:
-            # Reverting to Ready. clear the shipped date
+
+
+        elif new_status == 'Planned':
+            # Batch is not yet done — clear completion and ship dates
             db.execute(cursor, """
             UPDATE batches
-            SET status = %s, date_shipped = NULL
+            SET status = 'Planned', date_completed = NULL, date_shipped = NULL
             WHERE batch_id = %s
-            """, (new_status, batch_id))
+            """, (batch_id,))
+            
+        else:
+            # Manually marking Ready — stamp the actual completion time
+            db.execute(cursor, """
+            UPDATE batches
+            SET status = %s, date_shipped = NULL, date_completed = %s
+            WHERE batch_id = %s
+            """, (new_status, datetime.now().strftime('%Y-%m-%d %H:%M:%S'), batch_id))
 
         if cursor.rowcount == 0:
                 raise ValueError(f"batch ID {batch_id} not found — nothing updated")
@@ -900,6 +986,159 @@ def update_batch_status(batch_id, new_status):
 
     finally:
         db.close()
+
+def promote_planned_batches():
+
+    """
+    Promotes overdue Planned batches to Ready.
+    - standard/mix batches: flip status directly (deduction already happened at creation)
+    - finished batches: attempt deduction first; if insufficient stock, leave as Planned
+      and record the reason in promotion_failure_reason
+    Called lazily from get_batches() and get_all_batches_with_id().
+    
+    """
+
+
+    db = get_db_connection()
+    cursor = db.cursor()
+    try:
+        now = datetime.now().strftime('%Y-%m-%d')
+
+        #get all overdue batches
+
+        db.execute(cursor, """
+            SELECT batch_id, product_name, quantity, batch_type, planned_completion_date
+            FROM batches
+            WHERE status = 'Planned'
+            AND planned_completion_date IS NOT NULL
+            AND planned_completion_date <= %s 
+                   
+                   """, (now,))
+        overdue = cursor.fetchall()
+
+        #for each over due batch:
+        for batch_id, product_name, quantity, batch_type, planned_completion_date in overdue:
+
+            if batch_type in ('standard', 'mix'):
+                #deduction happened upon batch creation, only status flip here
+                db.execute(cursor, """
+                    UPDATE batches
+                    SET status = 'Ready',
+                        date_completed = %s,
+                        promotion_failure_reason = NULL      
+                    WHERE batch_id = %s
+                           
+                           """, (planned_completion_date, batch_id))
+                
+                if cursor.rowcount == 0:
+                    raise ValueError(f"Batch {batch_id} not found during promotion — nothing updated")
+                
+                log_action('planned_batch_promoted',
+                           f"batch_id={batch_id}, product={product_name}, type={batch_type}")
+            
+            #now for "finished batches, deduction happens here, must do a stock check though."
+
+            elif batch_type == 'finished':
+                recipe_df = get_recipe(product_name)
+                if recipe_df is None or recipe_df.empty:
+                    db.execute(cursor,"""
+                        UPDATE batches
+                        SET promotion_failiure_reason = %s
+                        WHERE batch_id = %s   
+                               
+                               """, (f"No recipe found for {product_name}", batch_id, ))
+                    continue
+
+                failure_reason = None #initialize failure reason
+                #if recipe_df not none/empty:
+                for _, row in recipe_df.iterrows(): # get each mat in recipe
+                    material_name = row['material_name']
+                    required = row['quantity_needed'] * quantity
+
+
+                    db.execute(cursor, """
+                        SELECT stock_level, unit FROM raw_materials
+                        WHERE name = %s
+                    """, (material_name,))
+                    mat = cursor.fetchone()
+                    if not mat:
+                        failure_reason = f"Material not found: {material_name}"
+                        break
+
+                    stock, unit = mat
+                    if stock < required: #if not enough
+                        failure_reason = (
+                            f"Insufficient stock: {material_name} "
+                            f"(need {required} {unit}, have {round(stock, 2)} {unit})"
+                            )
+                        break
+                
+                if failure_reason:
+                    # Leave as Planned, record why
+                    db.execute(cursor, """
+                        UPDATE batches
+                        SET promotion_failure_reason = %s
+                        WHERE batch_id = %s
+                    """, (failure_reason, batch_id))
+                    logging.warning(f"Batch {batch_id} could not promote: {failure_reason}")
+                    
+
+                else: #if there was valid stock levels, deduct and promote:
+
+                     
+                    for _, row in recipe_df.iterrows():
+                        material_name = row['material_name']
+                        material_id = row['material_id']
+                        required = row['quantity_needed'] * quantity
+                        db.execute(cursor, """
+                            UPDATE raw_materials
+                            SET stock_level = stock_level - %s
+                            WHERE material_id = %s
+                        """, (required, material_id))
+                        db.execute(cursor, """
+                            INSERT INTO batch_materials (batch_id, material_id, quantity_used)
+                            VALUES (%s, %s, %s)
+                        """, (batch_id, material_id, required))
+
+                    db.execute(cursor, """
+                        UPDATE batches
+                        SET status = 'Ready',
+                            date_completed = %s,
+                            promotion_failure_reason = NULL
+                        WHERE batch_id = %s
+                    """, (planned_completion_date, batch_id))
+                    
+                    if cursor.rowcount == 0:
+                        raise ValueError(f"Batch {batch_id} not found during promotion — nothing updated")
+
+                    log_action('planned_batch_promoted',
+                               f"batch_id={batch_id}, product={product_name}, type=finished")
+
+        db.commit()
+
+
+    except Exception as e:
+        logging.error(f"Error transitioning planned batches: {e}")
+        db.rollback()
+
+    finally:
+        db.close()
+
+
+
+
+def get_batches_planned():
+    """Gets all Planned batches ordered by planned_completion_date ascending."""
+    db = get_db_connection()
+    query = """
+    SELECT batch_id, product_name, quantity, planned_completion_date, status, notes, expiration_date, promotion_failure_reason
+    FROM batches
+    WHERE status = 'Planned'
+    ORDER BY planned_completion_date ASC
+    """
+    result = pd.read_sql_query(query, db.conn)
+    db.close()
+    return result
 
 
 def get_batch_materials(batch_id):
@@ -930,9 +1169,6 @@ def get_batch_materials(batch_id):
     finally:
         db.close()
 
-
-
-    
 # ========================
 # RECIPE FUNCTIONS
 # ========================
