@@ -795,7 +795,7 @@ def delete_batch(batch_id, reallocate=False):
 
 
 
-            for bm_id, material_id, quantity_used, material_name in batch_materials:
+            for _, material_id, quantity_used, material_name in batch_materials:
 
                 db.execute(cursor, """
                     UPDATE raw_materials
@@ -813,7 +813,7 @@ def delete_batch(batch_id, reallocate=False):
                 FROM batch_materials
                 WHERE batch_id = %s        
                                  
-                   """,(bm_id))
+                   """,(batch_id,))
             # Delete batch
             db.execute(cursor, """
                 DELETE FROM batches
@@ -824,11 +824,12 @@ def delete_batch(batch_id, reallocate=False):
                 raise ValueError(f"batch ID {batch_id} not found — nothing deleted")
             
             db.commit()
-
+            
             logging.info(
                 f"Successfully deleted batch {batch_id}.\n"
                 f"Reallocated materials: {materials_added}"
                 )
+            return True
 
         else:
             db.execute(cursor, """
@@ -1066,7 +1067,7 @@ def promote_planned_batches():
                 if recipe_df is None or recipe_df.empty:
                     db.execute(cursor,"""
                         UPDATE batches
-                        SET promotion_failiure_reason = %s
+                        SET promotion_failure_reason = %s
                         WHERE batch_id = %s   
                                
                                """, (f"No recipe found for {product_name}", batch_id, ))

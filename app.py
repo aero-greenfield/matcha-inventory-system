@@ -684,7 +684,7 @@ def edit_material(material_id):
 
 
     
-    mat_id, name, category, stock_level, unit, reorder_level, cost_per_unit, supplier = material # unpack material details for display in edit form.
+    mat_id, name, category, stock_level, unit, reorder_level, cost_per_unit, supplier, is_housemade = material # unpack material details for display in edit form.
     
     # msg and err are for redirecting back to this page after form submission with a success or error message. (after adjusting stock or updating details)
 
