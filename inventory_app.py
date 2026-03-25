@@ -1331,8 +1331,9 @@ def add_recipe(product_name, materials, notes=None):
             material_info = get_raw_material(material_name)
 
             if not material_info:
-                print(f"Warning: Material '{material_name}' not found in raw_materials.")
-                material_id = None
+                logging.error(f"Material '{material_name}' not found in raw_materials while adding recipe '{product_name}'.")
+                raise ValueError(f"Material '{material_name}' not found in raw_materials. Please add it to inventory before creating the recipe.")
+                
 
             else:
                 material_id = material_info[0]#get material_id, first value from get_raw_material result
@@ -1425,8 +1426,9 @@ def change_recipe(product_name, materials, notes= None):
             material_info = get_raw_material(material_name)
 
             if not material_info:
-                print(f"Warning: Material '{material_name}' not found in raw_materials.")
-                material_id = None
+                logging.error(f"Material '{material_name}' not found in raw _materials while updating recipe '{product_name}'.") 
+                raise ValueError(f"Material '{material_name}' not found in raw_materials. Please add it to inventory before updating the recipe.")
+                    
 
             else:
                 material_id = material_info[0]#get material_id, first value from get_raw_material result
