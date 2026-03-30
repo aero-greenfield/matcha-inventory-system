@@ -160,7 +160,7 @@ def add_raw_material(name, category, stock_level, unit, reorder_level, cost_per_
     cursor = db.cursor()
 
     try:
-        db.execute(cursor, "SELECT material_id FROM raw_materials WHERE name = %s", (name,))
+        db.execute(cursor, "SELECT material_id FROM raw_materials WHERE LOWER(name) = LOWER(%s)", (name,))
         if cursor.fetchone():
             return "duplicate"
 
@@ -351,7 +351,7 @@ def get_raw_material(name):
         db.execute(cursor, """
         SELECT material_id, name, stock_level, reorder_level, cost_per_unit
         FROM raw_materials
-        WHERE name = %s
+        WHERE LOWER(name) = LOWER(%s)
                        """,(name,))
         result = cursor.fetchone()
 
@@ -513,7 +513,7 @@ def get_mix_stock(material_name):
     try:
         db.execute(cursor, """
             SELECT stock_level FROM raw_materials
-            WHERE name = %s AND is_housemade = TRUE
+            WHERE LOWER(name) = LOWER(%s) AND is_housemade = TRUE
         """, (material_name,))
         row = cursor.fetchone()
         return float(row[0]) if row else 0.0
@@ -1086,7 +1086,7 @@ def promote_planned_batches():
 
                     db.execute(cursor, """
                         SELECT stock_level, unit FROM raw_materials
-                        WHERE name = %s
+                        WHERE LOWER(name) = LOWER(%s)
                     """, (material_name,))
                     mat = cursor.fetchone()
                     if not mat:
@@ -1216,7 +1216,7 @@ def get_recipe(product_name):
         db.execute(cursor,"""
         SELECT recipe_id
         FROM recipes
-        WHERE product_name = %s   
+        WHERE LOWER(product_name) = LOWER(%s)   
                        """,(product_name,))
         row = cursor.fetchone() # get recipe_id from product name
 
@@ -1396,8 +1396,8 @@ def change_recipe(product_name, materials, notes= None):
         db.execute(cursor,"""
         SELECT recipe_id
         FROM recipes
-        WHERE product_name = %s               
-               
+        WHERE LOWER(product_name) = LOWER(%s)
+
                        """,(product_name,))
         recipe_id = cursor.fetchone()
 
@@ -1411,7 +1411,7 @@ def change_recipe(product_name, materials, notes= None):
         db.execute(cursor,"""
         UPDATE recipes
         SET notes = %s
-        WHERE product_name = %s               
+        WHERE LOWER(product_name) = LOWER(%s)               
                        
                        """,(notes, product_name,))
         
@@ -1478,7 +1478,7 @@ def delete_recipe(product_name):
         db.execute(cursor,"""
         SELECT recipe_id
         FROM recipes
-        WHERE product_name = %s         
+        WHERE LOWER(product_name) = LOWER(%s)
                        """,(product_name,))
         row = cursor.fetchone()
 
@@ -1508,7 +1508,7 @@ def delete_recipe(product_name):
         #delete recipe from recipes
         db.execute(cursor,"""
         DELETE FROM recipes
-        WHERE product_name = %s               
+        WHERE LOWER(product_name) = LOWER(%s)               
                        """,(product_name,))
         
         if cursor.rowcount == 0:
