@@ -52,6 +52,75 @@
 .row-failed-promotion { background-color: #fef2f2; }
 .row-failed-promotion td { color: #991b1b; }
 .promotion-failure-note { display:block; font-size:11px; font-weight:400; color:#dc2626; margin-top:3px; }
+
+/* Type badges */
+.badge { display:inline-block; border-radius:4px; font-size:11px; font-weight:600; padding:2px 8px; text-transform:capitalize; }
+.badge-standard { background:#d1fae5; color:#065f46; }
+.badge-mix      { background:#dbeafe; color:#1e40af; }
+.badge-finished { background:#ede9fe; color:#5b21b6; }
+
+/* Section count pill */
+.section-count {
+    display:inline-block;
+    background:var(--content-bg);
+    border:1px solid var(--border);
+    border-radius:20px;
+    font-size:11px;
+    font-weight:500;
+    color:var(--text-muted);
+    padding:1px 8px;
+    margin-left:8px;
+    vertical-align:middle;
+}
+
+/* Collapsible top-level section toggle (Planned) */
+.section-toggle {
+    display:flex;
+    align-items:center;
+    gap:8px;
+    background:none;
+    border:none;
+    padding:0;
+    font-size:18px;
+    font-weight:700;
+    color:var(--text);
+    cursor:pointer;
+    text-align:left;
+    margin-bottom:16px;
+}
+.section-toggle:hover { opacity:0.75; }
+.section-toggle .toggle-arrow {
+    font-size:11px;
+    color:var(--text-muted);
+    transition:transform 0.15s;
+    display:inline-block;
+}
+.section-toggle.open .toggle-arrow { transform:rotate(90deg); }
+
+/* Collapsible sub-group toggle */
+.subgroup-toggle {
+    display:flex;
+    align-items:center;
+    gap:6px;
+    background:none;
+    border:none;
+    padding:0;
+    font-size:13px;
+    font-weight:600;
+    color:var(--text-muted);
+    cursor:pointer;
+    text-align:left;
+    margin:20px 0 8px;
+    text-transform:uppercase;
+    letter-spacing:0.04em;
+}
+.subgroup-toggle:hover { color:var(--text); }
+.subgroup-toggle .toggle-arrow {
+    font-size:10px;
+    transition:transform 0.15s;
+    display:inline-block;
+}
+.subgroup-toggle.open .toggle-arrow { transform:rotate(90deg); }
 </style>
 {% endblock %}
 
@@ -68,95 +137,262 @@
     </div>
 </div>
 
-{% if planned_batches %}
-<div style="margin-bottom:32px;">
-    <h2 style="font-size:16px;font-weight:600;margin-bottom:12px;color:var(--text-muted);">Planned Batches</h2>
-    <div class="table-container">
-        <table class="data-table">
-            <thead>
-                <tr>
-                    <th>Batch ID</th>
-                    <th>Product Name</th>
-                    <th>Type</th>
-                    <th>Quantity</th>
-                    <th>Planned Completion Date</th>
-                    <th>Notes</th>
-                    <th>Expiration Date</th>
-                    <th>Actions</th>
-                </tr>
-            </thead>
-            <tbody>
-                {% for row in planned_batches %}
-                <tr{% if row['promotion_failure_reason'] %} class="row-failed-promotion"{% endif %}>
-                    <td>{{ row['batch_id'] }}</td>
-                    <td>
-                        <strong>{{ row['product_name'] }}</strong>
-                        {% if row['promotion_failure_reason'] %}
-                        <span class="promotion-failure-note">&#9888; {{ row['promotion_failure_reason'] }}</span>
-                        {% endif %}
-                    </td>
-                    <td>{{ row['batch_type'] or 'standard' }}</td>
-                    <td>{{ row['quantity'] }}</td>
-                    <td>{{ row['planned_completion_date'] or '—' }}</td>
-                    <td>{{ row['notes'] or '' }}</td>
-                    <td>{{ row['expiration_date'] or '—' }}</td>
-                    <td>
-                        <form method="POST" action="/edit-batch/{{ row['batch_id'] }}/change-status"
-                              onsubmit="return confirm('Mark batch as Ready now?')" style="display:inline;">
-                            <input type="hidden" name="status" value="Ready">
-                            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-                            <button type="submit" class="btn btn-secondary" style="padding:5px 12px;font-size:12px;">Mark Ready</button>
-                        </form>
-                        <button class="materials-toggle" data-batch-id="{{ row['batch_id'] }}">&#9654; Materials</button>
-                    </td>
-                </tr>
-                <tr class="materials-row" id="materials-{{ row['batch_id'] }}" style="display:none;">
-                    <td colspan="8">
-                        <div class="materials-detail">Loading...</div>
-                    </td>
-                </tr>
-                {% endfor %}
-            </tbody>
-        </table>
+{# ===== READY BATCHES SECTION ===== #}
+<div style="margin-bottom:40px;">
+    <h2 style="font-size:18px;font-weight:700;margin-bottom:16px;">
+        Ready Batches
+        <span class="section-count">{{ ready_standard|length + ready_mix|length }}</span>
+    </h2>
+
+    {# Sub-group: Standard / Finished — starts OPEN #}
+    <button class="subgroup-toggle open" id="toggle-ready-standard" onclick="toggleSection('ready-standard', this)">
+        <span class="toggle-arrow">&#9654;</span>
+        Standard &amp; Finished
+        <span class="section-count">{{ ready_standard|length }}</span>
+    </button>
+    <div id="ready-standard">
+        {% if ready_standard %}
+        <div class="table-container" style="margin-bottom:8px;">
+            <table class="data-table">
+                <thead>
+                    <tr>
+                        <th>Batch ID</th>
+                        <th>Product</th>
+                        <th>Type</th>
+                        <th>Quantity</th>
+                        <th>Date Completed</th>
+                        <th>Notes</th>
+                        <th>Expiration</th>
+                        <th>Actions</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for row in ready_standard %}
+                    <tr>
+                        <td>{{ row['batch_id'] }}</td>
+                        <td><strong>{{ row['product_name'] }}</strong></td>
+                        <td><span class="badge badge-{{ row['batch_type'] or 'standard' }}">{{ row['batch_type'] or 'standard' }}</span></td>
+                        <td>{{ row['quantity'] }}</td>
+                        <td>{{ row['date_completed'] or '—' }}</td>
+                        <td>{{ row['notes'] or '' }}</td>
+                        <td>{{ row['expiration_date'] or '—' }}</td>
+                        <td>
+                            <form method="POST" action="/batches/{{ row['batch_id'] }}/mark-shipped"
+                                  onsubmit="return confirm('Mark this batch as shipped?')" style="display:inline;" autocomplete="off">
+                                <button type="submit" class="btn btn-primary" style="padding:5px 12px;font-size:12px;">Ship</button>
+                                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                            </form>
+                            <button class="materials-toggle" data-batch-id="{{ row['batch_id'] }}">&#9654; Materials</button>
+                        </td>
+                    </tr>
+                    <tr class="materials-row" id="materials-{{ row['batch_id'] }}" style="display:none;">
+                        <td colspan="8">
+                            <div class="materials-detail">Loading...</div>
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+        {% else %}
+        <div style="padding:16px 0;color:var(--text-muted);font-size:14px;">
+            No standard or finished batches ready. <a href="/create-batch" style="color:var(--accent);">Create a batch</a>
+        </div>
+        {% endif %}
+    </div>
+
+    {# Sub-group: Mix — starts CLOSED #}
+    <button class="subgroup-toggle" id="toggle-ready-mix" onclick="toggleSection('ready-mix', this)">
+        <span class="toggle-arrow">&#9654;</span>
+        Component
+        <span class="section-count">{{ ready_mix|length }}</span>
+    </button>
+    <div id="ready-mix" style="display:none;">
+        {% if ready_mix %}
+        <div class="table-container" style="margin-bottom:8px;">
+            <table class="data-table">
+                <thead>
+                    <tr>
+                        <th>Batch ID</th>
+                        <th>Product</th>
+                        <th>Type</th>
+                        <th>Quantity</th>
+                        <th>Date Completed</th>
+                        <th>Notes</th>
+                        <th>Expiration</th>
+                        <th>Actions</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for row in ready_mix %}
+                    <tr>
+                        <td>{{ row['batch_id'] }}</td>
+                        <td><strong>{{ row['product_name'] }}</strong></td>
+                        <td><span class="badge badge-mix">component</span></td>
+                        <td>{{ row['quantity'] }}</td>
+                        <td>{{ row['date_completed'] or '—' }}</td>
+                        <td>{{ row['notes'] or '' }}</td>
+                        <td>{{ row['expiration_date'] or '—' }}</td>
+                        <td>
+                            <button class="materials-toggle" data-batch-id="{{ row['batch_id'] }}">&#9654; Materials</button>
+                        </td>
+                    </tr>
+                    <tr class="materials-row" id="materials-{{ row['batch_id'] }}" style="display:none;">
+                        <td colspan="8">
+                            <div class="materials-detail">Loading...</div>
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+        {% else %}
+        <div style="padding:16px 0;color:var(--text-muted);font-size:14px;">No mix batches ready.</div>
+        {% endif %}
     </div>
 </div>
-{% endif %}
 
-{% if batches %}
-<div class="table-container">
-    <table class="data-table">
-        <thead>
-            <tr>{% for col in columns %}<th>{{ col }}</th>{% endfor %}<th>Actions</th></tr>
-        </thead>
-        <tbody>
-            {% for row in batches %}
-            <tr>
-                {% for col in columns %}<td>{{ row[col] }}</td>{% endfor %}
-                <td>
-                    <form method="POST" action="/batches/{{ row['batch_id'] }}/mark-shipped"
-                          onsubmit="return confirm('Mark this batch as shipped?')" style="display:inline;">
-                        <button type="submit" class="btn btn-primary" style="padding:5px 12px;font-size:12px;">Ship</button>
-                        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-                    </form>
-                    <button class="materials-toggle" data-batch-id="{{ row['batch_id'] }}">&#9654; Materials</button>
-                </td>
-            </tr>
-            <tr class="materials-row" id="materials-{{ row['batch_id'] }}" style="display:none;">
-                <td colspan="{{ columns|length + 1 }}">
-                    <div class="materials-detail">Loading...</div>
-                </td>
-            </tr>
-            {% endfor %}
-        </tbody>
-    </table>
+{# ===== PLANNED BATCHES SECTION — starts CLOSED ===== #}
+<div style="margin-bottom:40px;">
+    <h2 style="font-size:18px;font-weight:700;margin-bottom:16px;">
+        Planned Batches
+        <span class="section-count">{{ planned_standard|length + planned_mix|length }}</span>
+    </h2>
+    <div id="planned-section">
+
+        {# Sub-group: Standard / Finished planned — starts OPEN (within planned) #}
+        <button class="subgroup-toggle open" id="toggle-planned-standard" onclick="toggleSection('planned-standard', this)">
+            <span class="toggle-arrow">&#9654;</span>
+            Standard &amp; Finished
+            <span class="section-count">{{ planned_standard|length }}</span>
+        </button>
+        <div id="planned-standard">
+            {% if planned_standard %}
+            <div class="table-container" style="margin-bottom:8px;">
+                <table class="data-table">
+                    <thead>
+                        <tr>
+                            <th>Batch ID</th>
+                            <th>Product</th>
+                            <th>Type</th>
+                            <th>Quantity</th>
+                            <th>Planned Completion</th>
+                            <th>Notes</th>
+                            <th>Expiration</th>
+                            <th>Actions</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for row in planned_standard %}
+                        <tr{% if row['promotion_failure_reason'] %} class="row-failed-promotion"{% endif %}>
+                            <td>{{ row['batch_id'] }}</td>
+                            <td>
+                                <strong>{{ row['product_name'] }}</strong>
+                                {% if row['promotion_failure_reason'] %}
+                                <span class="promotion-failure-note">&#9888; {{ row['promotion_failure_reason'] }}</span>
+                                {% endif %}
+                            </td>
+                            <td><span class="badge badge-{{ row['batch_type'] or 'standard' }}">{{ row['batch_type'] or 'standard' }}</span></td>
+                            <td>{{ row['quantity'] }}</td>
+                            <td>{{ row['planned_completion_date'] or '—' }}</td>
+                            <td>{{ row['notes'] or '' }}</td>
+                            <td>{{ row['expiration_date'] or '—' }}</td>
+                            <td>
+                                <form method="POST" action="/edit-batch/{{ row['batch_id'] }}/change-status"
+                                      onsubmit="return confirm('Mark batch as Ready now?')" style="display:inline;" autocomplete="off">
+                                    <input type="hidden" name="status" value="Ready">
+                                    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                                    <button type="submit" class="btn btn-secondary" style="padding:5px 12px;font-size:12px;">Mark Ready</button>
+                                </form>
+                                <button class="materials-toggle" data-batch-id="{{ row['batch_id'] }}">&#9654; Materials</button>
+                            </td>
+                        </tr>
+                        <tr class="materials-row" id="materials-{{ row['batch_id'] }}" style="display:none;">
+                            <td colspan="8">
+                                <div class="materials-detail">Loading...</div>
+                            </td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+            {% else %}
+            <div style="padding:16px 0;color:var(--text-muted);font-size:14px;">No standard or finished batches planned.</div>
+            {% endif %}
+        </div>
+
+        {# Sub-group: Mix planned — starts CLOSED #}
+        <button class="subgroup-toggle" id="toggle-planned-mix" onclick="toggleSection('planned-mix', this)">
+            <span class="toggle-arrow">&#9654;</span>
+            Component
+            <span class="section-count">{{ planned_mix|length }}</span>
+        </button>
+        <div id="planned-mix" style="display:none;">
+            {% if planned_mix %}
+            <div class="table-container" style="margin-bottom:8px;">
+                <table class="data-table">
+                    <thead>
+                        <tr>
+                            <th>Batch ID</th>
+                            <th>Product</th>
+                            <th>Type</th>
+                            <th>Quantity</th>
+                            <th>Planned Completion</th>
+                            <th>Notes</th>
+                            <th>Expiration</th>
+                            <th>Actions</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for row in planned_mix %}
+                        <tr{% if row['promotion_failure_reason'] %} class="row-failed-promotion"{% endif %}>
+                            <td>{{ row['batch_id'] }}</td>
+                            <td>
+                                <strong>{{ row['product_name'] }}</strong>
+                                {% if row['promotion_failure_reason'] %}
+                                <span class="promotion-failure-note">&#9888; {{ row['promotion_failure_reason'] }}</span>
+                                {% endif %}
+                            </td>
+                            <td><span class="badge badge-mix">component</span></td>
+                            <td>{{ row['quantity'] }}</td>
+                            <td>{{ row['planned_completion_date'] or '—' }}</td>
+                            <td>{{ row['notes'] or '' }}</td>
+                            <td>{{ row['expiration_date'] or '—' }}</td>
+                            <td>
+                                <form method="POST" action="/edit-batch/{{ row['batch_id'] }}/change-status"
+                                      onsubmit="return confirm('Mark batch as Ready now?')" style="display:inline;" autocomplete="off">
+                                    <input type="hidden" name="status" value="Ready">
+                                    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                                    <button type="submit" class="btn btn-secondary" style="padding:5px 12px;font-size:12px;">Mark Ready</button>
+                                </form>
+                                <button class="materials-toggle" data-batch-id="{{ row['batch_id'] }}">&#9654; Materials</button>
+                            </td>
+                        </tr>
+                        <tr class="materials-row" id="materials-{{ row['batch_id'] }}" style="display:none;">
+                            <td colspan="8">
+                                <div class="materials-detail">Loading...</div>
+                            </td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+            {% else %}
+            <div style="padding:16px 0;color:var(--text-muted);font-size:14px;">No mix batches planned.</div>
+            {% endif %}
+        </div>
+
+    </div>{# end planned-section #}
 </div>
-{% else %}
-<div class="table-container" style="padding:40px 24px;text-align:center;color:var(--text-muted);">
-    <p>No batches available. <a href="/create-batch" style="color:var(--accent);">Create your first batch</a></p>
-</div>
-{% endif %}
 
 <script>
+function toggleSection(sectionId, btn) {
+    var el = document.getElementById(sectionId);
+    var isOpen = el.style.display !== 'none';
+    el.style.display = isOpen ? 'none' : '';
+    btn.classList.toggle('open', !isOpen);
+}
+
 document.querySelectorAll('.materials-toggle').forEach(function(btn) {
   btn.addEventListener('click', function() {
     var batchId = this.dataset.batchId;
@@ -170,7 +406,6 @@ document.querySelectorAll('.materials-toggle').forEach(function(btn) {
       return;
     }
 
-    // Only fetch if not already loaded
     if (!detail.dataset.loaded) {
       fetch('/batches/' + batchId + '/materials')
         .then(function(r) { return r.json(); })

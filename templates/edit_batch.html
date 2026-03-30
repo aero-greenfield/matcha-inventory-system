@@ -17,7 +17,7 @@
 
 <div class="section-card">
     <h2>Edit Details</h2>
-    <form method="POST" action="/edit-batch/{{ batch[0] }}/update-details">
+    <form method="POST" action="/edit-batch/{{ batch[0] }}/update-details" autocomplete="off">
         <div class="form-row">
             <div class="form-group">
                 <label>Product Name</label>
@@ -52,7 +52,7 @@
 <div class="section-card">
     <h2>Change Status</h2>
     <p style="color:var(--text-muted);font-size:13px;margin-bottom:12px;">Current status: <strong style="color:var(--text);">{{ batch[4] or 'N/A' }}</strong></p>
-    <form method="POST" action="/edit-batch/{{ batch[0] }}/change-status">
+    <form method="POST" action="/edit-batch/{{ batch[0] }}/change-status" autocomplete="off">
         <div class="radio-group">
             <label><input type="radio" name="status" value="Ready" {% if batch[4] == 'Ready' %}checked{% endif %}> Ready</label>
             <label><input type="radio" name="status" value="Shipped" {% if batch[4] == 'Shipped' %}checked{% endif %}> Shipped</label>
@@ -82,7 +82,7 @@
 <div class="section-card danger-card">
     <h2>Delete Batch</h2>
     <p style="color:var(--text-muted);font-size:13px;margin-bottom:12px;">Permanently removes batch <strong>#{{ batch[0] }} ({{ batch[1] }})</strong>.</p>
-    <form method="POST" action="/edit-batch/{{ batch[0] }}/delete"
+    <form method="POST" action="/edit-batch/{{ batch[0] }}/delete" autocomplete="off"
           onsubmit="return confirm('Delete batch #{{ batch[0] }}? This cannot be undone.')">
         <div class="checkbox-group">
             <input type="checkbox" name="reallocate" value="true" id="reallocate">

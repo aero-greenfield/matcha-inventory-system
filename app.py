@@ -849,19 +849,21 @@ def view_batches():
     
     """
 
-    data = get_batches() # get all batches in df, from inventory_app.py.
-    batches = data.to_dict(orient='records') if not data.empty else [] # convert to HTML friendly like usual.
-    columns = list(data.columns) if not data.empty else [] # get column names for table header in html, if data is not empty.
-    #if data is empty, set columns to empty list to avoid errors in html.
-    # we need to get columns separately because the batches page shows a table with dynamic columns based on the batch data, so we need to pass the column names to the html to generate the table header.
+    data = get_batches()
+    all_ready = data.to_dict(orient='records') if not data.empty else []
+    ready_standard = [b for b in all_ready if b.get('batch_type') != 'mix']
+    ready_mix       = [b for b in all_ready if b.get('batch_type') == 'mix']
 
-    # get planned data seperatly 
     planned_data = get_batches_planned()
-    planned_batches = planned_data.to_dict(orient='records') if not planned_data.empty else []
+    all_planned = planned_data.to_dict(orient='records') if not planned_data.empty else []
+    planned_standard = [b for b in all_planned if b.get('batch_type') != 'mix']
+    planned_mix      = [b for b in all_planned if b.get('batch_type') == 'mix']
 
-    return render_template("batches.html", # render the batches page html template.
-        batches=batches, columns=columns, count=len(batches),
-        planned_batches=planned_batches,
+    return render_template("batches.html",
+        ready_standard=ready_standard,
+        ready_mix=ready_mix,
+        planned_standard=planned_standard,
+        planned_mix=planned_mix,
         back_link=True, back_link_url="/", back_link_label="Back to Home"
 )
 

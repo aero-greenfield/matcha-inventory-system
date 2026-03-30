@@ -18,7 +18,7 @@
 <div class="section-card">
     <h2>Adjust Stock</h2>
     <p style="color:var(--text-muted);font-size:13px;margin-bottom:16px;">Current stock: <strong style="color:var(--text);">{{ stock_level }} {{ unit or '' }}</strong></p>
-    <form method="POST" action="/edit-material/{{ mat_id }}/adjust-stock">
+    <form method="POST" action="/edit-material/{{ mat_id }}/adjust-stock" autocomplete="off">
         <div class="form-group" style="max-width:300px;">
             <label>Amount</label>
             <input type="number" step="0.01" name="amount" min="0.01" required placeholder="e.g. 50">
@@ -34,7 +34,7 @@
 
 <div class="section-card">
     <h2>Edit Details</h2>
-    <form method="POST" action="/edit-material/{{ mat_id }}/update-details">
+    <form method="POST" action="/edit-material/{{ mat_id }}/update-details" autocomplete="off">
         <div class="form-row">
             <div class="form-group"><label>Name</label><input type="text" name="name" value="{{ name }}" required></div>
             <div class="form-group"><label>Category</label><input type="text" name="category" value="{{ category or '' }}"></div>
@@ -55,7 +55,7 @@
 <div class="section-card danger-card">
     <h2>Delete Material</h2>
     <p style="color:var(--text-muted);font-size:13px;margin-bottom:16px;">Permanently removes <strong>{{ name }}</strong> from inventory.</p>
-    <form method="POST" action="/edit-material/{{ mat_id }}/delete"
+    <form method="POST" action="/edit-material/{{ mat_id }}/delete" autocomplete="off"
           onsubmit="return confirm('Delete {{ name }}? This cannot be undone.')">
         <button type="submit" class="btn btn-danger">Delete Material</button>
         <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">

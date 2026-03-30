@@ -698,10 +698,10 @@ def get_batches():
     db = get_db_connection()
 
     query = """
-    SELECT batch_id, product_name, quantity, date_completed, status, notes, expiration_date
+    SELECT batch_id, product_name, batch_type, quantity, date_completed, notes, expiration_date
     FROM batches
     WHERE status = 'Ready'
-    ORDER BY date_completed
+    ORDER BY batch_id DESC
     """
 
     result = pd.read_sql_query(query, db.conn)
@@ -1155,10 +1155,10 @@ def get_batches_planned():
     """Gets all Planned batches ordered by planned_completion_date ascending."""
     db = get_db_connection()
     query = """
-    SELECT batch_id, product_name, quantity, planned_completion_date, status, notes, expiration_date, promotion_failure_reason
+    SELECT batch_id, product_name, batch_type, quantity, planned_completion_date, notes, expiration_date, promotion_failure_reason
     FROM batches
     WHERE status = 'Planned'
-    ORDER BY planned_completion_date ASC
+    ORDER BY batch_id DESC
     """
     result = pd.read_sql_query(query, db.conn)
     db.close()
