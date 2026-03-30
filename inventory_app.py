@@ -63,15 +63,15 @@ def create_database():
     cursor.execute("""
     CREATE TABLE IF NOT EXISTS raw_materials(
                    material_id INTEGER PRIMARY KEY AUTOINCREMENT,
-                   name TEXT NOT NULL,
-                   category TEXT,  
+                   name TEXT NOT NULL UNIQUE,
+                   category TEXT,
                    stock_level REAL,
                    unit TEXT,
-                   reorder_level REAL, 
+                   reorder_level REAL,
                    cost_per_unit REAL,
                    supplier TEXT,
                    is_housemade BOOLEAN DEFAULT FALSE
-                     
+
                    )
                    """)
     
@@ -160,6 +160,10 @@ def add_raw_material(name, category, stock_level, unit, reorder_level, cost_per_
     cursor = db.cursor()
 
     try:
+        db.execute(cursor, "SELECT material_id FROM raw_materials WHERE name = %s", (name,))
+        if cursor.fetchone():
+            return "duplicate"
+
         db.execute(cursor, """
             INSERT INTO raw_materials (name, category, stock_level, unit, reorder_level, cost_per_unit, supplier, is_housemade)
             VALUES (%s,%s,%s,%s,%s,%s,%s,%s)

@@ -12,6 +12,9 @@
 </div>
 
 <div class="form-card">
+    {% if error %}
+    <div class="alert alert-danger" style="margin-bottom:1rem;">{{ error }}</div>
+    {% endif %}
     <form method="POST" autocomplete="off">
         <div class="form-row">
             <div class="form-group"><label>Material Name *</label><input type="text" name="name" required></div>

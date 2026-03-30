@@ -564,7 +564,9 @@ def add_material_route():
         # html here, the URL would still be /add-material, which is not ideal. we want the URL to reflect the 
         # actual page we're on, which is /inventory. also, redirecting after POST is a common 
         # best practice to prevent form resubmission if user refreshes the page.
-        if result:
+        if result == "duplicate":
+            return render_template("add_material.html", error=f"A material named '{name}' already exists. Please use a different name or update the existing one.")
+        elif result:
             logging.info(f"Material added: '{name}' | category={category}, stock={stock_level}, unit={unit}")
             log_action('material_added', f"name={name}, category={category}, stock={stock_level}, unit={unit}")
             # if succesful data addition. Redirect to inventory page to show updated inventory with new material.
