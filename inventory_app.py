@@ -935,6 +935,8 @@ def update_batch(batch_id, product_name=None, quantity=None, date_completed=None
     changes the details of batch, BESIDES STATUS, doesnt change status.
 
     note: similar to update_materials func
+
+    for quantity change, must deduct from raw materials if quantity is increased, and add back to raw materials if quantity is decreased. will check for sufficient stock if quantity is increased. 
     """
 
     db = get_db_connection()
@@ -1194,7 +1196,7 @@ def get_batch_materials(batch_id):
     try:
 
         query="""
-        SELECT rm.name AS material_name, bm.quantity_used, rm.unit
+        SELECT rm.name AS material_name, bm.quantity_used, rm.unit, bm.material_id
         FROM batch_materials bm
         JOIN raw_materials rm ON bm.material_id = rm.material_id
         WHERE bm.batch_id = %s
@@ -1208,6 +1210,56 @@ def get_batch_materials(batch_id):
         logging.error(f"Error getting batch materials: {e}")
         return []
     
+    finally:
+        db.close()
+
+
+
+
+def adjust_batch_material(batch_id, new_quantities: dict):
+    """
+    Updates batch_materials.quantity_used and applies delta to raw_materials.stock_level.
+    new_quantities: {material_id (int): new_quantity_used (float)}
+    Delta logic: stock_level -= (new - old), so increasing qty deducts more, decreasing returns stock.
+    """
+    db = get_db_connection()
+    cursor = db.cursor()
+
+    try:
+        for material_id, new_qty in new_quantities.items():
+            db.execute(cursor, """
+                SELECT quantity_used FROM batch_materials
+                WHERE batch_id = %s AND material_id = %s
+            """, (batch_id, material_id))
+            row = cursor.fetchone()
+            if row is None:
+                logging.warning(f"No batch_material record for batch {batch_id}, material {material_id} — skipping")
+                continue
+
+            old_qty = row[0]
+            delta = new_qty - old_qty
+
+            db.execute(cursor, """
+                UPDATE batch_materials
+                SET quantity_used = %s
+                WHERE batch_id = %s AND material_id = %s
+            """, (new_qty, batch_id, material_id))
+
+            db.execute(cursor, """
+                UPDATE raw_materials
+                SET stock_level = stock_level - %s
+                WHERE material_id = %s
+            """, (delta, material_id))
+
+        db.commit()
+        logging.info(f"Adjusted materials for batch {batch_id} with changes: {new_quantities}")
+        return True
+
+    except Exception as e:
+        logging.error(f"Error adjusting batch materials: {e}")
+        db.rollback()
+        return None
+
     finally:
         db.close()
 
