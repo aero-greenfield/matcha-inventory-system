@@ -191,7 +191,7 @@ def get_low_stock_materials():
 
     query = """
 
-    SELECT name, category, stock_level, reorder_level, unit
+    SELECT name, category, stock_level, reorder_level, unit, cost_per_unit, supplier
     FROM raw_materials
     WHERE stock_level <= reorder_level
     ORDER BY (stock_level / reorder_level)
