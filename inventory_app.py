@@ -451,10 +451,20 @@ def delete_raw_material(material_id):
 
     try:
         db.execute(cursor, """
+        SELECT DISTINCT batch_id FROM batch_materials
+        WHERE material_id = %s
+        """, (material_id,))
+        affected_batches = [row[0] for row in cursor.fetchall()]
+
+        db.execute(cursor, """
         DELETE FROM recipe_materials
         WHERE material_id = %s
         """, (material_id,))
 
+        db.execute(cursor, """
+        DELETE FROM batch_materials
+        WHERE material_id = %s
+        """, (material_id,))
 
         db.execute(cursor, """
         DELETE FROM raw_materials
@@ -466,7 +476,7 @@ def delete_raw_material(material_id):
 
         db.commit()
         logging.info(f"Deleted material with ID {material_id} from raw materials")
-        return True
+        return {"deleted": True, "affected_batches": affected_batches}
 
     except Exception as e:
         logging.error(f"Error: {e}")
@@ -836,6 +846,10 @@ def delete_batch(batch_id, reallocate=False):
             return True
 
         else:
+            db.execute(cursor, """
+                DELETE FROM batch_materials
+                WHERE batch_id = %s
+            """, (batch_id,))
             db.execute(cursor, """
                 DELETE FROM batches
                 WHERE batch_id = %s

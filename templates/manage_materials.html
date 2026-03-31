@@ -12,6 +12,10 @@
     <a href="/add-material" class="btn btn-primary">+ Add Material</a>
 </div>
 
+{% if request.args.get('warning') %}
+<div class="alert alert-warning">{{ request.args.get('warning') }}</div>
+{% endif %}
+
 {% if materials %}
 <div class="table-container">
     <table class="data-table">

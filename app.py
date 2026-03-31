@@ -820,6 +820,10 @@ def delete_material(material_id):
         ), 500
     logging.info(f"Material deleted: material_id={material_id}")
     log_action('material_deleted', f"material_id={material_id}")
+    if result.get("affected_batches"):
+        count = len(result["affected_batches"])
+        warning = f"Material deleted. Note: it was used in {count} batch(es) — those records no longer show this ingredient."
+        return redirect(url_for('manage_materials', warning=warning))
     return redirect(url_for('manage_materials'))
 
 
