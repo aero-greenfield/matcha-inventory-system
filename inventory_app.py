@@ -194,7 +194,7 @@ def get_low_stock_materials():
     SELECT name, category, stock_level, reorder_level, unit, cost_per_unit, supplier
     FROM raw_materials
     WHERE stock_level <= reorder_level
-    ORDER BY (stock_level / reorder_level)
+    ORDER BY (stock_level / NULLIF(reorder_level, 0))
     """
     result = pd.read_sql_query(query, db.conn)
     db.close()
