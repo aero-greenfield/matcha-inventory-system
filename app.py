@@ -136,7 +136,7 @@ from inventory_app import (
     get_batches, mark_as_shipped, delete_batch, get_recipe, add_recipe,
     change_recipe, delete_recipe, delete_raw_material, get_material_by_id, get_all_materials_with_id, update_raw_material, get_all_batches_with_id, get_batch_by_id,
     update_batch, update_batch_status, update_recipe, get_all_recipes_with_id, get_recipe_by_id, log_action, view_logs, get_batch_materials,
-    get_batches_planned, get_housemade_materials, get_mix_stock, adjust_batch_material)
+    get_batches_planned, get_housemade_materials, get_mix_stock, adjust_batch_material, check_batch_materials_stock)
 
 
 # Import helper functions for exporting data
@@ -1203,6 +1203,19 @@ def update_batch_details(batch_id):
                 message="Invalid planned completion date format. Use YYYY-MM-DD.",
                 back_link=True, back_link_url=f"/edit-batch/{batch_id}", back_link_label="Go back to Edit Batch"
             ), 400
+        
+    new_quantities = {}
+    if request.form.get('adjust_deductions') == '1':
+        for key, value in request.form.items():
+            if key.startswith('material_'):
+                try:
+                    material_id = int(key[len('material_'):])
+                    new_quantities[material_id] = float(value)
+                except (ValueError, TypeError):
+                    pass  # skip malformed entries
+
+        if new_quantities and not check_batch_materials_stock(batch_id, new_quantities):
+            return redirect(url_for('edit_batch', batch_id=batch_id, err='Could not update — insufficient stock for new material quantities'))
 
     result = update_batch(batch_id, product_name=product_name, quantity=quantity, notes=notes, expiration_date=expiration_date, planned_completion_date=planned_completion_date)
 
@@ -1210,24 +1223,13 @@ def update_batch_details(batch_id):
         logging.info(f"Batch details updated: batch_id={batch_id}, product_name={product_name}, quantity={quantity}")
         log_action('batch_updated', f"batch_id={batch_id}, product_name={product_name}, quantity={quantity}")
 
-        # If user opted to also adjust raw material deductions, parse material_<id> fields
-        if request.form.get('adjust_deductions') == '1':
-            new_quantities = {}
-            for key, value in request.form.items():
-                if key.startswith('material_'):
-                    try:
-                        material_id = int(key[len('material_'):])
-                        new_quantities[material_id] = float(value)
-                    except (ValueError, TypeError):
-                        pass  # skip malformed entries
-
-            if new_quantities:
-                adj_result = adjust_batch_material(batch_id, new_quantities)
-                if adj_result:
-                    log_action('batch_materials_adjusted', f"batch_id={batch_id}, adjustments={new_quantities}")
-                    return redirect(url_for('edit_batch', batch_id=batch_id, msg='Batch details and material deductions updated successfully'))
-                else:
-                    return redirect(url_for('edit_batch', batch_id=batch_id, err='Batch details saved but failed to adjust material deductions'))
+        if new_quantities:
+            adj_result = adjust_batch_material(batch_id, new_quantities)
+            if adj_result:
+                log_action('batch_materials_adjusted', f"batch_id={batch_id}, adjustments={new_quantities}")
+                return redirect(url_for('edit_batch', batch_id=batch_id, msg='Batch details and material deductions updated successfully'))
+            else:
+                return redirect(url_for('edit_batch', batch_id=batch_id, err='Batch details saved but failed to adjust material deductions — insufficient stock or material not found'))
 
         return redirect(url_for('edit_batch', batch_id=batch_id, msg='Batch details updated successfully'))
     else:
