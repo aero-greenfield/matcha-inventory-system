@@ -202,10 +202,23 @@
     <p style="color:var(--text-muted);font-size:13px;margin-bottom:12px;">Permanently removes batch <strong>#{{ batch[0] }} ({{ batch[1] }})</strong>.</p>
     <form method="POST" action="/edit-batch/{{ batch[0] }}/delete" autocomplete="off"
           onsubmit="return confirm('Delete batch #{{ batch[0] }}? This cannot be undone.')">
-        <div class="checkbox-group">
-            <input type="checkbox" name="reallocate" value="true" id="reallocate">
-            <label for="reallocate">Reallocate materials back to inventory</label>
+
+        {% if batch_materials %}
+        <div style="margin-bottom:12px;">
+            <p style="font-size:13px;font-weight:600;margin-bottom:8px;">Select materials to reallocate back to inventory:</p>
+            <div style="display:flex;flex-direction:column;gap:6px;">
+                {% for m in batch_materials %}
+                <div class="checkbox-group">
+                    <input type="checkbox" name="reallocate_material" value="{{ m.material_id }}" id="mat-{{ m.material_id }}">
+                    <input type="hidden" name="qty_{{ m.material_id }}" value="{{ m.quantity_used }}">
+                    <input type="hidden" name="matname_{{ m.material_id }}" value="{{ m.material_name }}">
+                    <label for="mat-{{ m.material_id }}">{{ m.material_name }} <span style="color:var(--text-muted);font-size:12px;">({{ m.quantity_used }} used)</span></label>
+                </div>
+                {% endfor %}
+            </div>
         </div>
+        {% endif %}
+
         <button type="submit" class="btn btn-danger">Delete Batch</button>
         <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
     </form>

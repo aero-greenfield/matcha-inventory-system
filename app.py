@@ -1132,10 +1132,22 @@ def edit_batch(batch_id):
     """
 
     batch = get_batch_by_id(batch_id) # get batch details for the batch being edited.
+    batch_materials_rows = get_batch_materials(batch_id) # get materials used in this batch, to show in the edit page and allow adjustments.
+    batch_materials = [] #get materials df and convert to list of dicts for display in edit batch page.
+    for r in batch_materials_rows:
+        batch_materials.append({'material_name': r[0], 'quantity_used': r[1], 'material_id': r[3]}) # convert materials to a format for display in the edit batch page.
+    
     if not batch:
         return render_template('error.html', # if batch not found, show error page.
             title="Batch Not Found",
             message="The batch you requested could not be found.",
+            back_link=True, back_link_url="/manage-batches", back_link_label="Back to Manage Batches"
+        ), 404
+    
+    if not batch_materials_rows:
+        return render_template('error.html', # if batch not found, show error page.
+            title="Batch Materials Not Found",
+            message="The batch materials you requested could not be found.",
             back_link=True, back_link_url="/manage-batches", back_link_label="Back to Manage Batches"
         ), 404
     
@@ -1144,6 +1156,7 @@ def edit_batch(batch_id):
 
     return render_template("edit_batch.html", # show the edit batch form, with current batch details and any success/error messages.
         batch = batch,
+        batch_materials = batch_materials,
         msg=msg, err=err,
         back_link=True,
         back_link_url="/manage-batches",
@@ -1273,16 +1286,31 @@ def change_batch_status(batch_id):
 @app.route('/edit-batch/<int:batch_id>/delete', methods=['POST'])
 @requires_auth
 def delete_batch_route(batch_id):
-    reallocate = request.form.get('reallocate') == 'true'
     
-    result = delete_batch(batch_id, reallocate=reallocate)
+    checked_ids = request.form.getlist('reallocate_material')  #getlist() only returns values for checked boxes, uncheck ones are excluded. 
+
+    materials_to_reallocate = []
+    for mid in checked_ids: # for each material that was check, get id by just taking value of checkbox, quantity by 
+        #looking for form field with name qty_{material_id}, and material name by looking for form field with name matname_{material_id}. 
+        materials_to_reallocate.append({
+            'material_id': int(mid),
+            'quantity_used': float(request.form.get(f'qty_{mid}', 0)),
+            'material_name': request.form.get(f'matname_{mid}', '')
+        })
+    
+
+    
+
+
+
+    result = delete_batch(batch_id, materials_to_reallocate, reallocate=bool(materials_to_reallocate))
     if not result:
         return render_template('error.html',
             title="Delete Failed",
             message="Could not delete batch. The batch may not exist.",
         ), 500
-    logging.info(f"Batch deleted: batch_id={batch_id}, reallocate={reallocate}")
-    log_action('batch_deleted', f"batch_id={batch_id}, reallocate={reallocate}")
+    logging.info(f"Batch deleted: batch_id={batch_id}, reallocate={bool(materials_to_reallocate)}")
+    log_action('batch_deleted', f"batch_id={batch_id}, reallocate={bool(materials_to_reallocate)}")
     return redirect(url_for('manage_batches'))
 
 

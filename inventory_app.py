@@ -768,10 +768,11 @@ def mark_as_shipped(batch_id):
     finally:
         db.close()
 
-def delete_batch(batch_id, reallocate=False):
+def delete_batch(batch_id, materials_to_reallocate=None, reallocate=False):
     """
     Deletes a batch from batches.
     Optionally reallocates raw materials back into inventory.
+    materials_to_reallocate: list of dicts with keys 'material_id', 'quantity_used', 'material_name' for each material to reallocate back to inventory. Only used if reallocate is True.
     """
 
     db = get_db_connection()
@@ -794,22 +795,16 @@ def delete_batch(batch_id, reallocate=False):
 
 
 
-        if reallocate:
+        if reallocate and materials_to_reallocate: # if reallocate is True and there are materials to reallocate, add them back to inventory and then delete the batch and its materials. otherwise just delete batch and its materials without adding back to inventory.
 
             materials_added = []
             #get batch material info from batch id
-            db.execute(cursor, """
-            SELECT bm.batch_material_id, bm.material_id, bm.quantity_used, rm.name AS material_name
-            FROM batch_materials AS bm
-            JOIN raw_materials AS rm ON bm.material_id = rm.material_id
-            WHERE bm.batch_id = %s
-                           """,(batch_id,))
-
-            batch_materials = cursor.fetchall()
 
 
-
-            for _, material_id, quantity_used, material_name in batch_materials:
+            for mat in materials_to_reallocate: #for each material to reallocate, add back to stock level
+                material_id = mat['material_id']
+                quantity_used = mat['quantity_used']
+                material_name = mat['material_name']
 
                 db.execute(cursor, """
                     UPDATE raw_materials
@@ -1292,7 +1287,7 @@ def check_batch_materials_stock(batch_id, new_quantities: dict):
     """
     db = get_db_connection()
     cursor = db.cursor()
-    
+
     for material_id, new_qty in new_quantities.items():
         
         try:
