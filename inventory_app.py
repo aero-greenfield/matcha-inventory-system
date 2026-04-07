@@ -781,7 +781,7 @@ def delete_batch(batch_id, materials_to_reallocate=None, reallocate=False):
     try:
         # Get batch info
         db.execute(cursor, """
-            SELECT product_name, quantity
+            SELECT product_name, quantity, batch_type
             FROM batches
             WHERE batch_id = %s
         """, (batch_id,))
@@ -790,6 +790,8 @@ def delete_batch(batch_id, materials_to_reallocate=None, reallocate=False):
         if not row:
             logging.info(f"Batch ID {batch_id} not found in batches.")
             return None
+
+        product_name, quantity, batch_type = row
 
 
 
@@ -831,9 +833,16 @@ def delete_batch(batch_id, materials_to_reallocate=None, reallocate=False):
             #make sure it deleted it
             if cursor.rowcount == 0:
                 raise ValueError(f"batch ID {batch_id} not found — nothing deleted")
-            
+
+            if batch_type == 'mix':
+                db.execute(cursor, """
+                    UPDATE raw_materials
+                    SET stock_level = stock_level - %s
+                    WHERE LOWER(name) = LOWER(%s) AND is_housemade = TRUE
+                """, (quantity, product_name))
+
             db.commit()
-            
+
             logging.info(
                 f"Successfully deleted batch {batch_id}.\n"
                 f"Reallocated materials: {materials_added}"
@@ -852,6 +861,14 @@ def delete_batch(batch_id, materials_to_reallocate=None, reallocate=False):
             #check it deleted
             if cursor.rowcount == 0:
                 raise ValueError(f"batch ID {batch_id} not found — nothing deleted")
+
+            if batch_type == 'mix':
+                db.execute(cursor, """
+                    UPDATE raw_materials
+                    SET stock_level = stock_level - %s
+                    WHERE LOWER(name) = LOWER(%s) AND is_housemade = TRUE
+                """, (quantity, product_name))
+
             db.commit()
             logging.info(f"Successfully deleted batch {batch_id}.")
             return True
@@ -879,7 +896,7 @@ def get_all_batches_with_id():
     try:
         query = """
 
-        SELECT batch_id, product_name, quantity, date_completed, status, notes, date_shipped, expiration_date, planned_completion_date
+        SELECT batch_id, product_name, quantity, date_completed, status, notes, date_shipped, expiration_date, planned_completion_date, batch_type
         FROM batches
         ORDER BY date_completed DESC
         """
@@ -908,7 +925,7 @@ def get_batch_by_id(batch_id):
 
     try:
         query = """
-        SELECT batch_id, product_name, quantity, date_completed, status, notes, date_shipped, expiration_date, planned_completion_date
+        SELECT batch_id, product_name, quantity, date_completed, status, notes, date_shipped, expiration_date, planned_completion_date, batch_type
         FROM batches
         WHERE batch_id = %s
 

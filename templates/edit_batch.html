@@ -200,6 +200,9 @@
 <div class="section-card danger-card">
     <h2>Delete Batch</h2>
     <p style="color:var(--text-muted);font-size:13px;margin-bottom:12px;">Permanently removes batch <strong>#{{ batch[0] }} ({{ batch[1] }})</strong>.</p>
+    {% if batch[9] == 'mix' %}
+    <p style="color:var(--text-muted);font-size:13px;margin-bottom:12px;"><strong>Note:</strong> Deleting this mix batch will also reduce the <strong>{{ batch[1] }}</strong> housemade material stock by {{ batch[2] }} units.</p>
+    {% endif %}
     <form method="POST" action="/edit-batch/{{ batch[0] }}/delete" autocomplete="off"
           onsubmit="return confirm('Delete batch #{{ batch[0] }}? This cannot be undone.')">
 
