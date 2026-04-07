@@ -465,6 +465,12 @@ h1 {
     border: 1px solid #fecaca;
 }
 
+.alert-warning {
+    background: #fef3c7;
+    color: #92400e;
+    border: 1px solid #fde68a;
+}
+
 /* ================================================
    Section Cards — for edit pages (multi-section forms)
    ================================================ */

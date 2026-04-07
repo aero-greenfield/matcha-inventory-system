@@ -17,7 +17,7 @@
 
 <div class="section-card" style="max-width:780px;">
     <h2>Edit Details & Materials</h2>
-    <form method="POST" action="/edit-recipe/{{ recipe_id }}/update" id="edit-recipe-form">
+    <form method="POST" action="/edit-recipe/{{ recipe_id }}/update" id="edit-recipe-form" autocomplete="off">
         <div class="form-row">
             <div class="form-group">
                 <label>Product Name *</label>
@@ -56,7 +56,7 @@
 <div class="section-card danger-card" style="max-width:780px;">
     <h2>Delete Recipe</h2>
     <p style="color:var(--text-muted);font-size:13px;margin-bottom:16px;">Permanently removes <strong>{{ product_name }}</strong> and all its materials.</p>
-    <form method="POST" action="/edit-recipe/{{ recipe_id }}/delete"
+    <form method="POST" action="/edit-recipe/{{ recipe_id }}/delete" autocomplete="off"
           onsubmit="return confirm('Delete recipe {{ product_name }}? This cannot be undone.')">
         <button type="submit" class="btn btn-danger">Delete Recipe</button>
         <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">

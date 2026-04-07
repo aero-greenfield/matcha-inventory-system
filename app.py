@@ -136,7 +136,7 @@ from inventory_app import (
     get_batches, mark_as_shipped, delete_batch, get_recipe, add_recipe,
     change_recipe, delete_recipe, delete_raw_material, get_material_by_id, get_all_materials_with_id, update_raw_material, get_all_batches_with_id, get_batch_by_id,
     update_batch, update_batch_status, update_recipe, get_all_recipes_with_id, get_recipe_by_id, log_action, view_logs, get_batch_materials,
-    get_batches_planned)  
+    get_batches_planned, get_housemade_materials, get_mix_stock, adjust_batch_material, check_batch_materials_stock)
 
 
 # Import helper functions for exporting data
@@ -564,7 +564,9 @@ def add_material_route():
         # html here, the URL would still be /add-material, which is not ideal. we want the URL to reflect the 
         # actual page we're on, which is /inventory. also, redirecting after POST is a common 
         # best practice to prevent form resubmission if user refreshes the page.
-        if result:
+        if result == "duplicate":
+            return render_template("add_material.html", error=f"A material named '{name}' already exists. Please use a different name or update the existing one.")
+        elif result:
             logging.info(f"Material added: '{name}' | category={category}, stock={stock_level}, unit={unit}")
             log_action('material_added', f"name={name}, category={category}, stock={stock_level}, unit={unit}")
             # if succesful data addition. Redirect to inventory page to show updated inventory with new material.
@@ -684,7 +686,7 @@ def edit_material(material_id):
 
 
     
-    mat_id, name, category, stock_level, unit, reorder_level, cost_per_unit, supplier = material # unpack material details for display in edit form.
+    mat_id, name, category, stock_level, unit, reorder_level, cost_per_unit, supplier, is_housemade = material # unpack material details for display in edit form.
     
     # msg and err are for redirecting back to this page after form submission with a success or error message. (after adjusting stock or updating details)
 
@@ -818,6 +820,10 @@ def delete_material(material_id):
         ), 500
     logging.info(f"Material deleted: material_id={material_id}")
     log_action('material_deleted', f"material_id={material_id}")
+    if result.get("affected_batches"):
+        count = len(result["affected_batches"])
+        warning = f"Material deleted. Note: it was used in {count} batch(es) — those records no longer show this ingredient."
+        return redirect(url_for('manage_materials', warning=warning))
     return redirect(url_for('manage_materials'))
 
 
@@ -849,19 +855,21 @@ def view_batches():
     
     """
 
-    data = get_batches() # get all batches in df, from inventory_app.py.
-    batches = data.to_dict(orient='records') if not data.empty else [] # convert to HTML friendly like usual.
-    columns = list(data.columns) if not data.empty else [] # get column names for table header in html, if data is not empty.
-    #if data is empty, set columns to empty list to avoid errors in html.
-    # we need to get columns separately because the batches page shows a table with dynamic columns based on the batch data, so we need to pass the column names to the html to generate the table header.
+    data = get_batches()
+    all_ready = data.to_dict(orient='records') if not data.empty else []
+    ready_standard = [b for b in all_ready if b.get('batch_type') != 'mix']
+    ready_mix       = [b for b in all_ready if b.get('batch_type') == 'mix']
 
-    # get planned data seperatly 
     planned_data = get_batches_planned()
-    planned_batches = planned_data.to_dict(orient='records') if not planned_data.empty else []
+    all_planned = planned_data.to_dict(orient='records') if not planned_data.empty else []
+    planned_standard = [b for b in all_planned if b.get('batch_type') != 'mix']
+    planned_mix      = [b for b in all_planned if b.get('batch_type') == 'mix']
 
-    return render_template("batches.html", # render the batches page html template.
-        batches=batches, columns=columns, count=len(batches),
-        planned_batches=planned_batches,
+    return render_template("batches.html",
+        ready_standard=ready_standard,
+        ready_mix=ready_mix,
+        planned_standard=planned_standard,
+        planned_mix=planned_mix,
         back_link=True, back_link_url="/", back_link_label="Back to Home"
 )
 
@@ -889,7 +897,7 @@ def mark_batch_as_shipped(batch_id):
 def batch_materials(batch_id):
     rows = get_batch_materials(batch_id)
     materials = [
-        {'material_name': r[0], 'quantity_used': r[1], 'unit': r[2]}
+        {'material_name': r[0], 'quantity_used': r[1], 'unit': r[2], 'material_id': r[3]}
         for r in rows
     ]
     return jsonify(materials)
@@ -976,6 +984,7 @@ def create_batch():
         notes = notes.strip() if notes else None
         expiration_date = request.form.get('expiration_date', '').strip() or None
         planned_completion_date = request.form.get('planned_completion_date', '').strip() or None
+        batch_type = request.form.get('batch_type', 'standard').strip()
         # Text validation
         if not product_name:
             return render_template('error.html',
@@ -1039,13 +1048,20 @@ def create_batch():
                     message="Invalid planned completion date format. Use YYYY-MM-DD.",
                     back_link=True, back_link_url="/create-batch", back_link_label="Go back to Create Batch"
                 ), 400
-
+        
+        if batch_type not in ('standard', 'mix', 'finished'):
+            return render_template('error.html',
+                title="Invalid Input",
+                message="Invalid batch type. Must be standard, mix, or finished.",
+                back_link=True, back_link_url="/create-batch", back_link_label="Go back to Create Batch"
+            ), 400
+        
         # call function
         try:
-            result = add_to_batches(product_name, quantity, notes=notes, batch_id=batch_id, deduct_resources=True, expiration_date=expiration_date, planned_completion_date=planned_completion_date)
+            result = add_to_batches(product_name, quantity, notes=notes, batch_id=batch_id, deduct_resources=True, expiration_date=expiration_date, planned_completion_date=planned_completion_date, batch_type=batch_type)
             if result:
-                logging.info(f"Batch created: product='{product_name}', quantity={quantity}, batch_id={batch_id}")
-                log_action('batch_created', f"product={product_name}, quantity={quantity}, batch_id={result}")
+                logging.info(f"Batch created: product='{product_name}', quantity={quantity}, batch_id={batch_id}, batch_type={batch_type}")
+                log_action('batch_created', f"product={product_name}, quantity={quantity}, batch_id={result}, batch_type={batch_type}")
                 return redirect(url_for('view_batches'))
             else:
                 return render_template('error.html',
@@ -1069,7 +1085,11 @@ def create_batch():
                 back_link=True, back_link_url="/create-batch", back_link_label="Go back to Create Batch"
             ), 500
 
+
+    housemade_df = get_housemade_materials()
+    housemade_materials = housemade_df.to_dict(orient='records') if not housemade_df.empty else []
     return render_template("create_batch.html",
+        housemade_materials = housemade_materials,
         back_link=True,
         back_link_url="/",
         back_link_label="Back to Home"
@@ -1112,10 +1132,22 @@ def edit_batch(batch_id):
     """
 
     batch = get_batch_by_id(batch_id) # get batch details for the batch being edited.
+    batch_materials_rows = get_batch_materials(batch_id) # get materials used in this batch, to show in the edit page and allow adjustments.
+    batch_materials = [] #get materials df and convert to list of dicts for display in edit batch page.
+    for r in batch_materials_rows:
+        batch_materials.append({'material_name': r[0], 'quantity_used': r[1], 'material_id': r[3]}) # convert materials to a format for display in the edit batch page.
+    
     if not batch:
         return render_template('error.html', # if batch not found, show error page.
             title="Batch Not Found",
             message="The batch you requested could not be found.",
+            back_link=True, back_link_url="/manage-batches", back_link_label="Back to Manage Batches"
+        ), 404
+    
+    if not batch_materials_rows:
+        return render_template('error.html', # if batch not found, show error page.
+            title="Batch Materials Not Found",
+            message="The batch materials you requested could not be found.",
             back_link=True, back_link_url="/manage-batches", back_link_label="Back to Manage Batches"
         ), 404
     
@@ -1124,6 +1156,7 @@ def edit_batch(batch_id):
 
     return render_template("edit_batch.html", # show the edit batch form, with current batch details and any success/error messages.
         batch = batch,
+        batch_materials = batch_materials,
         msg=msg, err=err,
         back_link=True,
         back_link_url="/manage-batches",
@@ -1183,12 +1216,34 @@ def update_batch_details(batch_id):
                 message="Invalid planned completion date format. Use YYYY-MM-DD.",
                 back_link=True, back_link_url=f"/edit-batch/{batch_id}", back_link_label="Go back to Edit Batch"
             ), 400
+        
+    new_quantities = {}
+    if request.form.get('adjust_deductions') == '1':
+        for key, value in request.form.items():
+            if key.startswith('material_'):
+                try:
+                    material_id = int(key[len('material_'):])
+                    new_quantities[material_id] = float(value)
+                except (ValueError, TypeError):
+                    pass  # skip malformed entries
+
+        if new_quantities and not check_batch_materials_stock(batch_id, new_quantities):
+            return redirect(url_for('edit_batch', batch_id=batch_id, err='Could not update — insufficient stock for new material quantities'))
 
     result = update_batch(batch_id, product_name=product_name, quantity=quantity, notes=notes, expiration_date=expiration_date, planned_completion_date=planned_completion_date)
 
     if result:
         logging.info(f"Batch details updated: batch_id={batch_id}, product_name={product_name}, quantity={quantity}")
         log_action('batch_updated', f"batch_id={batch_id}, product_name={product_name}, quantity={quantity}")
+
+        if new_quantities:
+            adj_result = adjust_batch_material(batch_id, new_quantities)
+            if adj_result:
+                log_action('batch_materials_adjusted', f"batch_id={batch_id}, adjustments={new_quantities}")
+                return redirect(url_for('edit_batch', batch_id=batch_id, msg='Batch details and material deductions updated successfully'))
+            else:
+                return redirect(url_for('edit_batch', batch_id=batch_id, err='Batch details saved but failed to adjust material deductions — insufficient stock or material not found'))
+
         return redirect(url_for('edit_batch', batch_id=batch_id, msg='Batch details updated successfully'))
     else:
         return redirect(url_for('edit_batch', batch_id=batch_id, err='Failed to update batch details'))
@@ -1231,16 +1286,31 @@ def change_batch_status(batch_id):
 @app.route('/edit-batch/<int:batch_id>/delete', methods=['POST'])
 @requires_auth
 def delete_batch_route(batch_id):
-    reallocate = request.form.get('reallocate') == 'true'
     
-    result = delete_batch(batch_id, reallocate=reallocate)
+    checked_ids = request.form.getlist('reallocate_material')  #getlist() only returns values for checked boxes, uncheck ones are excluded. 
+
+    materials_to_reallocate = []
+    for mid in checked_ids: # for each material that was check, get id by just taking value of checkbox, quantity by 
+        #looking for form field with name qty_{material_id}, and material name by looking for form field with name matname_{material_id}. 
+        materials_to_reallocate.append({
+            'material_id': int(mid),
+            'quantity_used': float(request.form.get(f'qty_{mid}', 0)),
+            'material_name': request.form.get(f'matname_{mid}', '')
+        })
+    
+
+    
+
+
+
+    result = delete_batch(batch_id, materials_to_reallocate, reallocate=bool(materials_to_reallocate))
     if not result:
         return render_template('error.html',
             title="Delete Failed",
             message="Could not delete batch. The batch may not exist.",
         ), 500
-    logging.info(f"Batch deleted: batch_id={batch_id}, reallocate={reallocate}")
-    log_action('batch_deleted', f"batch_id={batch_id}, reallocate={reallocate}")
+    logging.info(f"Batch deleted: batch_id={batch_id}, reallocate={bool(materials_to_reallocate)}")
+    log_action('batch_deleted', f"batch_id={batch_id}, reallocate={bool(materials_to_reallocate)}")
     return redirect(url_for('manage_batches'))
 
 
