@@ -1,0 +1,58 @@
+{% extends "base.html" %}
+
+{% block title %}Confirm Batch — Low Stock Warning{% endblock %}
+
+{% block content %}
+
+<div class="page-header">
+    <div>
+        <h1>Low Stock Warning</h1>
+        <p class="page-subtitle">This batch would push some materials below zero</p>
+    </div>
+</div>
+
+<div class="alert alert-warning">
+    <strong>Warning:</strong> Creating this batch will result in negative stock for the following material(s). You can proceed anyway or go back and adjust.
+</div>
+
+<div class="table-container" style="margin-bottom: 24px;">
+    <table class="data-table">
+        <thead>
+            <tr>
+                <th>Material</th>
+                <th>Current Stock</th>
+                <th>Required</th>
+                <th>After Batch</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for m in negative_materials %}
+            <tr>
+                <td><strong>{{ m.material_name }}</strong></td>
+                <td>{{ m.current_stock }}</td>
+                <td>{{ m.required_amount }}</td>
+                <td style="color: #dc2626; font-weight: 600;">{{ m.resulting_stock }}</td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+</div>
+
+<form method="POST" action="/create-batch">
+    <input type="hidden" name="csrf_token"             value="{{ csrf_token() }}">
+    <input type="hidden" name="product_name"           value="{{ form_data.product_name }}">
+    <input type="hidden" name="quantity"               value="{{ form_data.quantity }}">
+    <input type="hidden" name="notes"                  value="{{ form_data.notes }}">
+    <input type="hidden" name="batch_id"               value="{{ form_data.batch_id }}">
+    <input type="hidden" name="expiration_date"        value="{{ form_data.expiration_date }}">
+    <input type="hidden" name="planned_completion_date" value="{{ form_data.planned_completion_date }}">
+    <input type="hidden" name="batch_type"             value="{{ form_data.batch_type }}">
+    <input type="hidden" name="confirm_negative"       value="1">
+
+    <div style="display: flex; gap: 12px;">
+        <button type="submit" class="btn btn-danger">Proceed Anyway</button>
+        <a href="/create-batch" class="btn btn-secondary">Go Back</a>
+    </div>
+</form>
+
+{% endblock %}

@@ -537,7 +537,7 @@ def get_mix_stock(material_name):
 # BATCHES FUNCTIONS
 # ========================
 
-def add_to_batches(product_name, quantity, notes=None, batch_id=None, deduct_resources=True, expiration_date=None, planned_completion_date=None, batch_type='standard'):
+def add_to_batches(product_name, quantity, notes=None, batch_id=None, deduct_resources=True, expiration_date=None, planned_completion_date=None, batch_type='standard', allow_negative=False):
     """
     adds batch to ready to ship, but asks user if they want to deduct from resources, or just add it.
     If planned_completion_date is provided, batch is created with status 'Planned' instead of 'Ready'.
@@ -630,7 +630,7 @@ def add_to_batches(product_name, quantity, notes=None, batch_id=None, deduct_res
 
                 required_amount = quantity_needed * quantity
 
-                if stock_level < required_amount:
+                if stock_level < required_amount and not allow_negative:
                     raise ValueError(f"Insufficient {material_name}: need {required_amount}, have {stock_level}")
 
 
@@ -1384,6 +1384,36 @@ def get_recipe(product_name):
     finally:
         db.close()
     
+
+
+def check_negative_stock(product_name, quantity):
+    """
+    Returns a list of dicts for materials that would go negative if this batch was created.
+    Each dict has: material_name, current_stock, required_amount, resulting_stock.
+    Returns [] if all materials are sufficient, recipe is missing, or any lookup fails.
+    """
+    recipe_df = get_recipe(product_name)
+    if recipe_df is None or recipe_df.empty:
+        return []
+
+    negative = []
+    for _, row in recipe_df.iterrows():
+        material_name = row['material_name']
+        quantity_needed = row['quantity_needed']
+        required_amount = quantity_needed * quantity
+
+        material_info = get_raw_material(material_name)
+        if not material_info:
+            continue
+        material_id, name, stock_level, reorder_level, cost_per_unit = material_info
+        if stock_level is not None and stock_level < required_amount:
+            negative.append({
+                'material_name': material_name,
+                'current_stock': stock_level,
+                'required_amount': required_amount,
+                'resulting_stock': stock_level - required_amount,
+            })
+    return negative
 
 
 def get_all_recipes():

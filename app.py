@@ -136,7 +136,7 @@ from inventory_app import (
     get_batches, mark_as_shipped, delete_batch, get_recipe, add_recipe,
     change_recipe, delete_recipe, delete_raw_material, get_material_by_id, get_all_materials_with_id, update_raw_material, get_all_batches_with_id, get_batch_by_id,
     update_batch, update_batch_status, update_recipe, get_all_recipes_with_id, get_recipe_by_id, log_action, view_logs, get_batch_materials,
-    get_batches_planned, get_housemade_materials, get_mix_stock, adjust_batch_material, check_batch_materials_stock)
+    get_batches_planned, get_housemade_materials, get_mix_stock, adjust_batch_material, check_batch_materials_stock, check_negative_stock)
 
 
 # Import helper functions for exporting data
@@ -1055,10 +1055,29 @@ def create_batch():
                 message="Invalid batch type. Must be standard, mix, or finished.",
                 back_link=True, back_link_url="/create-batch", back_link_label="Go back to Create Batch"
             ), 400
-        
+
+        defer_deduction = (batch_type == 'finished' and bool(planned_completion_date))
+        confirm_negative = request.form.get('confirm_negative') == '1'
+
+        if not defer_deduction and not confirm_negative:
+            negative_materials = check_negative_stock(product_name, quantity)
+            if negative_materials:
+                return render_template('confirm_negative_stock.html',
+                    negative_materials=negative_materials,
+                    form_data={
+                        'product_name': product_name,
+                        'quantity': quantity,
+                        'notes': notes or '',
+                        'batch_id': batch_id or '',
+                        'expiration_date': expiration_date or '',
+                        'planned_completion_date': planned_completion_date or '',
+                        'batch_type': batch_type,
+                    }
+                )
+
         # call function
         try:
-            result = add_to_batches(product_name, quantity, notes=notes, batch_id=batch_id, deduct_resources=True, expiration_date=expiration_date, planned_completion_date=planned_completion_date, batch_type=batch_type)
+            result = add_to_batches(product_name, quantity, notes=notes, batch_id=batch_id, deduct_resources=True, expiration_date=expiration_date, planned_completion_date=planned_completion_date, batch_type=batch_type, allow_negative=confirm_negative)
             if result:
                 logging.info(f"Batch created: product='{product_name}', quantity={quantity}, batch_id={batch_id}, batch_type={batch_type}")
                 log_action('batch_created', f"product={product_name}, quantity={quantity}, batch_id={result}, batch_type={batch_type}")
