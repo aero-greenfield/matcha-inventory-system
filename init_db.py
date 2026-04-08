@@ -118,8 +118,9 @@ def init_database():
    # TABLE 4: batches 
    # ======================================== 
    cursor.execute(""" 
-   CREATE TABLE IF NOT EXISTS batches( 
+   CREATE TABLE IF NOT EXISTS batches(
        batch_id SERIAL PRIMARY KEY,
+       batch_number TEXT NOT NULL DEFAULT '',
        product_name TEXT NOT NULL,
        quantity INTEGER,
        date_completed TEXT,

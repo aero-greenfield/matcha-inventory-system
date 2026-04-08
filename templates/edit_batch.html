@@ -1,13 +1,13 @@
 {% extends "base.html" %}
 
-{% block title %}Edit Batch #{{ batch[0] }}{% endblock %}
+{% block title %}Edit Batch #{{ batch_number }}{% endblock %}
 
 {% block content %}
 
 <div class="page-header">
     <div>
         <h1>Edit Batch: {{ batch[1] }}</h1>
-        <p class="page-subtitle">Batch #{{ batch[0] }}</p>
+        <p class="page-subtitle">Batch #{{ batch_number }}</p>
     </div>
     <a href="/manage-batches" class="btn btn-secondary">&#8592; Back</a>
 </div>

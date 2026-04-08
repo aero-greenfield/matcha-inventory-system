@@ -156,7 +156,7 @@
             <table class="data-table">
                 <thead>
                     <tr>
-                        <th>Batch ID</th>
+                        <th>Batch #</th>
                         <th>Product</th>
                         <th>Type</th>
                         <th>Quantity</th>
@@ -169,7 +169,7 @@
                 <tbody>
                     {% for row in ready_standard %}
                     <tr>
-                        <td>{{ row['batch_id'] }}</td>
+                        <td>{{ row['batch_number'] }}</td>
                         <td><strong>{{ row['product_name'] }}</strong></td>
                         <td><span class="badge badge-{{ row['batch_type'] or 'standard' }}">{{ row['batch_type'] or 'standard' }}</span></td>
                         <td>{{ row['quantity'] }}</td>
@@ -213,7 +213,7 @@
             <table class="data-table">
                 <thead>
                     <tr>
-                        <th>Batch ID</th>
+                        <th>Batch #</th>
                         <th>Product</th>
                         <th>Type</th>
                         <th>Quantity</th>
@@ -226,7 +226,7 @@
                 <tbody>
                     {% for row in ready_mix %}
                     <tr>
-                        <td>{{ row['batch_id'] }}</td>
+                        <td>{{ row['batch_number'] }}</td>
                         <td><strong>{{ row['product_name'] }}</strong></td>
                         <td><span class="badge badge-mix">component</span></td>
                         <td>{{ row['quantity'] }}</td>
@@ -272,7 +272,7 @@
                 <table class="data-table">
                     <thead>
                         <tr>
-                            <th>Batch ID</th>
+                            <th>Batch #</th>
                             <th>Product</th>
                             <th>Type</th>
                             <th>Quantity</th>
@@ -285,7 +285,7 @@
                     <tbody>
                         {% for row in planned_standard %}
                         <tr{% if row['promotion_failure_reason'] %} class="row-failed-promotion"{% endif %}>
-                            <td>{{ row['batch_id'] }}</td>
+                            <td>{{ row['batch_number'] }}</td>
                             <td>
                                 <strong>{{ row['product_name'] }}</strong>
                                 {% if row['promotion_failure_reason'] %}
@@ -333,7 +333,7 @@
                 <table class="data-table">
                     <thead>
                         <tr>
-                            <th>Batch ID</th>
+                            <th>Batch #</th>
                             <th>Product</th>
                             <th>Type</th>
                             <th>Quantity</th>
@@ -346,7 +346,7 @@
                     <tbody>
                         {% for row in planned_mix %}
                         <tr{% if row['promotion_failure_reason'] %} class="row-failed-promotion"{% endif %}>
-                            <td>{{ row['batch_id'] }}</td>
+                            <td>{{ row['batch_number'] }}</td>
                             <td>
                                 <strong>{{ row['product_name'] }}</strong>
                                 {% if row['promotion_failure_reason'] %}

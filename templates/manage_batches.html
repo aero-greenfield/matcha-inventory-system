@@ -23,7 +23,7 @@
     <table class="data-table">
         <thead>
             <tr>
-                <th>ID</th>
+                <th>Batch #</th>
                 <th>Product Name</th>
                 <th>Quantity</th>
                 <th>Date Completed</th>
@@ -39,7 +39,7 @@
         <tbody>
             {% for row in batches %}
             <tr>
-                <td>{{ row.batch_id }}</td>
+                <td>{{ row.batch_number }}</td>
                 <td><strong>{{ row.product_name }}</strong></td>
                 <td>{{ row.quantity }}</td>
                 <td>{{ row.date_completed or '' }}</td>

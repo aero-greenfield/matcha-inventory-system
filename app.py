@@ -993,31 +993,29 @@ def create_batch():
                 back_link=True, back_link_url="/create-batch", back_link_label="Go back to Create Batch"
             ), 400
 
-        #  numeric parsing 
-        try:
-            quantity = float(request.form.get('quantity'))
-            batch_id_str = request.form.get('batch_id')
-            batch_id = int(batch_id_str) if batch_id_str else None
-
-        except ValueError:
+        batch_number = request.form.get('batch_number', '').strip()
+        if not batch_number:
             return render_template('error.html',
                 title="Invalid Input",
-                message="Quantity and batch ID must be valid numbers.",
+                message="Batch number cannot be blank.",
                 back_link=True, back_link_url="/create-batch", back_link_label="Go back to Create Batch"
             ), 400
 
-        # numeric validation 
+        #  numeric parsing
+        try:
+            quantity = float(request.form.get('quantity'))
+        except ValueError:
+            return render_template('error.html',
+                title="Invalid Input",
+                message="Quantity must be a valid number.",
+                back_link=True, back_link_url="/create-batch", back_link_label="Go back to Create Batch"
+            ), 400
+
+        # numeric validation
         if quantity <= 0:
             return render_template('error.html',
                 title="Invalid Input",
                 message="Quantity must be greater than zero.",
-                back_link=True, back_link_url="/create-batch", back_link_label="Go back to Create Batch"
-            ), 400
-
-        if batch_id is not None and batch_id <= 0:
-            return render_template('error.html',
-                title="Invalid Input",
-                message="Batch ID must be a positive number.",
                 back_link=True, back_link_url="/create-batch", back_link_label="Go back to Create Batch"
             ), 400
 
@@ -1068,7 +1066,7 @@ def create_batch():
                         'product_name': product_name,
                         'quantity': quantity,
                         'notes': notes or '',
-                        'batch_id': batch_id or '',
+                        'batch_number': batch_number,
                         'expiration_date': expiration_date or '',
                         'planned_completion_date': planned_completion_date or '',
                         'batch_type': batch_type,
@@ -1077,10 +1075,10 @@ def create_batch():
 
         # call function
         try:
-            result = add_to_batches(product_name, quantity, notes=notes, batch_id=batch_id, deduct_resources=True, expiration_date=expiration_date, planned_completion_date=planned_completion_date, batch_type=batch_type, allow_negative=confirm_negative)
+            result = add_to_batches(product_name, quantity, notes=notes, batch_number=batch_number, deduct_resources=True, expiration_date=expiration_date, planned_completion_date=planned_completion_date, batch_type=batch_type, allow_negative=confirm_negative)
             if result:
-                logging.info(f"Batch created: product='{product_name}', quantity={quantity}, batch_id={batch_id}, batch_type={batch_type}")
-                log_action('batch_created', f"product={product_name}, quantity={quantity}, batch_id={result}, batch_type={batch_type}")
+                logging.info(f"Batch created: product='{product_name}', quantity={quantity}, batch_number={batch_number}, batch_type={batch_type}")
+                log_action('batch_created', f"product={product_name}, quantity={quantity}, batch_id={result}, batch_number={batch_number}, batch_type={batch_type}")
                 return redirect(url_for('view_batches'))
             else:
                 return render_template('error.html',

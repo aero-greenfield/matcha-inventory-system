@@ -537,7 +537,7 @@ def get_mix_stock(material_name):
 # BATCHES FUNCTIONS
 # ========================
 
-def add_to_batches(product_name, quantity, notes=None, batch_id=None, deduct_resources=True, expiration_date=None, planned_completion_date=None, batch_type='standard', allow_negative=False):
+def add_to_batches(product_name, quantity, notes=None, batch_number=None, deduct_resources=True, expiration_date=None, planned_completion_date=None, batch_type='standard', allow_negative=False):
     """
     adds batch to ready to ship, but asks user if they want to deduct from resources, or just add it.
     If planned_completion_date is provided, batch is created with status 'Planned' instead of 'Ready'.
@@ -577,35 +577,11 @@ def add_to_batches(product_name, quantity, notes=None, batch_id=None, deduct_res
         defer_deduction = (batch_type == 'finished' and status == 'Planned')
 
 
-        if batch_id is not None:
-
-                #add to batches
-
-                # check if batch_id already exists
-
-            db.execute(cursor, """
-                SELECT 1
-                FROM batches
-                WHERE batch_id = %s
-            """, (batch_id,))
-            if cursor.fetchone():
-                raise ValueError(f"Batch ID {batch_id} already exists.")
-
-
-
-            
-            db.execute(cursor, """
-            INSERT INTO batches (batch_id, product_name, quantity, date_completed, status, notes, expiration_date, planned_completion_date, batch_type)
+        db.execute(cursor, """
+            INSERT INTO batches (batch_number, product_name, quantity, date_completed, status, notes, expiration_date, planned_completion_date, batch_type)
             VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
-            """, (batch_id, product_name, quantity, date_completed, status, notes, expiration_date, planned_completion_date, batch_type))
-
-        
-        else:#batch_id is None, let database auto assign id
-            db.execute(cursor, """
-            INSERT INTO batches (product_name, quantity, date_completed, status, notes, expiration_date, planned_completion_date, batch_type)
-            VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
-            """, (product_name, quantity, date_completed, status, notes, expiration_date, planned_completion_date, batch_type))
-            batch_id = db.get_last_insert_id(cursor)
+            """, (batch_number, product_name, quantity, date_completed, status, notes, expiration_date, planned_completion_date, batch_type))
+        batch_id = db.get_last_insert_id(cursor)
                
 
 
@@ -712,7 +688,7 @@ def get_batches():
     db = get_db_connection()
 
     query = """
-    SELECT batch_id, product_name, batch_type, quantity, date_completed, notes, expiration_date
+    SELECT batch_id, batch_number, product_name, batch_type, quantity, date_completed, notes, expiration_date
     FROM batches
     WHERE status = 'Ready'
     ORDER BY batch_id DESC
@@ -728,7 +704,7 @@ def get_batches_shipped():
     db = get_db_connection()
 
     query = """
-    SELECT batch_id, product_name, quantity, date_completed, date_shipped, notes, expiration_date
+    SELECT batch_id, batch_number, product_name, quantity, date_completed, date_shipped, notes, expiration_date
     FROM batches
     WHERE status = 'Shipped'
     ORDER BY date_shipped DESC
@@ -925,7 +901,7 @@ def get_batch_by_id(batch_id):
 
     try:
         query = """
-        SELECT batch_id, product_name, quantity, date_completed, status, notes, date_shipped, expiration_date, planned_completion_date, batch_type
+        SELECT batch_id, product_name, quantity, date_completed, status, notes, date_shipped, expiration_date, planned_completion_date, batch_type, batch_number
         FROM batches
         WHERE batch_id = %s
 
@@ -942,7 +918,7 @@ def get_batch_by_id(batch_id):
     finally:
         db.close()
 
-def update_batch(batch_id, product_name=None, quantity=None, date_completed=None, notes=None, expiration_date=_UNSET, planned_completion_date=_UNSET):
+def update_batch(batch_id, product_name=None, quantity=None, date_completed=None, notes=None, expiration_date=_UNSET, planned_completion_date=_UNSET, batch_number=None):
     """
     changes the details of batch, BESIDES STATUS, doesnt change status.
 
@@ -957,7 +933,7 @@ def update_batch(batch_id, product_name=None, quantity=None, date_completed=None
     field = {} # dictionary to hold fields to update, only the ones that are not None
 
     #iterate through params, if not None, add to field dict to update
-    for key, value in [("product_name", product_name), ("quantity", quantity), ("date_completed", date_completed), ("notes", notes)]:
+    for key, value in [("product_name", product_name), ("quantity", quantity), ("date_completed", date_completed), ("notes", notes), ("batch_number", batch_number)]:
         if value is not None:
             field[key] = value
     # expiration_date and planned_completion_date use sentinel so None can explicitly clear the field
@@ -1187,7 +1163,7 @@ def get_batches_planned():
     """Gets all Planned batches ordered by planned_completion_date ascending."""
     db = get_db_connection()
     query = """
-    SELECT batch_id, product_name, batch_type, quantity, planned_completion_date, notes, expiration_date, promotion_failure_reason
+    SELECT batch_id, batch_number, product_name, batch_type, quantity, planned_completion_date, notes, expiration_date, promotion_failure_reason
     FROM batches
     WHERE status = 'Planned'
     ORDER BY batch_id DESC
