@@ -8,8 +8,10 @@ import pandas as pd
 from datetime import datetime
 import os
 import logging
+import time
 
 _UNSET = object()  # sentinel for optional fields that can be explicitly set to None
+_last_promote_time = 0
 
 #LOGGING SET UP
 
@@ -683,8 +685,11 @@ def add_to_batches(product_name, quantity, notes=None, batch_number=None, deduct
 
 def get_batches():
     """Gets all batches ready to ship"""
-    promote_planned_batches() # call func to transition planned batches to raedy 
-    #if date passed before usesr even sees page. 
+    global _last_promote_time
+    now = time.time()
+    if now - _last_promote_time > 60:
+        promote_planned_batches()
+        _last_promote_time = now
     db = get_db_connection()
 
     query = """
