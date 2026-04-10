@@ -62,21 +62,37 @@ def create_database():
 
     #Raw Materials 
 
+    #edits for lot number: deleted cost_per, quantity (will be gotten from SUM lot number)
+
     cursor.execute("""
     CREATE TABLE IF NOT EXISTS raw_materials(
                    material_id INTEGER PRIMARY KEY AUTOINCREMENT,
                    name TEXT NOT NULL UNIQUE,
                    category TEXT,
-                   stock_level REAL,
                    unit TEXT,
                    reorder_level REAL,
-                   cost_per_unit REAL,
                    supplier TEXT,
                    is_housemade BOOLEAN DEFAULT FALSE
 
                    )
                    """)
     
+    #raw material lots. 
+    
+    cursor.execute("""
+    CREATE TABLE IF NOT EXISTS raw_material_lots(
+                   lot_id INTEGER PRIMARY KEY AUTOINCREMENT,
+                   material_id INTEGER,
+                   lot_number TEXT,
+                   quantity REAL,
+                   recieved_date TEXT,
+                   expiration_date TEXT,
+                   status TEXT,
+                   location TEXT,
+                   FOREIGN KEY (material_id) REFERENCES raw_materials(material_id
+                   )
+                   """)
+
     #Recipes
     cursor.execute("""
     CREATE TABLE IF NOT EXISTS recipes(
@@ -110,6 +126,7 @@ def create_database():
                     date_completed TEXT,
                     status TEXT DEFAULT 'Ready',
                     notes TEXT,
+                    batch_number TEXT,
                     date_shipped TEXT,
                     expiration_date TEXT,
                     planned_completion_date TEXT,
@@ -128,9 +145,11 @@ def create_database():
                    batch_material_id INTEGER PRIMARY KEY AUTOINCREMENT,
                    batch_id INTEGER,
                    material_id INTEGER,
+                   lot_id INTEGER,
                    quantity_used REAL,
                    FOREIGN KEY (material_id) REFERENCES raw_materials(material_id),
-                   FOREIGN KEY (batch_id) REFERENCES batches(batch_id)           
+                   FOREIGN KEY (batch_id) REFERENCES batches(batch_id),  
+                   FOREIGN KEY(lot_id) REFERENCES raw_material_lots(lot_id)         
                   
                    
                    ) """)
@@ -143,6 +162,9 @@ def create_database():
                    details TEXT,
                    timestamp DATETIME DEFAULT CURRENT_TIMESTAMP
                    )""")
+    
+
+
 
     # Save all table creations to the database
     conn.commit()

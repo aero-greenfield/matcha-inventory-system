@@ -75,12 +75,32 @@ def init_database():
        is_housemade BOOLEAN DEFAULT FALSE
    ) 
    """) 
+
     
    # What changed from SQLite? 
    # OLD: material_id INTEGER PRIMARY KEY AUTOINCREMENT 
    # NEW: material_id SERIAL PRIMARY KEY 
    # SERIAL = PostgreSQL's auto-increment 
    # Same functionality, different syntax 
+
+
+   #=========================
+   #Lot number table for raw materials.
+   #=========================
+
+   cursor.execute("""
+    CREATE TABLE IF NOT EXISTS raw_material_lots(
+        lot_id SERIAL PRIMARY KEY,
+        material_id INTEGER,
+        lot_number TEXT,
+        quantity REAL,
+        recieved_date TEXT,
+        expiration_date TEXT,
+        status TEXT,
+        location TEXT,
+        FOREIGN KEY (material_id) REFERENCES raw_materials(material_id)
+                   )
+                   """)
     
    print("  ✅ raw_materials table created") 
     
@@ -142,10 +162,12 @@ def init_database():
    CREATE TABLE IF NOT EXISTS batch_materials( 
        batch_material_id SERIAL PRIMARY KEY, 
        batch_id INTEGER, 
-       material_id INTEGER, 
+       material_id INTEGER,
+       lot_id INTEGER,
        quantity_used REAL, 
        FOREIGN KEY (material_id) REFERENCES raw_materials(material_id), 
-       FOREIGN KEY (batch_id) REFERENCES batches(batch_id) 
+       FOREIGN KEY (batch_id) REFERENCES batches(batch_id),
+       FOREIGN KEY(lot_id) REFERENCES raw_material_lots(lot_id)              
    ) 
    """) 
     
