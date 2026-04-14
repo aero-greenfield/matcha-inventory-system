@@ -67,11 +67,8 @@ def init_database():
        material_id SERIAL PRIMARY KEY, 
        name TEXT NOT NULL, 
        category TEXT,   
-       stock_level REAL, 
        unit TEXT, 
-       reorder_level REAL,  
-       cost_per_unit REAL, 
-       supplier TEXT,
+       reorder_level REAL, 
        is_housemade BOOLEAN DEFAULT FALSE
    ) 
    """) 
@@ -94,15 +91,16 @@ def init_database():
         material_id INTEGER,
         lot_number TEXT,
         quantity REAL,
-        recieved_date TEXT,
+        received_date TEXT,
         expiration_date TEXT,
-        status TEXT,
+        status TEXT DEFAULT 'active',
+        supplier TEXT,
         location TEXT,
         FOREIGN KEY (material_id) REFERENCES raw_materials(material_id)
                    )
                    """)
     
-   print("  ✅ raw_materials table created") 
+   print("  ✅ raw_materials/lots table created") 
     
    # ======================================== 
    # TABLE 2: recipes 
@@ -149,6 +147,8 @@ def init_database():
        date_shipped TEXT,
        expiration_date TEXT,
        batch_type TEXT DEFAULT 'standard',
+       planned_completion_date TEXT,
+       planned_lot_selections TEXT,
        promotion_failure_reason TEXT
    )
    """) 
@@ -198,7 +198,7 @@ def init_database():
     )
     """)
    
-    
+    print("  ✅ audit_log table created")
    # ======================================== 
    # Save all changes 
    # ======================================== 
