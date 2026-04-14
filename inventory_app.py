@@ -85,9 +85,10 @@ def create_database():
                    material_id INTEGER,
                    lot_number TEXT,
                    quantity REAL,
-                   recieved_date TEXT,
+                   received_date TEXT,
                    expiration_date TEXT,
-                   status TEXT,
+                   status TEXT DEFAULT 'active',
+                   supplier TEXT,
                    location TEXT,
                    FOREIGN KEY (material_id) REFERENCES raw_materials(material_id
                    )
@@ -226,19 +227,35 @@ def get_low_stock_materials():
 
 
 def get_all_materials():
-    "Returns all materials"
+    """
+    Returns all materials
+    the stock is dirived from a SUM of all lot number quantity. 
+    
+    """
     db = get_db_connection()
     cursor = db.cursor()
+    try:
+        db.execute(cursor, """
+        SELECT rm.name, rm.category, SUM(CASE WHEN rm_lot.quantity > 0 AND (rm_lot.expiration_date IS NULL OR rm_lot.expiration_date > %s) THEN rm_lot.quantity ELSE 0 END) as stock_level, rm.unit, rm.reorder_level, rm.is_housemade
+        FROM raw_materials rm
+        LEFT JOIN raw_material_lots rm_lot on rm.material_id = rm_lot.material_id
+        GROUP BY rm.material_id
+        ORDER BY category, name
+        """, (datetime.now().strftime('%Y-%m-%d %H:%M:%S'),))
+        
+        #CUrrently: does not include expired lots in the quantity.
+        result = cursor.fetchall()
+        columns=['name', 'category', 'stock_level', 'unit', 'reorder_level', 'is_housemade']
+        df = pd.DataFrame(result, columns=columns)
+        return df
 
-    query = """
-    SELECT name, category, stock_level, unit, reorder_level, cost_per_unit, supplier, is_housemade
-    FROM raw_materials
-    ORDER BY category, name
-    """
-
-    result = pd.read_sql_query(query, db.conn)
-    db.close()
-    return result
+    except Exception as e:
+        logging.error(f"Error getting all materials, (get_all_materials function) e: {e}")
+        return None
+   
+    finally:
+        db.close()
+    
 
 
 
@@ -556,6 +573,116 @@ def get_mix_stock(material_name):
         return 0.0
     finally:
         db.close()
+
+
+
+
+#=======================
+#LOT NUMBER FUNCTIONS
+#=======================
+
+def get_lots_for_material(material_id):
+    """
+    returns all 'active' lots (lots where quantitiy > 0) for a given material_id. 
+    ordered by received_date ASC. 
+
+    will be used for batch creation drop down menu when choosing which lots to deduct from.    
+    
+    """
+
+    db = get_db_connection()
+    cursor = db.cursor()
+    try:
+        date_now = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+        
+        db.execute(cursor,"""
+        SELECT rm_lot.lot_id, rm.name AS material_name, rm_lot.lot_number, rm_lot.quantity, rm_lot.received_date, rm_lot.status, rm_lot.expiration_date
+        FROM raw_material_lots rm_lot
+        JOIN raw_materials rm ON rm_lot.material_id = rm.material_id
+        WHERE rm_lot.material_id = %s AND rm_lot.quantity > 0 AND rm_lot.status = 'active' AND (rm_lot.expiration_date IS NULL OR rm_lot.expiration_date > %s)
+        ORDER BY rm_lot.received_date ASC
+                        
+                    """, (material_id, date_now,))
+        result = cursor.fetchall()
+        columns = ['lot_id', 'material_name', 'lot_number', 'quantity', 'received_date', 'status', 'expiration_date']
+        df = pd.DataFrame(result, columns=columns)
+        return df
+
+    except Exception as e:
+        logging.error(f"Error fetching lots for material (batch drop down function) {material_id}: {e}")
+        return None
+
+    finally:
+        db.close()
+
+
+
+def get_all_lots_for_material(material_id):
+    """
+    same as above, but includes exired and exhausted lots
+    will be used for inventory page
+    
+    """
+
+    db = get_db_connection()
+    cursor = db.cursor()
+    try:
+        
+        
+        db.execute(cursor,"""
+        SELECT rm_lot.lot_id, rm_lot.lot_number, rm_lot.quantity, rm_lot.received_date, rm_lot.status, rm_lot.expiration_date, rm_lot.location
+        FROM raw_material_lots rm_lot
+        JOIN raw_materials rm ON rm_lot.material_id = rm.material_id
+        WHERE rm_lot.material_id = %s 
+        ORDER BY rm_lot.received_date ASC
+                        
+                    """, (material_id,))
+        result = cursor.fetchall()
+        columns = ['lot_id', 'lot_number', 'quantity', 'received_date', 'status', 'expiration_date', 'location']
+        df = pd.DataFrame(result, columns=columns)
+        return df
+
+    except Exception as e:
+        logging.error(f"Error fetching lots for material (inventory page function) {material_id}: {e}")
+        return None
+
+    finally:
+        db.close()
+
+
+
+
+def get_material_stock_from_lots(material_id):
+
+    """
+    Used to get stock level by diriving from SUM of active lots with given material_id. 
+
+    used for reading stock level directly. 
+    
+    
+    """
+    db = get_db_connection()
+    cursor = db.cursor()
+    try:
+        date_now = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+        db.execute(cursor, """
+        SELECT SUM(quantity) FROM raw_material_lots
+        WHERE material_id = %s AND status = 'active' AND (expiration_date IS NULL OR expiration_date > %s)
+        """, (material_id, date_now,))
+        result = cursor.fetchone()
+        return result[0] if result[0] is not None else 0.0
+
+    except Exception as e:
+        logging.error(f"Error getting stock from lots for material (for stock_level of material_id) {material_id}: {e}")
+        return None
+
+    finally:
+        db.close()
+
+
+
+
+
 
 # ========================
 # BATCHES FUNCTIONS
