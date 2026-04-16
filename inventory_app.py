@@ -581,6 +581,8 @@ def get_mix_stock(material_name):
 #LOT NUMBER FUNCTIONS
 #=======================
 
+# read functions:
+
 def get_lots_for_material(material_id):
     """
     returns all 'active' lots (lots where quantitiy > 0) for a given material_id. 
@@ -680,6 +682,62 @@ def get_material_stock_from_lots(material_id):
         db.close()
 
 
+#Write functions:
+
+def receive_lot(material_id, lot_number, quantity, received_date, expiry_date=None, location=None, supplier=None):
+    """
+    adds new row into raw_material_lots
+
+    validates that quantity > 0
+    
+    will be used when needed to add to a material via a new lot. 
+    
+    """
+
+    db = get_db_connection()
+    cursor = db.cursor()
+
+    try:
+
+        #validate quantity:
+        if (quantity is None) or (quantity <= 0):
+            raise ValueError("Quantity must be a positive number.")
+
+
+        db.execute(cursor, """
+        INSERT INTO raw_material_lots (material_id, lot_number, quantity, received_date, expiration_date, location, supplier)           
+        VALUES(%s, %s, %s, %s, %s, %s, %s)           
+                   """,(material_id, lot_number, quantity, received_date, expiry_date, location, supplier))
+        
+        
+        if cursor.rowcount == 0:
+                raise ValueError(f"LOT ID not found — nothing updated when receiving lot {lot_number}")
+        
+        lot_id = db.get_last_insert_id(cursor)
+
+
+        
+
+        logging.info(f"Added lot number {lot_number} for material id:{material_id} with quantity {quantity}")
+        db.commit()
+        return lot_id
+
+
+    except ValueError as e:
+        logging.error(f"Value error adding new row to lot table. Error: {e}")
+        db.rollback()
+        return None
+
+    except Exception as e:
+        logging.error(f"Error adding a new row in lot numbers table. {material_id}/{lot_number}: {e}")
+        db.rollback()
+        return None
+
+    finally:
+        db.close()
+
+
+
 
 
 
@@ -695,6 +753,10 @@ def add_to_batches(product_name, quantity, notes=None, batch_number=None, deduct
     batch_type can be 'standard', 'mix', or 'finished' — used to auto-determine whether to defer deduction for planned batches.
     if standard or mix, deduction happens immediately at batch creation regardless of planned vs ready status. and adds mixed batch to raw_materials with is_housemade = True, so they can be used in future batches.
     if finished, deduction is deferred until promotion time for planned batches, happens immediately for ready batches.
+
+
+    lot number changes:
+    1. mixed batches now insert into raw_material_lots table. with lot_number = MIX-BATCH-{batch_number}
     """
     # Connect to the database
     db = get_db_connection()
@@ -803,6 +865,17 @@ def add_to_batches(product_name, quantity, notes=None, batch_number=None, deduct
                     INSERT INTO raw_materials (name, category, stock_level, unit, reorder_level, is_housemade)
                     VALUES (%s, %s, %s, %s, %s, %s)
                 """, (product_name, 'Mix', quantity, 'units', 0, True))
+
+            # Insert a new lot for the mixed product
+            lot_number = f"MIX-BATCH-{batch_number}"
+            db.execute(cursor, """
+            INSERT INTO raw_material_lots (lot_number, material_id,quantity, received_date, status)
+            VALUES(%s, %s, %s, %s, %s)
+                       """, (lot_number, existing_mix[0], quantity, datetime.now().strftime('%Y-%m-%d'), 'active'  ))
+            if cursor.rowcount == 0:
+                raise ValueError(f"Failed to create lot for mixed batch {batch_number}")
+            
+
 
 
         
