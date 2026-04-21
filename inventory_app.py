@@ -390,7 +390,7 @@ def get_raw_material(name):
 
     try:
         db.execute(cursor, """
-        SELECT material_id, name, stock_level, reorder_level, cost_per_unit
+        SELECT material_id, name, reorder_level
         FROM raw_materials
         WHERE LOWER(name) = LOWER(%s)
                        """,(name,))
@@ -746,7 +746,7 @@ def receive_lot(material_id, lot_number, quantity, received_date, expiry_date=No
 # BATCHES FUNCTIONS
 # ========================
 
-def add_to_batches(product_name, quantity, notes=None, batch_number=None, deduct_resources=True, expiration_date=None, planned_completion_date=None, batch_type='standard', allow_negative=False):
+def add_to_batches(product_name, quantity, notes=None, batch_number=None, deduct_resources=True, expiration_date=None, planned_completion_date=None, batch_type='standard', allow_negative=False, lot_selections=None):
     """
     adds batch to ready to ship, but asks user if they want to deduct from resources, or just add it.
     If planned_completion_date is provided, batch is created with status 'Planned' instead of 'Ready'.
@@ -757,6 +757,19 @@ def add_to_batches(product_name, quantity, notes=None, batch_number=None, deduct
 
     lot number changes:
     1. mixed batches now insert into raw_material_lots table. with lot_number = MIX-BATCH-{batch_number}
+    2. lot_selection paramater --> a paramater that is passed to funciton is a dictionary where the key is the material in recipe, 
+        each value to said key is a LIST each lot for the material, but each lot is in the form of a dicitonary.  
+        ex: lot_selections = {
+            "Matcha": [
+                {"lot_id": 1, "quantity_used": 10},
+                {"lot_id": 2, "quantity_used": 5}
+            ],
+            "Sugar": [
+                {"lot_id": 5, "quantity_used": 8}
+            ]
+        }
+
+    3.
     """
     # Connect to the database
     db = get_db_connection()
@@ -805,22 +818,62 @@ def add_to_batches(product_name, quantity, notes=None, batch_number=None, deduct
 
 
             #check in there is needed resources
-            for _, row in recipe_df.iterrows(): #iterate through each row of recipe df
-                material_id_recipe = row['material_id'] #get id
-                material_name = row['material_name'] #get material name
-                quantity_needed = row['quantity_needed'] # needed amount
+            for _, row in recipe_df.iterrows(): 
+                material_name = row['material_name'] 
+                quantity_needed = row['quantity_needed'] 
+                # get recipe mats
 
-                material_info = get_raw_material(material_name)
+                material_info = get_raw_material(material_name) #get each material in recipe
                 if not material_info:
                     raise ValueError(f"Material {material_name}: not found in inventory")
 
 
-                material_id, name, stock_level, reorder_level, cost_per_unit = material_info #break down tuple
+                material_id, name, reorder_level = material_info #break down tuple
 
-                required_amount = quantity_needed * quantity
+                required_amount = quantity_needed * quantity # got require amount for material. 
 
-                if stock_level < required_amount and not allow_negative:
-                    raise ValueError(f"Insufficient {material_name}: need {required_amount}, have {stock_level}")
+                for material_id, lot_list in lot_selections.items():
+                    # material_id is the key
+                    # lot_list is the list of {lot_id, qty} dicts
+                    for lot in lot_list:
+                        lot_id = lot['lot_id']
+                        qty = lot['qty']
+
+                        #check each lot for validation
+                        db.execute (cursor, """
+                        SELECT quantity 
+                        FROM raw_material_lots
+                        WHERE lot_id = %s AND material_id = %s AND status = 'active' AND (expiration_date IS NULL OR expiration_date > %s)          
+
+                         """, (lot_id, material_id, datetime.now().strftime('%Y-%m-%d %H:%M:%S')))
+                        lot_row = cursor.fetchone() # we got our raw lot data
+
+                        #existance validation
+                        if not lot_row:
+                            raise ValueError(f"Lot ID {lot_id} for material {material_name} not found or is not active/expired.")
+                        
+                        available_qty = lot_row[0] #got our quantity for lot
+
+                        #quantity validation
+                        if available_qty < 
+
+                        """
+                        
+                        
+                        
+                        
+                        
+                        WE ARE HERE RN
+                        
+                        
+                        
+                        
+                        
+                        
+                        """
+
+                
+
 
 
                 #deduct from raw_materials
@@ -842,6 +895,11 @@ def add_to_batches(product_name, quantity, notes=None, batch_number=None, deduct
                     f"Failed to deduct stock for '{material_name}' (id={material_id}). "
                     "The material may have been deleted or the recipe has a broken reference."
     )
+
+                #validation and deduction done!
+                #now just insert each lots for each material into batch materials. 
+
+
 
                 #add to batch_materials
                 db.execute(cursor, """
