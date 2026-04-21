@@ -44,24 +44,24 @@ from database import get_connection
 
 
 def init_database(): 
-   """ 
-  Creates all database tables. 
+    """
+    Creates all database tables.
+
+    IMPORTANT DIFFERENCE FROM SQLite:
+    - SQLite uses: INTEGER PRIMARY KEY AUTOINCREMENT
+    - PostgreSQL uses: SERIAL PRIMARY KEY
+    - SERIAL = auto-incrementing integer in PostgreSQL
+    """
     
-   IMPORTANT DIFFERENCE FROM SQLite: 
-   - SQLite uses: INTEGER PRIMARY KEY AUTOINCREMENT 
-   - PostgreSQL uses: SERIAL PRIMARY KEY 
-   - SERIAL = auto-incrementing integer in PostgreSQL 
-   """ 
-    
-   print("🔧 Connecting to database...") 
-   conn = get_connection() 
-   cursor = conn.cursor() 
-    
-   print("📋 Creating tables...") 
-    
-   # ======================================== 
-   # TABLE 1: raw_materials 
-   # ======================================== 
+    print("🔧 Connecting to database...")
+    conn = get_connection()
+    cursor = conn.cursor()
+
+    print("📋 Creating tables...")
+
+    # ========================================
+    # TABLE 1: raw_materials
+    # ========================================
     if DATABASE_URL:
 
    
@@ -132,7 +132,7 @@ def init_database():
                 FOREIGN KEY (material_id) REFERENCES raw_materials(material_id)
                         )
                         """)
-   print("  ✅ raw_materials/lots table created") 
+    print("  ✅ raw_materials/lots table created")
     
    # ======================================== 
    # TABLE 2: recipes 
@@ -155,7 +155,7 @@ def init_database():
             notes TEXT 
         ) 
         """) 
-   print("  ✅ recipes table created") 
+    print("  ✅ recipes table created")
     
    # ======================================== 
    # TABLE 3: recipe_materials 
@@ -187,7 +187,7 @@ def init_database():
         ) 
         """) 
     
-   print("  ✅ recipe_materials table created") 
+    print("  ✅ recipe_materials table created")
     
    # ======================================== 
    # TABLE 4: batches 
@@ -231,7 +231,7 @@ def init_database():
         )
         """) 
     
-   print("  ✅ batches table created") 
+    print("  ✅ batches table created")
     
    # ======================================== 
    # TABLE 5: batch_materials 
@@ -267,7 +267,7 @@ def init_database():
         
 
     
-   print("  ✅ batch_materials table created") 
+    print("  ✅ batch_materials table created")
 
 
 
@@ -301,11 +301,11 @@ def init_database():
    # ======================================== 
    # Save all changes 
    # ======================================== 
-   conn.commit() 
-   conn.close() 
-    
-   print("\n🎉 Database initialized successfully!") 
-   print("📊 All tables created and ready to use") 
+    conn.commit()
+    conn.close()
+
+    print("\n🎉 Database initialized successfully!")
+    print("📊 All tables created and ready to use")
  
  
 # ============================================================ 

@@ -853,25 +853,22 @@ def add_to_batches(product_name, quantity, notes=None, batch_number=None, deduct
         
         # ALSO IF BATCH TYPE IS MIX, ADD THE MIXED PRODUCT TO RAW_MATERIALS WITH is_housemade = True, SO IT CAN BE USED IN FUTURE BATCHES.if not already in raw_materials,
         # otherwise if its already in raw_materials, just update the stock level by adding the quantity of the batch we just made.
-        if batch_type == 'mix': # add to raw_materials.
+        if batch_type == 'mix':
             existing_mix = get_raw_material(product_name)
             if existing_mix:
-                db.execute(cursor, """
-                    UPDATE raw_materials SET stock_level = stock_level + %s
-                    WHERE material_id = %s
-                """, (quantity, existing_mix[0]))
+                mix_material_id = existing_mix[0]
             else:
                 db.execute(cursor, """
-                    INSERT INTO raw_materials (name, category, stock_level, unit, reorder_level, is_housemade)
-                    VALUES (%s, %s, %s, %s, %s, %s)
-                """, (product_name, 'Mix', quantity, 'units', 0, True))
+                    INSERT INTO raw_materials (name, category, unit, reorder_level, is_housemade)
+                    VALUES (%s, %s, %s, %s, %s)
+                """, (product_name, 'Mix', 'units', 0, True))
+                mix_material_id = db.get_last_insert_id(cursor)
 
-            # Insert a new lot for the mixed product
             lot_number = f"MIX-BATCH-{batch_number}"
             db.execute(cursor, """
-            INSERT INTO raw_material_lots (lot_number, material_id,quantity, received_date, status)
-            VALUES(%s, %s, %s, %s, %s)
-                       """, (lot_number, existing_mix[0], quantity, datetime.now().strftime('%Y-%m-%d'), 'active'  ))
+                INSERT INTO raw_material_lots (lot_number, material_id, quantity, received_date, status)
+                VALUES (%s, %s, %s, %s, %s)
+            """, (lot_number, mix_material_id, quantity, datetime.now().strftime('%Y-%m-%d'), 'active'))
             if cursor.rowcount == 0:
                 raise ValueError(f"Failed to create lot for mixed batch {batch_number}")
             
