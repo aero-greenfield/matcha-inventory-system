@@ -62,17 +62,32 @@ def init_database():
    # ======================================== 
    # TABLE 1: raw_materials 
    # ======================================== 
-   cursor.execute(""" 
-   CREATE TABLE IF NOT EXISTS raw_materials( 
-       material_id SERIAL PRIMARY KEY, 
-       name TEXT NOT NULL, 
-       category TEXT,   
-       unit TEXT, 
-       reorder_level REAL, 
-       is_housemade BOOLEAN DEFAULT FALSE
-   ) 
-   """) 
+    if DATABASE_URL:
 
+   
+        cursor.execute(""" 
+        CREATE TABLE IF NOT EXISTS raw_materials( 
+            material_id SERIAL PRIMARY KEY, 
+            name TEXT NOT NULL, 
+            category TEXT,   
+            unit TEXT, 
+            reorder_level REAL, 
+            is_housemade BOOLEAN DEFAULT FALSE
+        ) 
+        """)
+
+    else:
+
+        cursor.execute(""" 
+        CREATE TABLE IF NOT EXISTS raw_materials( 
+            material_id INTEGER PRIMARY KEY AUTOINCREMENT,
+            name TEXT NOT NULL, 
+            category TEXT,   
+            unit TEXT, 
+            reorder_level REAL, 
+            is_housemade BOOLEAN DEFAULT FALSE
+        ) 
+        """)
     
    # What changed from SQLite? 
    # OLD: material_id INTEGER PRIMARY KEY AUTOINCREMENT 
@@ -84,92 +99,173 @@ def init_database():
    #=========================
    #Lot number table for raw materials.
    #=========================
+    if DATABASE_URL:
 
-   cursor.execute("""
-    CREATE TABLE IF NOT EXISTS raw_material_lots(
-        lot_id SERIAL PRIMARY KEY,
-        material_id INTEGER,
-        lot_number TEXT,
-        quantity REAL,
-        received_date TEXT,
-        expiration_date TEXT,
-        status TEXT DEFAULT 'active',
-        supplier TEXT,
-        location TEXT,
-        FOREIGN KEY (material_id) REFERENCES raw_materials(material_id)
-                   )
-                   """)
-    
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS raw_material_lots(
+                lot_id SERIAL PRIMARY KEY,
+                material_id INTEGER,
+                lot_number TEXT,
+                quantity REAL,
+                received_date TEXT,
+                expiration_date TEXT,
+                status TEXT DEFAULT 'active',
+                supplier TEXT,
+                location TEXT,
+                cost_per_unit REAL,
+                FOREIGN KEY (material_id) REFERENCES raw_materials(material_id)
+                        )
+                        """)
+    else:
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS raw_material_lots(
+                lot_id INTEGER PRIMARY KEY AUTOINCREMENT,
+                material_id INTEGER,
+                lot_number TEXT,
+                quantity REAL,
+                received_date TEXT,
+                expiration_date TEXT,
+                status TEXT DEFAULT 'active',
+                supplier TEXT,
+                location TEXT,
+                cost_per_unit REAL,
+                FOREIGN KEY (material_id) REFERENCES raw_materials(material_id)
+                        )
+                        """)
    print("  ✅ raw_materials/lots table created") 
     
    # ======================================== 
    # TABLE 2: recipes 
    # ======================================== 
-   cursor.execute(""" 
-   CREATE TABLE IF NOT EXISTS recipes( 
-       recipe_id SERIAL PRIMARY KEY, 
-       product_name TEXT NOT NULL, 
-       notes TEXT 
-   ) 
-   """) 
-    
+   
+    if DATABASE_URL:
+
+        cursor.execute(""" 
+        CREATE TABLE IF NOT EXISTS recipes( 
+            recipe_id SERIAL PRIMARY KEY, 
+            product_name TEXT NOT NULL, 
+            notes TEXT 
+        ) 
+        """) 
+    else:
+        cursor.execute(""" 
+        CREATE TABLE IF NOT EXISTS recipes( 
+            recipe_id INTEGER PRIMARY KEY AUTOINCREMENT,
+            product_name TEXT NOT NULL, 
+            notes TEXT 
+        ) 
+        """) 
    print("  ✅ recipes table created") 
     
    # ======================================== 
    # TABLE 3: recipe_materials 
    # ======================================== 
-   cursor.execute(""" 
-   CREATE TABLE IF NOT EXISTS recipe_materials( 
-       recipe_material_id SERIAL PRIMARY KEY, 
-       recipe_id INTEGER, 
-       material_id INTEGER, 
-       material_name TEXT, 
-       quantity_needed REAL, 
-       FOREIGN KEY (material_id) REFERENCES raw_materials(material_id), 
-       FOREIGN KEY (recipe_id) REFERENCES recipes(recipe_id) 
-   ) 
-   """) 
+   
+    if DATABASE_URL:
+    
+        cursor.execute(""" 
+        CREATE TABLE IF NOT EXISTS recipe_materials( 
+            recipe_material_id SERIAL PRIMARY KEY, 
+            recipe_id INTEGER, 
+            material_id INTEGER, 
+            material_name TEXT, 
+            quantity_needed REAL, 
+            FOREIGN KEY (material_id) REFERENCES raw_materials(material_id), 
+            FOREIGN KEY (recipe_id) REFERENCES recipes(recipe_id) 
+        ) 
+        """) 
+    else:
+        cursor.execute(""" 
+        CREATE TABLE IF NOT EXISTS recipe_materials( 
+            recipe_material_id INTEGER PRIMARY KEY AUTOINCREMENT,
+            recipe_id INTEGER, 
+            material_id INTEGER, 
+            material_name TEXT, 
+            quantity_needed REAL, 
+            FOREIGN KEY (material_id) REFERENCES raw_materials(material_id), 
+            FOREIGN KEY (recipe_id) REFERENCES recipes(recipe_id) 
+        ) 
+        """) 
     
    print("  ✅ recipe_materials table created") 
     
    # ======================================== 
    # TABLE 4: batches 
    # ======================================== 
-   cursor.execute(""" 
-   CREATE TABLE IF NOT EXISTS batches(
-       batch_id SERIAL PRIMARY KEY,
-       batch_number TEXT NOT NULL DEFAULT '',
-       product_name TEXT NOT NULL,
-       quantity INTEGER,
-       date_completed TEXT,
-       status TEXT DEFAULT 'Ready',
-       notes TEXT,
-       date_shipped TEXT,
-       expiration_date TEXT,
-       batch_type TEXT DEFAULT 'standard',
-       planned_completion_date TEXT,
-       planned_lot_selections TEXT,
-       promotion_failure_reason TEXT
-   )
-   """) 
+    if DATABASE_URL:
+    
+
+        cursor.execute(""" 
+        CREATE TABLE IF NOT EXISTS batches(
+            batch_id SERIAL PRIMARY KEY,
+            batch_number TEXT NOT NULL DEFAULT '',
+            product_name TEXT NOT NULL,
+            quantity INTEGER,
+            date_completed TEXT,
+            status TEXT DEFAULT 'Ready',
+            notes TEXT,
+            date_shipped TEXT,
+            expiration_date TEXT,
+            batch_type TEXT DEFAULT 'standard',
+            planned_completion_date TEXT,
+            planned_lot_selections TEXT,
+            promotion_failure_reason TEXT
+        )
+        """) 
+    else:
+        cursor.execute(""" 
+        CREATE TABLE IF NOT EXISTS batches(
+            batch_id INTEGER PRIMARY KEY AUTOINCREMENT,
+            batch_number TEXT NOT NULL DEFAULT '',
+            product_name TEXT NOT NULL,
+            quantity INTEGER,
+            date_completed TEXT,
+            status TEXT DEFAULT 'Ready',
+            notes TEXT,
+            date_shipped TEXT,
+            expiration_date TEXT,
+            batch_type TEXT DEFAULT 'standard',
+            planned_completion_date TEXT,
+            planned_lot_selections TEXT,
+            promotion_failure_reason TEXT
+        )
+        """) 
     
    print("  ✅ batches table created") 
     
    # ======================================== 
    # TABLE 5: batch_materials 
    # ======================================== 
-   cursor.execute(""" 
-   CREATE TABLE IF NOT EXISTS batch_materials( 
-       batch_material_id SERIAL PRIMARY KEY, 
-       batch_id INTEGER, 
-       material_id INTEGER,
-       lot_id INTEGER,
-       quantity_used REAL, 
-       FOREIGN KEY (material_id) REFERENCES raw_materials(material_id), 
-       FOREIGN KEY (batch_id) REFERENCES batches(batch_id),
-       FOREIGN KEY(lot_id) REFERENCES raw_material_lots(lot_id)              
-   ) 
-   """) 
+   
+    if DATABASE_URL:
+
+        cursor.execute(""" 
+        CREATE TABLE IF NOT EXISTS batch_materials( 
+            batch_material_id SERIAL PRIMARY KEY, 
+            batch_id INTEGER, 
+            material_id INTEGER,
+            lot_id INTEGER,
+            quantity_used REAL, 
+            FOREIGN KEY (material_id) REFERENCES raw_materials(material_id), 
+            FOREIGN KEY (batch_id) REFERENCES batches(batch_id),
+            FOREIGN KEY(lot_id) REFERENCES raw_material_lots(lot_id)              
+        ) 
+        """) 
+    else:
+        cursor.execute(""" 
+        CREATE TABLE IF NOT EXISTS batch_materials( 
+            batch_material_id INTEGER PRIMARY KEY AUTOINCREMENT,
+            batch_id INTEGER, 
+            material_id INTEGER,
+            lot_id INTEGER,
+            quantity_used REAL, 
+            FOREIGN KEY (material_id) REFERENCES raw_materials(material_id), 
+            FOREIGN KEY (batch_id) REFERENCES batches(batch_id),
+            FOREIGN KEY(lot_id) REFERENCES raw_material_lots(lot_id)              
+        ) 
+        """) 
+        
+
     
    print("  ✅ batch_materials table created") 
 
@@ -179,24 +275,27 @@ def init_database():
    # TABLE 6: audit-logs
    #============================
 
-   if DATABASE_URL:
-    cursor.execute("""
-    CREATE TABLE IF NOT EXISTS audit_log (
-        id SERIAL PRIMARY KEY,
-        action TEXT NOT NULL,
-        details TEXT,
-        timestamp TIMESTAMPTZ DEFAULT NOW()
-    )
-    """)
-   else:
-    cursor.execute("""
-    CREATE TABLE IF NOT EXISTS audit_log (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
-        action TEXT NOT NULL,
-        details TEXT,
-        timestamp TEXT DEFAULT (datetime('now'))
-    )
-    """)
+    if DATABASE_URL:
+
+
+
+        cursor.execute("""
+        CREATE TABLE IF NOT EXISTS audit_log (
+            id SERIAL PRIMARY KEY,
+            action TEXT NOT NULL,
+            details TEXT,
+            timestamp TIMESTAMPTZ DEFAULT NOW()
+        )
+        """)
+    else:
+        cursor.execute("""
+        CREATE TABLE IF NOT EXISTS audit_log (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            action TEXT NOT NULL,
+            details TEXT,
+            timestamp TEXT DEFAULT (datetime('now'))
+        )
+        """)
    
     print("  ✅ audit_log table created")
    # ======================================== 
