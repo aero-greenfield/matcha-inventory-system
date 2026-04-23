@@ -245,7 +245,8 @@ def init_database():
             batch_id INTEGER, 
             material_id INTEGER,
             lot_id INTEGER,
-            quantity_used REAL, 
+            quantity_used REAL,
+            cost_per_unit REAL, 
             FOREIGN KEY (material_id) REFERENCES raw_materials(material_id), 
             FOREIGN KEY (batch_id) REFERENCES batches(batch_id),
             FOREIGN KEY(lot_id) REFERENCES raw_material_lots(lot_id)              
@@ -259,6 +260,7 @@ def init_database():
             material_id INTEGER,
             lot_id INTEGER,
             quantity_used REAL, 
+            cost_per_unit REAL,
             FOREIGN KEY (material_id) REFERENCES raw_materials(material_id), 
             FOREIGN KEY (batch_id) REFERENCES batches(batch_id),
             FOREIGN KEY(lot_id) REFERENCES raw_material_lots(lot_id)              

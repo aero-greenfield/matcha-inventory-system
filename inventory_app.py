@@ -817,97 +817,88 @@ def add_to_batches(product_name, quantity, notes=None, batch_number=None, deduct
         if deduct_resources and not defer_deduction: # if defer_deduction, will be deducted later in promotion from planned. 
 
 
+
+            #validate lot selection is not None
+            if lot_selections is None:
+                raise ValueError("Lot selections must be provided for batch creation to validate stock and deduct from specific lots.")
+            
             #check in there is needed resources
             for _, row in recipe_df.iterrows(): 
+                material_id = row['material_id']
                 material_name = row['material_name'] 
-                quantity_needed = row['quantity_needed'] 
+                required_amount = row['quantity_needed'] * quantity
                 # get recipe mats
 
-                material_info = get_raw_material(material_name) #get each material in recipe
-                if not material_info:
-                    raise ValueError(f"Material {material_name}: not found in inventory")
 
 
-                material_id, name, reorder_level = material_info #break down tuple
+                #validation section for material and lots: 
 
-                required_amount = quantity_needed * quantity # got require amount for material. 
 
-                for material_id, lot_list in lot_selections.items():
-                    # material_id is the key
-                    # lot_list is the list of {lot_id, qty} dicts
-                    for lot in lot_list:
-                        lot_id = lot['lot_id']
-                        qty = lot['qty']
+            
 
-                        #check each lot for validation
-                        db.execute (cursor, """
-                        SELECT quantity 
-                        FROM raw_material_lots
-                        WHERE lot_id = %s AND material_id = %s AND status = 'active' AND (expiration_date IS NULL OR expiration_date > %s)          
-
-                         """, (lot_id, material_id, datetime.now().strftime('%Y-%m-%d %H:%M:%S')))
-                        lot_row = cursor.fetchone() # we got our raw lot data
-
-                        #existance validation
-                        if not lot_row:
-                            raise ValueError(f"Lot ID {lot_id} for material {material_name} not found or is not active/expired.")
-                        
-                        available_qty = lot_row[0] #got our quantity for lot
-
-                        #quantity validation
-                        if available_qty < 
-
-                        """
-                        
-                        
-                        
-                        
-                        
-                        WE ARE HERE RN
-                        
-                        
-                        
-                        
-                        
-                        
-                        """
+                #get lot list for each material
+                lot_list = lot_selections.get(material_id)
+                if lot_list is None:
+                    raise ValueError(f"No lot selection provided for material '{material_name}'")
 
                 
 
+                #validate total sum of lots selected matches neededamount for recipe
+                material_sum = sum(lot['qty'] for lot in lot_list) # sum up the total quantity from the lots for this material
+                if abs(material_sum - required_amount) > 1e-6: # if the sum of the lots is less than the required amount, raise error before doing any deduction
+                        raise ValueError(f"Total quantity from selected lots for material {material_name} is insufficient. Required: {required_amount}")
+                    
+   
+                    
+                # specific lot validation:
+                for lot in lot_list:
+                    lot_id = lot['lot_id']
+                    qty = lot['qty']
 
+                    #check each lot for validation
+                    db.execute (cursor, """
+                    SELECT quantity, cost_per_unit
+                    FROM raw_material_lots
+                    WHERE lot_id = %s AND material_id = %s AND status = 'active' AND (expiration_date IS NULL OR expiration_date > %s)          
 
-                #deduct from raw_materials
-            for _, row in recipe_df.iterrows(): #iterate through each row of recipe df
-                material_id = row['material_id'] #get id
-                material_name = row['material_name'] #get material name
-                quantity_needed = row['quantity_needed'] # needed amount
-                required_amount = quantity_needed * quantity
+                        """, (lot_id, material_id, datetime.now().strftime('%Y-%m-%d %H:%M:%S')))
+                    lot_row = cursor.fetchone() # we got our raw lot data
 
-                #deduct from raw_materials
-                db.execute(cursor, """
-                UPDATE raw_materials
-                SET stock_level = stock_level - %s
-                WHERE material_id = %s
-                    """,(required_amount, material_id,))
+                    #existance validation
+                    if not lot_row:
+                        raise ValueError(f"Lot ID {lot_id} for material {material_name} not found or is not active/expired.")
+                    
+                    available_qty = lot_row[0] #got our quantity for lot
+
+                    #quantity validation
+                    if available_qty < qty: # available quanitity must be greater than qty user wants from said lot
+                        raise ValueError(f"Insufficient quantity in lot {lot_id} for material {material_name}. Required: {required_amount}, Available: {available_qty}")
+                    
+
+                    # if we pass all validation, then we can do the deduction from the lots and materials.
+
+                    # deduct immediately after validation passes for this lot
+                    db.execute(cursor, """
+                        UPDATE raw_material_lots
+                        SET quantity = quantity - %s
+                        WHERE lot_id = %s
+                    """, (qty, lot_id))
+                    #deduction
+
+                    if cursor.rowcount == 0:
+                        raise ValueError(f"Lot {lot_id} not found during deduction.")
+                    #deduciton validation
+
+                    db.execute(cursor, """
+                        INSERT INTO batch_materials (batch_id, material_id, lot_id, quantity_used, cost_per_unit)
+                        VALUES (%s, %s, %s, %s, %s)
+                    """, (batch_id, material_id, lot_id, qty, lot_row[1]))
+                    #log into batch_materials
+
+                    #validaiton and deduciton done for lot
+                            
+
                 
-                if cursor.rowcount == 0:
-                    raise ValueError(
-                    f"Failed to deduct stock for '{material_name}' (id={material_id}). "
-                    "The material may have been deleted or the recipe has a broken reference."
-    )
-
-                #validation and deduction done!
-                #now just insert each lots for each material into batch materials. 
-
-
-
-                #add to batch_materials
-                db.execute(cursor, """
-                INSERT INTO batch_materials (batch_id, material_id, quantity_used)
-                    VALUES (%s, %s, %s)
-                    """, (batch_id, material_id, required_amount))
-
-
         
         # ALSO IF BATCH TYPE IS MIX, ADD THE MIXED PRODUCT TO RAW_MATERIALS WITH is_housemade = True, SO IT CAN BE USED IN FUTURE BATCHES.if not already in raw_materials,
         # otherwise if its already in raw_materials, just update the stock level by adding the quantity of the batch we just made.
@@ -930,12 +921,6 @@ def add_to_batches(product_name, quantity, notes=None, batch_number=None, deduct
             if cursor.rowcount == 0:
                 raise ValueError(f"Failed to create lot for mixed batch {batch_number}")
             
-
-
-
-        
-        
-
 
 
         db.commit()
@@ -1309,6 +1294,17 @@ def promote_planned_batches():
     - finished batches: attempt deduction first; if insufficient stock, leave as Planned
       and record the reason in promotion_failure_reason
     Called lazily from get_batches() and get_all_batches_with_id().
+
+
+
+    lot_number changes:
+-for mix batches, since they are also added to raw_materials as housemade materials, we will also add a lot to raw_material_lots 
+for the quantity of the batch being promoted, with lot_number = MIX-BATCH-{batch_number} at the time of promotion. 
+so that when we go to use that mix in future batches, we can deduct from that lot and have a record of how much of the mix was used from that batch.
+
+- for finished batches, since deduction is deferred until promotion, we will need to deduct from specific lots at the time of promotion.
+so we will need to get the batch materials for the batch being promoted, which will have the specific lot_ids and quantities used for each material in the batch, 
+and then deduct from those lots accordingly at the time of promotion.
     
     """
 
