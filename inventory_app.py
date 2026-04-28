@@ -1317,99 +1317,143 @@ and then deduct from those lots accordingly at the time of promotion.
         #get all overdue batches
 
         db.execute(cursor, """
-            SELECT batch_id, product_name, quantity, batch_type, planned_completion_date
+            SELECT batch_id, batch_number, product_name, quantity, batch_type, planned_completion_date
             FROM batches
             WHERE status = 'Planned'
             AND planned_completion_date IS NOT NULL
-            AND planned_completion_date <= %s 
-                   
+            AND planned_completion_date <= %s
+
                    """, (now,))
         overdue = cursor.fetchall()
 
         #for each over due batch:
-        for batch_id, product_name, quantity, batch_type, planned_completion_date in overdue:
+        for batch_id, batch_number, product_name, quantity, batch_type, planned_completion_date in overdue:
 
             if batch_type in ('standard', 'mix'):
-                #deduction happened upon batch creation, only status flip here
+                # standard and mix batches already had their raw_material_lots deducted at creation time,
+                # so all we need to do here is flip the status to Ready.
                 db.execute(cursor, """
                     UPDATE batches
                     SET status = 'Ready',
                         date_completed = %s,
-                        promotion_failure_reason = NULL      
+                        promotion_failure_reason = NULL
                     WHERE batch_id = %s
-                           
+
                            """, (planned_completion_date, batch_id))
-                
+
                 if cursor.rowcount == 0:
                     raise ValueError(f"Batch {batch_id} not found during promotion — nothing updated")
-                
+
+                # mix batches also produce a housemade material that gets used in future batches.
+                # just like add_to_batches does at creation time for immediate mix batches, we insert
+                # a new lot into raw_material_lots so the produced quantity is trackable and deductable.
+                if batch_type == 'mix':
+                    existing_mix = get_raw_material(product_name)
+                    if existing_mix:
+                        mix_material_id = existing_mix[0]
+                        lot_number = f"MIX-BATCH-{batch_number}"
+                        db.execute(cursor, """
+                            INSERT INTO raw_material_lots (lot_number, material_id, quantity, received_date, status)
+                            VALUES (%s, %s, %s, %s, %s)
+                        """, (lot_number, mix_material_id, quantity, planned_completion_date, 'active'))
+                    else:
+                        # if the mix product somehow isn't in raw_materials, log a warning but don't block promotion
+                        logging.warning(f"Mix batch {batch_id}: could not find '{product_name}' in raw_materials to create lot.")
+
                 log_action('planned_batch_promoted',
                            f"batch_id={batch_id}, product={product_name}, type={batch_type}")
             
-            #now for "finished batches, deduction happens here, must do a stock check though."
+            # finished batches deferred their deduction at creation time (defer_deduction=True in add_to_batches).
+            # now at promotion time we do the actual lot-level deduction, mirroring add_to_batches' lot logic.
 
             elif batch_type == 'finished':
                 recipe_df = get_recipe(product_name)
                 if recipe_df is None or recipe_df.empty:
-                    db.execute(cursor,"""
+                    db.execute(cursor, """
                         UPDATE batches
                         SET promotion_failure_reason = %s
-                        WHERE batch_id = %s   
-                               
-                               """, (f"No recipe found for {product_name}", batch_id, ))
+                        WHERE batch_id = %s
+
+                               """, (f"No recipe found for {product_name}", batch_id,))
                     continue
 
-                failure_reason = None #initialize failure reason
-                #if recipe_df not none/empty:
-                for _, row in recipe_df.iterrows(): # get each mat in recipe
+                failure_reason = None  # will be set if any material can't be covered by its lots
+                all_allocations = {}   # material_id -> [(lot_id, qty_to_take, cost_per_unit)]
+
+                # --- PASS 1: FIFO lot allocation + coverage check (reads only, no writes yet) ---
+                # for each material in the recipe, fetch its active non-expired lots ordered oldest-first (FIFO),
+                # greedily fill the required amount, and record the allocations.
+                # if any material's lots can't cover what's needed, set failure_reason and stop.
+                # this mirrors the sum-check in add_to_batches: we validate everything before touching the DB.
+                for _, row in recipe_df.iterrows():
+                    material_id = row['material_id']
                     material_name = row['material_name']
                     required = row['quantity_needed'] * quantity
 
-
+                    # fetch active, non-expired lots for this material, oldest first (FIFO)
                     db.execute(cursor, """
-                        SELECT stock_level, unit FROM raw_materials
-                        WHERE LOWER(name) = LOWER(%s)
-                    """, (material_name,))
-                    mat = cursor.fetchone()
-                    if not mat:
-                        failure_reason = f"Material not found: {material_name}"
-                        break
+                        SELECT lot_id, quantity, cost_per_unit FROM raw_material_lots
+                        WHERE material_id = %s
+                          AND status = 'active'
+                          AND (expiration_date IS NULL OR expiration_date > %s)
+                          AND quantity > 0
+                        ORDER BY received_date ASC
+                    """, (material_id, now))
+                    lots = cursor.fetchall()
 
-                    stock, unit = mat
-                    if stock < required: #if not enough
+                    # greedily allocate lots until we've covered `required`
+                    remaining = required
+                    allocations = []
+                    for lot_id, lot_qty, cost in lots:
+                        if remaining <= 0:
+                            break
+                        take = min(lot_qty, remaining)  # don't take more than the lot has
+                        allocations.append((lot_id, take, cost))
+                        remaining -= take
+
+                    # if we still have remaining > 0 after exhausting all lots, stock is insufficient
+                    if remaining > 1e-6:
+                        available = required - remaining
                         failure_reason = (
-                            f"Insufficient stock: {material_name} "
-                            f"(need {required} {unit}, have {round(stock, 2)} {unit})"
-                            )
-                        break
-                
+                            f"Insufficient lot stock: {material_name} "
+                            f"(need {required}, have {round(available, 4)} across active lots)"
+                        )
+                        break  # no point checking other materials — batch can't promote
+
+                    # coverage confirmed for this material — store its allocations for the write pass
+                    all_allocations[material_id] = allocations
+
+                # --- handle failure: leave batch as Planned, record why ---
                 if failure_reason:
-                    # Leave as Planned, record why
                     db.execute(cursor, """
                         UPDATE batches
                         SET promotion_failure_reason = %s
                         WHERE batch_id = %s
                     """, (failure_reason, batch_id))
                     logging.warning(f"Batch {batch_id} could not promote: {failure_reason}")
-                    
 
-                else: #if there was valid stock levels, deduct and promote:
-
-                     
+                else:
+                    # --- PASS 2: deduct from lots + insert batch_materials (writes) ---
+                    # all materials passed the coverage check, so now we do the actual deductions.
+                    # for each allocated lot: subtract the taken quantity and log it in batch_materials with lot_id.
                     for _, row in recipe_df.iterrows():
-                        material_name = row['material_name']
                         material_id = row['material_id']
-                        required = row['quantity_needed'] * quantity
-                        db.execute(cursor, """
-                            UPDATE raw_materials
-                            SET stock_level = stock_level - %s
-                            WHERE material_id = %s
-                        """, (required, material_id))
-                        db.execute(cursor, """
-                            INSERT INTO batch_materials (batch_id, material_id, quantity_used)
-                            VALUES (%s, %s, %s)
-                        """, (batch_id, material_id, required))
+                        for lot_id, take, cost in all_allocations[material_id]:
 
+                            # deduct the allocated quantity from this specific lot
+                            db.execute(cursor, """
+                                UPDATE raw_material_lots
+                                SET quantity = quantity - %s
+                                WHERE lot_id = %s
+                            """, (take, lot_id))
+
+                            # record the usage in batch_materials with lot_id so we have full traceability
+                            db.execute(cursor, """
+                                INSERT INTO batch_materials (batch_id, material_id, lot_id, quantity_used, cost_per_unit)
+                                VALUES (%s, %s, %s, %s, %s)
+                            """, (batch_id, material_id, lot_id, take, cost))
+
+                    # all deductions succeeded — flip batch to Ready
                     db.execute(cursor, """
                         UPDATE batches
                         SET status = 'Ready',
@@ -1417,7 +1461,7 @@ and then deduct from those lots accordingly at the time of promotion.
                             promotion_failure_reason = NULL
                         WHERE batch_id = %s
                     """, (planned_completion_date, batch_id))
-                    
+
                     if cursor.rowcount == 0:
                         raise ValueError(f"Batch {batch_id} not found during promotion — nothing updated")
 
