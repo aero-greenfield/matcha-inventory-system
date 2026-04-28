@@ -91,9 +91,11 @@ def create_database():
                    status TEXT DEFAULT 'active',
                    supplier TEXT,
                    location TEXT,
-                   FOREIGN KEY (material_id) REFERENCES raw_materials(material_id
+                   cost_per_unit REAL,
+                   FOREIGN KEY (material_id) REFERENCES raw_materials(material_id)
                    )
                    """)
+    
 
     #Recipes
     cursor.execute("""
@@ -237,16 +239,16 @@ def get_all_materials():
     cursor = db.cursor()
     try:
         db.execute(cursor, """
-        SELECT rm.name, rm.category, SUM(CASE WHEN rm_lot.quantity > 0 AND (rm_lot.expiration_date IS NULL OR rm_lot.expiration_date > %s) THEN rm_lot.quantity ELSE 0 END) as stock_level, rm.unit, rm.reorder_level, rm.is_housemade
+        SELECT rm.material_id, rm.name, rm.category, SUM(CASE WHEN rm_lot.quantity > 0 AND (rm_lot.expiration_date IS NULL OR rm_lot.expiration_date > %s) THEN rm_lot.quantity ELSE 0 END) as stock_level, rm.unit, rm.reorder_level, rm.is_housemade
         FROM raw_materials rm
         LEFT JOIN raw_material_lots rm_lot on rm.material_id = rm_lot.material_id
         GROUP BY rm.material_id
         ORDER BY category, name
         """, (datetime.now().strftime('%Y-%m-%d %H:%M:%S'),))
-        
+
         #CUrrently: does not include expired lots in the quantity.
         result = cursor.fetchall()
-        columns=['name', 'category', 'stock_level', 'unit', 'reorder_level', 'is_housemade']
+        columns=['material_id', 'name', 'category', 'stock_level', 'unit', 'reorder_level', 'is_housemade']
         df = pd.DataFrame(result, columns=columns)
         return df
 
@@ -636,15 +638,15 @@ def get_all_lots_for_material(material_id):
         
         
         db.execute(cursor,"""
-        SELECT rm_lot.lot_id, rm_lot.lot_number, rm_lot.quantity, rm_lot.received_date, rm_lot.status, rm_lot.expiration_date, rm_lot.location
+        SELECT rm_lot.lot_id, rm_lot.lot_number, rm_lot.quantity, rm_lot.received_date, rm_lot.status, rm_lot.expiration_date, rm_lot.location, rm_lot.cost_per_unit
         FROM raw_material_lots rm_lot
         JOIN raw_materials rm ON rm_lot.material_id = rm.material_id
-        WHERE rm_lot.material_id = %s 
+        WHERE rm_lot.material_id = %s
         ORDER BY rm_lot.received_date ASC
-                        
+
                     """, (material_id,))
         result = cursor.fetchall()
-        columns = ['lot_id', 'lot_number', 'quantity', 'received_date', 'status', 'expiration_date', 'location']
+        columns = ['lot_id', 'lot_number', 'quantity', 'received_date', 'status', 'expiration_date', 'location', 'cost_per_unit']
         df = pd.DataFrame(result, columns=columns)
         return df
 

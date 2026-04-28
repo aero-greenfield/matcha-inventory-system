@@ -4,6 +4,38 @@
 
 {% block content %}
 
+<style>
+.lot-toggle {
+  font-size: 12px; padding: 3px 8px; border-radius: 4px;
+  border: 1px solid var(--border); background: var(--bg-card);
+  color: var(--text-muted); cursor: pointer; white-space: nowrap;
+}
+.lot-toggle:hover { background: var(--bg-content); }
+
+.lot-detail-row > td { padding: 0; background: #f9fafb; border-top: none; }
+.lot-panel { padding: 10px 20px 16px; }
+.lot-panel-controls { margin-bottom: 8px; display: flex; align-items: center; gap: 8px; }
+.lot-panel-label { font-size: 12px; font-weight: 600; color: var(--text-muted); }
+
+.expired-toggle {
+  font-size: 11px; padding: 2px 8px; border-radius: 4px;
+  border: 1px solid var(--border); background: transparent;
+  color: var(--text-muted); cursor: pointer;
+}
+.expired-toggle:hover { background: var(--bg-content); }
+
+.lots-inner-table { width: 100%; border-collapse: collapse; font-size: 13px; }
+.lots-inner-table th {
+  text-align: left; padding: 6px 10px; font-weight: 600;
+  color: var(--text-muted); border-bottom: 1px solid var(--border); background: #f3f4f6;
+}
+.lots-inner-table td { padding: 6px 10px; border-bottom: 1px solid #f0f0f0; }
+.lots-inner-table tr:last-child td { border-bottom: none; }
+
+.lot-expired td { color: #9ca3af; opacity: 0.7; font-style: italic; }
+.lot-no-data { color: var(--text-muted); font-size: 13px; padding: 8px 0; }
+</style>
+
 <div class="page-header">
     <div>
         <h1>Raw Materials</h1>
@@ -29,6 +61,7 @@
                 <th>Cost Per Unit</th>
                 <th>Supplier</th>
                 <th>Status</th>
+                <th>Lots</th>
             </tr>
         </thead>
         <tbody>
@@ -49,6 +82,20 @@
                     {% else %}
                         <span class="badge badge-in-stock">In Stock</span>
                     {% endif %}
+                </td>
+                <td>
+                    <button class="lot-toggle" data-material-id="{{ row.material_id }}">&#9654; Lots</button>
+                </td>
+            </tr>
+            <tr class="lot-detail-row" id="lot-detail-{{ row.material_id }}" style="display:none;">
+                <td colspan="9">
+                    <div class="lot-panel">
+                        <div class="lot-panel-controls">
+                            <span class="lot-panel-label">Lots for {{ row.name }}</span>
+                            <button class="expired-toggle" data-showing-expired="false">Show Expired</button>
+                        </div>
+                        <div class="lot-panel-body">Loading...</div>
+                    </div>
                 </td>
             </tr>
             {% endfor %}
@@ -75,6 +122,7 @@
                 <th>Cost Per Unit</th>
                 <th>Supplier</th>
                 <th>Status</th>
+                <th>Lots</th>
             </tr>
         </thead>
         <tbody>
@@ -96,6 +144,20 @@
                         <span class="badge badge-in-stock">In Stock</span>
                     {% endif %}
                 </td>
+                <td>
+                    <button class="lot-toggle" data-material-id="{{ row.material_id }}">&#9654; Lots</button>
+                </td>
+            </tr>
+            <tr class="lot-detail-row" id="lot-detail-{{ row.material_id }}" style="display:none;">
+                <td colspan="9">
+                    <div class="lot-panel">
+                        <div class="lot-panel-controls">
+                            <span class="lot-panel-label">Lots for {{ row.name }}</span>
+                            <button class="expired-toggle" data-showing-expired="false">Show Expired</button>
+                        </div>
+                        <div class="lot-panel-body">Loading...</div>
+                    </div>
+                </td>
             </tr>
             {% endfor %}
         </tbody>
@@ -106,5 +168,79 @@
     <p>No housemade materials in inventory.</p>
 </div>
 {% endif %}
+
+<script>
+function renderLots(panel, lots, showExpired) {
+    var today = new Date().toISOString().slice(0, 10);
+
+    if (!lots || lots.length === 0) {
+        panel.innerHTML = '<p class="lot-no-data">No lots recorded for this material.</p>';
+        return;
+    }
+
+    var html = '<table class="lots-inner-table"><thead><tr>' +
+        '<th>Lot #</th><th>Qty Remaining</th><th>Cost / Unit</th>' +
+        '<th>Received Date</th><th>Expiry Date</th><th>Location</th>' +
+        '</tr></thead><tbody>';
+
+    lots.forEach(function(lot) {
+        var expired = lot.expiration_date && lot.expiration_date < today;
+        if (expired && !showExpired) return;
+        var rowClass = expired ? ' class="lot-expired"' : '';
+        var expiry = lot.expiration_date || '—';
+        var cost = lot.cost_per_unit != null ? lot.cost_per_unit : '—';
+        var location = lot.location || '—';
+        html += '<tr' + rowClass + '>' +
+            '<td>' + (lot.lot_number || '—') + '</td>' +
+            '<td>' + (lot.quantity != null ? lot.quantity : '—') + '</td>' +
+            '<td>' + cost + '</td>' +
+            '<td>' + (lot.received_date || '—') + '</td>' +
+            '<td>' + expiry + '</td>' +
+            '<td>' + location + '</td>' +
+            '</tr>';
+    });
+
+    html += '</tbody></table>';
+    panel.innerHTML = html;
+}
+
+document.querySelectorAll('.lot-toggle').forEach(function(btn) {
+    btn.addEventListener('click', function() {
+        var mid = this.dataset.materialId;
+        var detailRow = document.getElementById('lot-detail-' + mid);
+        var panel = detailRow.querySelector('.lot-panel-body');
+        var isOpen = detailRow.style.display !== 'none';
+
+        if (isOpen) {
+            detailRow.style.display = 'none';
+            this.innerHTML = '&#9654; Lots';
+            return;
+        }
+
+        detailRow.style.display = '';
+        this.innerHTML = '&#9660; Lots';
+
+        if (!panel.dataset.loaded) {
+            fetch('/api/lots/' + mid, { credentials: 'include' })
+                .then(function(r) { return r.json(); })
+                .then(function(lots) {
+                    panel.dataset.lots = JSON.stringify(lots);
+                    panel.dataset.loaded = 'true';
+                    renderLots(panel, lots, false);
+                });
+        }
+    });
+});
+
+document.addEventListener('click', function(e) {
+    if (!e.target.classList.contains('expired-toggle')) return;
+    var panel = e.target.closest('.lot-panel').querySelector('.lot-panel-body');
+    var showing = e.target.dataset.showingExpired === 'true';
+    showing = !showing;
+    e.target.dataset.showingExpired = showing;
+    e.target.textContent = showing ? 'Hide Expired' : 'Show Expired';
+    renderLots(panel, JSON.parse(panel.dataset.lots || '[]'), showing);
+});
+</script>
 
 {% endblock %}
