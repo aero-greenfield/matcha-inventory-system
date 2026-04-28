@@ -131,7 +131,7 @@ from flask_wtf.csrf import CSRFProtect # security necesity.
 
 # Import all our inventory functions from inventory_app.py
 from inventory_app import (
-    create_database, add_raw_material, delete_recipe_by_id, get_all_batches_with_id, get_all_materials, get_all_recipes, get_batches_shipped, get_low_stock_materials,
+    create_database, add_raw_material, delete_recipe_by_id, get_all_batches_with_id, get_all_lots_for_material, get_all_materials, get_all_recipes, get_batches_shipped, get_low_stock_materials,
     increase_raw_material, decrease_raw_material, get_raw_material, add_to_batches,
     get_batches, mark_as_shipped, delete_batch, get_recipe, add_recipe,
     change_recipe, delete_recipe, delete_raw_material, get_material_by_id, get_all_materials_with_id, update_raw_material, get_all_batches_with_id, get_batch_by_id,
@@ -1766,6 +1766,15 @@ def api_recipes():
     if df.empty:
         return jsonify([])
     return jsonify(df['recipe_product_name'].dropna().drop_duplicates().sort_values().tolist())
+
+
+@app.route('/api/lots/<material_id>')
+@requires_auth
+def api_lots(material_id):
+    df = get_all_lots_for_material(material_id=material_id)
+    if df is None or df.empty:
+        return jsonify([])
+    return jsonify(df.to_dict(orient='records'))
 
 # ========================
 # START THE APP

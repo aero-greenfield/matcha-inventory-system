@@ -624,6 +624,9 @@ def get_all_lots_for_material(material_id):
     """
     same as above, but includes exired and exhausted lots
     will be used for inventory page
+
+    returns:
+    lot_id, lot_number, lot_quantity, lot_recieved_date, lot_status, lot_expiration_date, lot_location. 
     
     """
 
