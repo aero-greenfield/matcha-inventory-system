@@ -9,6 +9,7 @@ from datetime import datetime
 import os
 import logging
 import time
+import json
 
 _UNSET = object()  # sentinel for optional fields that can be explicitly set to None
 _last_promote_time = 0
@@ -803,10 +804,15 @@ def add_to_batches(product_name, quantity, notes=None, batch_number=None, deduct
         defer_deduction = (batch_type == 'finished' and status == 'Planned')
 
 
+        # serialize lot_selections to JSON for deferred finished batches so promote_planned_batches
+        # can use the same user-picked lots at promotion time instead of falling back to FIFO.
+        # JSON keys must be strings, so material_id ints become strings — we'll re-cast on read.
+        planned_lot_selections_json = json.dumps(lot_selections) if (defer_deduction and lot_selections is not None) else None
+
         db.execute(cursor, """
-            INSERT INTO batches (batch_number, product_name, quantity, date_completed, status, notes, expiration_date, planned_completion_date, batch_type)
-            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
-            """, (batch_number, product_name, quantity, date_completed, status, notes, expiration_date, planned_completion_date, batch_type))
+            INSERT INTO batches (batch_number, product_name, quantity, date_completed, status, notes, expiration_date, planned_completion_date, batch_type, planned_lot_selections)
+            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+            """, (batch_number, product_name, quantity, date_completed, status, notes, expiration_date, planned_completion_date, batch_type, planned_lot_selections_json))
         batch_id = db.get_last_insert_id(cursor)
                
 
@@ -1291,21 +1297,16 @@ def promote_planned_batches():
     """
     Promotes overdue Planned batches to Ready.
     - standard/mix batches: flip status directly (deduction already happened at creation)
-    - finished batches: attempt deduction first; if insufficient stock, leave as Planned
-      and record the reason in promotion_failure_reason
+    - finished batches: deduct from lots now and promote; leave as Planned if stock is insufficient
     Called lazily from get_batches() and get_all_batches_with_id().
 
+    For finished batches, lot deduction uses one of two paths depending on what was stored at creation:
+    1. stored lots (planned_lot_selections JSON column): user picked specific lots when creating the batch —
+       validate and deduct from exactly those lots, same logic as add_to_batches.
+    2. FIFO fallback: no stored selections — automatically deduct from oldest active lots first.
 
-
-    lot_number changes:
--for mix batches, since they are also added to raw_materials as housemade materials, we will also add a lot to raw_material_lots 
-for the quantity of the batch being promoted, with lot_number = MIX-BATCH-{batch_number} at the time of promotion. 
-so that when we go to use that mix in future batches, we can deduct from that lot and have a record of how much of the mix was used from that batch.
-
-- for finished batches, since deduction is deferred until promotion, we will need to deduct from specific lots at the time of promotion.
-so we will need to get the batch materials for the batch being promoted, which will have the specific lot_ids and quantities used for each material in the batch, 
-and then deduct from those lots accordingly at the time of promotion.
-    
+    For mix batches: also inserts a new lot into raw_material_lots for the produced quantity
+    so the housemade material is available for use in future batches.
     """
 
 
@@ -1314,10 +1315,11 @@ and then deduct from those lots accordingly at the time of promotion.
     try:
         now = datetime.now().strftime('%Y-%m-%d')
 
-        #get all overdue batches
-
+        # fetch all overdue planned batches.
+        # planned_lot_selections is the JSON-serialized lot picks the user made at creation time —
+        # used by finished batches to deduct from specific lots instead of falling back to FIFO.
         db.execute(cursor, """
-            SELECT batch_id, batch_number, product_name, quantity, batch_type, planned_completion_date
+            SELECT batch_id, batch_number, product_name, quantity, batch_type, planned_completion_date, planned_lot_selections
             FROM batches
             WHERE status = 'Planned'
             AND planned_completion_date IS NOT NULL
@@ -1326,8 +1328,7 @@ and then deduct from those lots accordingly at the time of promotion.
                    """, (now,))
         overdue = cursor.fetchall()
 
-        #for each over due batch:
-        for batch_id, batch_number, product_name, quantity, batch_type, planned_completion_date in overdue:
+        for batch_id, batch_number, product_name, quantity, batch_type, planned_completion_date, planned_lot_selections_json in overdue:
 
             if batch_type in ('standard', 'mix'):
                 # standard and mix batches already had their raw_material_lots deducted at creation time,
@@ -1380,47 +1381,94 @@ and then deduct from those lots accordingly at the time of promotion.
                 failure_reason = None  # will be set if any material can't be covered by its lots
                 all_allocations = {}   # material_id -> [(lot_id, qty_to_take, cost_per_unit)]
 
-                # --- PASS 1: FIFO lot allocation + coverage check (reads only, no writes yet) ---
-                # for each material in the recipe, fetch its active non-expired lots ordered oldest-first (FIFO),
-                # greedily fill the required amount, and record the allocations.
-                # if any material's lots can't cover what's needed, set failure_reason and stop.
-                # this mirrors the sum-check in add_to_batches: we validate everything before touching the DB.
+                # parse stored lot selections if the user picked specific lots at creation time.
+                # JSON keys are always strings, so re-cast material_id back to int to match recipe_df.
+                stored_lot_selections = None
+                if planned_lot_selections_json:
+                    raw = json.loads(planned_lot_selections_json)
+                    stored_lot_selections = {int(k): v for k, v in raw.items()}
+
+                # --- PASS 1: lot allocation + coverage check (reads only, no writes yet) ---
                 for _, row in recipe_df.iterrows():
                     material_id = row['material_id']
                     material_name = row['material_name']
                     required = row['quantity_needed'] * quantity
 
-                    # fetch active, non-expired lots for this material, oldest first (FIFO)
-                    db.execute(cursor, """
-                        SELECT lot_id, quantity, cost_per_unit FROM raw_material_lots
-                        WHERE material_id = %s
-                          AND status = 'active'
-                          AND (expiration_date IS NULL OR expiration_date > %s)
-                          AND quantity > 0
-                        ORDER BY received_date ASC
-                    """, (material_id, now))
-                    lots = cursor.fetchall()
+                    if stored_lot_selections is not None:
+                        # --- user-picked lots path: validate stored selections same as add_to_batches ---
 
-                    # greedily allocate lots until we've covered `required`
-                    remaining = required
-                    allocations = []
-                    for lot_id, lot_qty, cost in lots:
-                        if remaining <= 0:
+                        lot_list = stored_lot_selections.get(material_id) #
+                        if lot_list is None:
+                            failure_reason = f"No stored lot selection for material '{material_name}'"
                             break
-                        take = min(lot_qty, remaining)  # don't take more than the lot has
-                        allocations.append((lot_id, take, cost))
-                        remaining -= take
 
-                    # if we still have remaining > 0 after exhausting all lots, stock is insufficient
-                    if remaining > 1e-6:
-                        available = required - remaining
-                        failure_reason = (
-                            f"Insufficient lot stock: {material_name} "
-                            f"(need {required}, have {round(available, 4)} across active lots)"
-                        )
-                        break  # no point checking other materials — batch can't promote
+                        # total qty across stored lots must equal required (mirrors add_to_batches sum check)
+                        material_sum = sum(lot['qty'] for lot in lot_list)
+                        if abs(material_sum - required) > 1e-6:
+                            failure_reason = (
+                                f"Stored lot quantities for '{material_name}' don't match required "
+                                f"(stored: {material_sum}, required: {required})"
+                            )
+                            break
 
-                    # coverage confirmed for this material — store its allocations for the write pass
+                        # validate each stored lot individually: must exist, be active, not expired, have enough qty
+                        allocations = []
+                        for lot in lot_list:
+                            lot_id = lot['lot_id']
+                            qty = lot['qty']
+                            db.execute(cursor, """
+                                SELECT quantity, cost_per_unit FROM raw_material_lots
+                                WHERE lot_id = %s AND material_id = %s AND status = 'active'
+                                  AND (expiration_date IS NULL OR expiration_date > %s)
+                            """, (lot_id, material_id, now))
+                            lot_row = cursor.fetchone()
+                            if not lot_row:
+                                failure_reason = f"Lot {lot_id} for '{material_name}' not found, inactive, or expired."
+                                break
+                            if lot_row[0] < qty:
+                                failure_reason = (
+                                    f"Lot {lot_id} for '{material_name}' has insufficient quantity "
+                                    f"(need {qty}, have {lot_row[0]})."
+                                )
+                                break
+                            allocations.append((lot_id, qty, lot_row[1]))
+
+                        if failure_reason:
+                            break  # stop checking other materials
+
+                    else:
+                        # --- FIFO fallback path: auto-select oldest active lots first ---
+
+                        # fetch active, non-expired lots for this material, oldest first
+                        db.execute(cursor, """
+                            SELECT lot_id, quantity, cost_per_unit FROM raw_material_lots
+                            WHERE material_id = %s
+                              AND status = 'active'
+                              AND (expiration_date IS NULL OR expiration_date > %s)
+                              AND quantity > 0
+                            ORDER BY received_date ASC
+                        """, (material_id, now))
+                        lots = cursor.fetchall()
+
+                        # greedily fill required from lots oldest-first
+                        remaining = required
+                        allocations = []
+                        for lot_id, lot_qty, cost in lots:
+                            if remaining <= 0:
+                                break
+                            take = min(lot_qty, remaining)
+                            allocations.append((lot_id, take, cost))
+                            remaining -= take
+
+                        if remaining > 1e-6:
+                            available = required - remaining
+                            failure_reason = (
+                                f"Insufficient lot stock: {material_name} "
+                                f"(need {required}, have {round(available, 4)} across active lots)"
+                            )
+                            break  # no point checking other materials
+
+                    # both paths confirmed coverage for this material — store allocations for the write pass
                     all_allocations[material_id] = allocations
 
                 # --- handle failure: leave batch as Planned, record why ---
