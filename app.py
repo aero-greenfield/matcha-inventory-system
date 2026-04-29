@@ -449,6 +449,44 @@ def export_inventory_excel():
     return send_file(filepath, as_attachment=True, download_name=os.path.basename(filepath))
 
 
+@app.route('/receive-lot', methods=['GET', 'POST'])
+@requires_auth
+def receive_lot():
+    """
+    Route to receive a new lot of raw materials.
+
+    GET: Show form to input lot details (material, quantity, etc.)
+    POST: Process form submission, add lot to database, update inventory
+
+    This route allows users to log the receipt of new raw material lots, which is essential for inventory management.
+    
+    adds row to raw_material_lots table, 
+
+    inputs needed: (when calling receive_lot)
+    material_id, lot_number, quantity, received_date, expiry_date=None, location=None, supplier=None):
+
+    """
+
+    #post route:
+    if request.method == 'POST':
+        
+        #get name of material being received
+        #validate name
+
+        #get material id from name, or add new material to raw_materials table if not existent 
+
+
+        #get other details from form input (quantity, received date, expiry date, location, supplier)
+        #validate inputs
+
+        #add lot to raw_material_lots table with status 'active'
+
+        
+
+        
+
+    
+
 
 @app.route('/add-material', methods=['GET', 'POST'])
 # methods=['GET', 'POST'] tells Flask this route handles both GET and POST requests

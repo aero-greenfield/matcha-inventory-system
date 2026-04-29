@@ -211,6 +211,12 @@ def add_raw_material(name, category, stock_level, unit, reorder_level, cost_per_
 
 
 
+
+
+
+
+
+
 def get_low_stock_materials():
     "Return raw materials below if low on stock"
 
@@ -576,6 +582,18 @@ def get_mix_stock(material_name):
         return 0.0
     finally:
         db.close()
+
+
+
+
+def get_material_id_for_(name):
+    
+    
+    
+    db = get_db_connection()
+    cursor = db.cursor()
+
+
 
 
 
