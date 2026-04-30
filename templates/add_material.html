@@ -12,12 +12,26 @@
 </div>
 
 <div class="form-card">
+    {% if from_receive_lot %}
+    <div class="alert alert-info" style="margin-bottom:1rem;">
+        Material not found. Add it below, then you'll be returned to complete receiving the lot.
+    </div>
+    {% endif %}
     {% if error %}
     <div class="alert alert-danger" style="margin-bottom:1rem;">{{ error }}</div>
     {% endif %}
     <form method="POST" autocomplete="off">
+        {% if from_receive_lot %}
+        <input type="hidden" name="from_receive_lot" value="{{ from_receive_lot }}">
+        <input type="hidden" name="lot_number" value="{{ lot_number }}">
+        <input type="hidden" name="quantity" value="{{ quantity }}">
+        <input type="hidden" name="received_date" value="{{ received_date }}">
+        <input type="hidden" name="expiry_date" value="{{ expiry_date }}">
+        <input type="hidden" name="location" value="{{ location }}">
+        <input type="hidden" name="supplier_lot" value="{{ supplier_lot }}">
+        {% endif %}
         <div class="form-row">
-            <div class="form-group"><label>Material Name *</label><input type="text" name="name" required></div>
+            <div class="form-group"><label>Material Name *</label><input type="text" name="name" value="{{ material_name if from_receive_lot else '' }}" required></div>
             <div class="form-group"><label>Category *</label><input type="text" name="category" required></div>
         </div>
         <div class="form-row">

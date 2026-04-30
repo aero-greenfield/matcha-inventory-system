@@ -136,7 +136,8 @@ from inventory_app import (
     get_batches, mark_as_shipped, delete_batch, get_recipe, add_recipe,
     change_recipe, delete_recipe, delete_raw_material, get_material_by_id, get_all_materials_with_id, update_raw_material, get_all_batches_with_id, get_batch_by_id,
     update_batch, update_batch_status, update_recipe, get_all_recipes_with_id, get_recipe_by_id, log_action, view_logs, get_batch_materials,
-    get_batches_planned, get_housemade_materials, get_mix_stock, adjust_batch_material, check_batch_materials_stock, check_negative_stock)
+    get_batches_planned, get_housemade_materials, get_mix_stock, adjust_batch_material, check_batch_materials_stock, check_negative_stock,
+    receive_lot as inventory_receive_lot, get_material_id)
 
 
 # Import helper functions for exporting data
@@ -467,27 +468,85 @@ def receive_lot():
 
     """
 
-    #post route:
     if request.method == 'POST':
+        # all string inputs
+        name          = request.form.get('material_name', '').strip()
+        lot_number    = request.form.get('lot_number', '').strip()
+        quantity_str  = request.form.get('quantity', '').strip()
+        received_date = request.form.get('received_date', '').strip()
+        expiry_date   = request.form.get('expiry_date', '').strip() or None
+        location      = request.form.get('location', '').strip() or None
+        supplier      = request.form.get('supplier', '').strip() or None
+
+
+        # for the required fields, check if they are blank 
+        if not name:
+            return render_template('error.html', title="Invalid Input", message="Material name cannot be blank.",
+                back_link=True, back_link_url="/receive-lot", back_link_label="Go back"), 400
+        if not lot_number:
+            return render_template('error.html', title="Invalid Input", message="Lot number cannot be blank.",
+                back_link=True, back_link_url="/receive-lot", back_link_label="Go back"), 400
+        if not quantity_str:
+            return render_template('error.html', title="Invalid Input", message="Quantity cannot be blank.",
+                back_link=True, back_link_url="/receive-lot", back_link_label="Go back"), 400
+        if not received_date:
+            return render_template('error.html', title="Invalid Input", message="Received date cannot be blank.",
+                back_link=True, back_link_url="/receive-lot", back_link_label="Go back"), 400
+
+        #get material_id, if no material_id redirect user to add_material route. 
+        material_id = get_material_id(name)
+        if material_id is None:
+            return redirect(url_for('add_material_route',
+                from_receive_lot='1',
+                material_name=name,
+                lot_number=lot_number,
+                quantity=quantity_str,
+                received_date=received_date,
+                expiry_date=expiry_date or '',
+                location=location or '',
+                supplier=supplier or '',
+            ))
+
+            #user will fill out needed on this route, 
+            #then it will be directed back here. 
+
+        #validate non string inputs. 
+        try:
+            quantity = float(quantity_str)
+        except ValueError:
+            return render_template('error.html', title="Invalid Input", message="Quantity must be a valid number.",
+                back_link=True, back_link_url="/receive-lot", back_link_label="Go back"), 400
+
+        #quant cant be negative
+        if quantity <= 0:
+            return render_template('error.html', title="Invalid Input", message="Quantity must be greater than 0.",
+                back_link=True, back_link_url="/receive-lot", back_link_label="Go back"), 400
         
-        #get name of material being received (via inventory func: get_material_id)
-        #validate name
-
-        #get material id from name, or add new material to raw_materials table if not existent (via invneotry func: add_raw_material)
-
-
-        #get other details from form input (quantity, received date, expiry date, location, supplier)
-        #validate inputs
-
-        #add lot to raw_material_lots table with status 'active'
-
-        # if new material added to raw material table, let user know. 
-
+        #call function, add to lots
+        lot_id = inventory_receive_lot(material_id, lot_number, quantity, received_date, expiry_date, location, supplier)
         
+        if lot_id is None: # if failed to add lot, return error page.
+            return render_template('error.html', title="Error", message="Failed to add lot. Check logs for details.",
+                back_link=True, back_link_url="/receive-lot", back_link_label="Go back"), 500
 
-        
+        #success. 
+        log_action('lot_received', f"material={name}, lot={lot_number}, qty={quantity}, date={received_date}")
+        return redirect(url_for('view_inventory'))
 
-    
+
+
+    # if GET request, show the receive lot form. if redirected from add_material route due to missing material, pre-fill the form with the data they entered.
+    return render_template('receive_lot.html',
+        material_name=request.args.get('material_name', ''),
+        lot_number=request.args.get('lot_number', ''),
+        quantity=request.args.get('quantity', ''),
+        received_date=request.args.get('received_date', ''),
+        expiry_date=request.args.get('expiry_date', ''),
+        location=request.args.get('location', ''),
+        supplier=request.args.get('supplier', ''),
+    )
+
+
 
 
 @app.route('/add-material', methods=['GET', 'POST'])
@@ -604,15 +663,42 @@ def add_material_route():
         # html here, the URL would still be /add-material, which is not ideal. we want the URL to reflect the 
         # actual page we're on, which is /inventory. also, redirecting after POST is a common 
         # best practice to prevent form resubmission if user refreshes the page.
-        if result == "duplicate":
-            return render_template("add_material.html", error=f"A material named '{name}' already exists. Please use a different name or update the existing one.")
-        elif result:
+
+
+
+        from_receive_lot = request.form.get('from_receive_lot', '') # this is to check if the user was redirected here from receive_lot route due to missing material.
+        # if so, after adding the material, we want to redirect them back to receive_lot instead of inventory, 
+        # and pre-fill the receive_lot form with the data they entered here. 
+
+        if result == "duplicate": # error if name exists. 
+            return render_template("add_material.html",
+                error=f"A material named '{name}' already exists. Please use a different name or update the existing one.",
+                from_receive_lot=from_receive_lot,
+                material_name=name,
+                lot_number=request.form.get('lot_number', ''),
+                quantity=request.form.get('quantity', ''),
+                received_date=request.form.get('received_date', ''),
+                expiry_date=request.form.get('expiry_date', ''),
+                location=request.form.get('location', ''),
+                supplier_lot=request.form.get('supplier_lot', ''),
+            )
+        
+
+        elif result: # if result is good. 
             logging.info(f"Material added: '{name}' | category={category}, stock={stock_level}, unit={unit}")
             log_action('material_added', f"name={name}, category={category}, stock={stock_level}, unit={unit}")
-            # if succesful data addition. Redirect to inventory page to show updated inventory with new material.
+            if from_receive_lot == '1': #if this route was directed via lot recieve func, go back to that when done. 
+                return redirect(url_for('receive_lot',
+                    material_name=name,
+                    lot_number=request.form.get('lot_number', ''),
+                    quantity=request.form.get('quantity', ''),
+                    received_date=request.form.get('received_date', ''),
+                    expiry_date=request.form.get('expiry_date', ''),
+                    location=request.form.get('location', ''),
+                    supplier=request.form.get('supplier_lot', ''),
+                ))
             return redirect(url_for('view_inventory'))
         else:
-            # Failed! Return error message with 500 status code
             return ("Error adding material", 500)
 
         
@@ -621,11 +707,21 @@ def add_material_route():
  #note: we dont need if request.method == 'GET' here, because if it's not POST, it must be GET (since we only specified those two methods). 
  # so we can just put the code to show the form outside of the if statement, and it will run when it's a GET request.
 
-    return render_template("add_material.html", # if its a GET request, just show the add material form.
-    back_link=True,
-    back_link_url="/",
-    back_link_label="Back to Home"
-)
+    # if GET request, show the add material form. if redirected from receive_lot route due to missing material, pre-fill the form with the data they entered in receive_lot.
+    from_receive_lot = request.args.get('from_receive_lot', '')
+    return render_template("add_material.html",
+        back_link=True,
+        back_link_url="/",
+        back_link_label="Back to Home",
+        from_receive_lot=from_receive_lot,
+        material_name=request.args.get('material_name', ''),
+        lot_number=request.args.get('lot_number', ''),
+        quantity=request.args.get('quantity', ''),
+        received_date=request.args.get('received_date', ''),
+        expiry_date=request.args.get('expiry_date', ''),
+        location=request.args.get('location', ''),
+        supplier_lot=request.args.get('supplier', ''),
+    )
 
 
 
@@ -1815,6 +1911,21 @@ def api_lots(material_id):
     if df is None or df.empty:
         return jsonify([])
     return jsonify(df.to_dict(orient='records'))
+
+
+@app.route('/api/material-unit')
+@requires_auth
+def api_material_unit():
+    name = request.args.get('name', '').strip()
+    if not name:
+        return jsonify({'exists': False})
+    df = get_all_materials()
+    if df is None or df.empty:
+        return jsonify({'exists': False})
+    match = df[df['name'].str.lower() == name.lower()]
+    if match.empty:
+        return jsonify({'exists': False})
+    return jsonify({'exists': True, 'unit': match.iloc[0]['unit']})
 
 # ========================
 # START THE APP

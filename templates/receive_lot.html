@@ -1,0 +1,90 @@
+{% extends "base.html" %}
+
+{% block title %}Receive Lot{% endblock %}
+
+{% block content %}
+
+<div class="page-header">
+    <div>
+        <h1>Receive Lot</h1>
+        <p class="page-subtitle">Log receipt of a new raw material lot</p>
+    </div>
+</div>
+
+<div class="form-card">
+    {% if error %}
+    <div class="alert alert-danger" style="margin-bottom:1rem;">{{ error }}</div>
+    {% endif %}
+    <form method="POST" autocomplete="off">
+        <div class="form-row">
+            <div class="form-group">
+                <label>Material Name *</label>
+                <input type="text" id="material_name" name="material_name" value="{{ material_name }}" required>
+            </div>
+            <div class="form-group">
+                <label>Lot Number *</label>
+                <input type="text" name="lot_number" value="{{ lot_number }}" required>
+            </div>
+        </div>
+        <div class="form-row">
+            <div class="form-group">
+                <label>Quantity *</label>
+                <div style="display:flex; gap:0.5rem; align-items:center;">
+                    <input type="number" name="quantity" value="{{ quantity }}" step="any" min="0.001" required>
+                    <span id="unit-hint" style="color:#888; font-size:0.9em;"></span>
+                </div>
+            </div>
+            <div class="form-group">
+                <label>Received Date *</label>
+                <input type="date" name="received_date" value="{{ received_date }}" required>
+            </div>
+        </div>
+        <div class="form-row">
+            <div class="form-group">
+                <label>Expiry Date (optional)</label>
+                <input type="date" name="expiry_date" value="{{ expiry_date }}">
+            </div>
+            <div class="form-group">
+                <label>Location (optional)</label>
+                <input type="text" name="location" value="{{ location }}">
+            </div>
+        </div>
+        <div class="form-group">
+            <label>Supplier (optional)</label>
+            <input type="text" name="supplier" value="{{ supplier }}">
+        </div>
+        <button type="submit" class="btn btn-primary">Receive Lot</button>
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    </form>
+</div>
+
+<script>
+(function () {
+    const nameInput = document.getElementById('material_name');
+    const unitHint = document.getElementById('unit-hint');
+    let debounce;
+
+    function fetchUnit(name) {
+        fetch('/api/material-unit?name=' + encodeURIComponent(name))
+            .then(function (r) { return r.json(); })
+            .then(function (data) {
+                unitHint.textContent = data.exists ? '[' + data.unit + ']' : '';
+            })
+            .catch(function () { unitHint.textContent = ''; });
+    }
+
+    nameInput.addEventListener('input', function () {
+        clearTimeout(debounce);
+        var name = nameInput.value.trim();
+        if (!name) { unitHint.textContent = ''; return; }
+        debounce = setTimeout(function () { fetchUnit(name); }, 300);
+    });
+
+    // show unit on page load if name is pre-filled
+    if (nameInput.value.trim()) {
+        fetchUnit(nameInput.value.trim());
+    }
+}());
+</script>
+
+{% endblock %}

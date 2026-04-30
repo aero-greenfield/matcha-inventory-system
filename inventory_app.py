@@ -605,11 +605,10 @@ def get_material_id(name):
         db.execute(cursor, """
         SELECT material_id
         FROM raw_materials
-        WHERE name = ?
-        
-        """,(name,))
+        WHERE LOWER(name) = LOWER(%s)
+        """, (name,))
         row = cursor.fetchone()
-        return (row[0]).lower if row else None
+        return (row[0]) if row else None
 
     except Exception as e:
         logging.error(f"didnt find material_id for name,(for recieve lot func)")
