@@ -470,16 +470,18 @@ def receive_lot():
     #post route:
     if request.method == 'POST':
         
-        #get name of material being received
+        #get name of material being received (via inventory func: get_material_id)
         #validate name
 
-        #get material id from name, or add new material to raw_materials table if not existent 
+        #get material id from name, or add new material to raw_materials table if not existent (via invneotry func: add_raw_material)
 
 
         #get other details from form input (quantity, received date, expiry date, location, supplier)
         #validate inputs
 
         #add lot to raw_material_lots table with status 'active'
+
+        # if new material added to raw material table, let user know. 
 
         
 

@@ -181,7 +181,7 @@ def create_database():
 # RAW MATERIALS FUNCTIONS
 # ========================
  
-def add_raw_material(name, category, stock_level, unit, reorder_level, cost_per_unit=None, supplier=None, is_housemade=False):
+def add_raw_material(name, category, unit, reorder_level, is_housemade=False):
     # adds material to raw_materials
 
     db = get_db_connection()
@@ -193,13 +193,13 @@ def add_raw_material(name, category, stock_level, unit, reorder_level, cost_per_
             return "duplicate"
 
         db.execute(cursor, """
-            INSERT INTO raw_materials (name, category, stock_level, unit, reorder_level, cost_per_unit, supplier, is_housemade)
-            VALUES (%s,%s,%s,%s,%s,%s,%s,%s)
+            INSERT INTO raw_materials (name, category, unit, reorder_level, is_housemade)
+            VALUES (%s,%s,%s,%s,%s)
 
-                        """, (name, category, stock_level, unit, reorder_level, cost_per_unit, supplier, is_housemade))
+                        """, (name, category, unit, reorder_level, is_housemade))
 
         db.commit()
-        print(f"Added {name} to raw materials")
+        logging.info(f"added new material: {name}")
         return db.get_last_insert_id(cursor)
 
     except Exception as e:
@@ -586,12 +586,37 @@ def get_mix_stock(material_name):
 
 
 
-def get_material_id_for_(name):
+def get_material_id(name):
     
+    """
+    get name of a product, 
+    returns its material_id
     
+    used for recieve lot func in app.py
+    
+
+    """
     
     db = get_db_connection()
     cursor = db.cursor()
+
+    try:
+
+        db.execute(cursor, """
+        SELECT material_id
+        FROM raw_materials
+        WHERE name = ?
+        
+        """,(name,))
+        row = cursor.fetchone()
+        return (row[0]).lower if row else None
+
+    except Exception as e:
+        logging.error(f"didnt find material_id for name,(for recieve lot func)")
+        return None
+
+    finally:
+        db.close()
 
 
 
