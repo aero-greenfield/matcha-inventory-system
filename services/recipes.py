@@ -1,0 +1,572 @@
+# ADDED: these imports were all at the top of inventory_app.py — only the ones
+#        actually used by the functions in this file are kept here.
+from database import get_db_connection
+import pandas as pd
+import logging
+
+# ADDED: get_raw_material lives in services.materials. recipes.py calls it inside
+#        add_recipe, change_recipe, update_recipe, and check_negative_stock to
+#        validate that a material exists before inserting into recipe_materials.
+from services.materials import get_raw_material
+
+
+# ========================
+# RECIPE FUNCTIONS
+# ========================
+
+
+def get_recipe(product_name):
+    """
+    Gets recipe from recipes, which refrences recipe materials
+
+    """
+
+    db = get_db_connection()
+    cursor = db.cursor()
+
+    try:
+
+        db.execute(cursor,"""
+        SELECT recipe_id
+        FROM recipes
+        WHERE LOWER(product_name) = LOWER(%s)
+                       """,(product_name,))
+        row = cursor.fetchone() # get recipe_id from product name
+
+        if not row:
+            print(f"{product_name} not found in recipes")
+            return None
+        recipe_id = row[0]
+
+        query = ("""
+        SELECT r.product_name,
+        r.notes,
+        rm.material_id,
+        raw.name AS material_name,
+        rm.quantity_needed
+        FROM recipes r
+        JOIN recipe_materials rm ON r.recipe_id = rm.recipe_id
+        JOIN raw_materials raw ON rm.material_id = raw.material_id
+        WHERE r.recipe_id = %s
+        ORDER BY rm.material_name ASC
+        """)
+
+        db.execute(cursor, query, (recipe_id,))
+        rows = cursor.fetchall()
+        columns = [desc[0] for desc in cursor.description]
+        df = pd.DataFrame(rows, columns=columns)
+
+        return df
+
+
+
+
+    except Exception as e:
+        logging.error(f"Error: {e} \ngetting recipe:{product_name}.")
+        return None
+
+    finally:
+        db.close()
+
+
+def check_negative_stock(product_name, quantity):
+    """
+    Returns a list of dicts for materials that would go negative if this batch was created.
+    Each dict has: material_name, current_stock, required_amount, resulting_stock.
+    Returns [] if all materials are sufficient, recipe is missing, or any lookup fails.
+    """
+    recipe_df = get_recipe(product_name)
+    if recipe_df is None or recipe_df.empty:
+        return []
+
+    negative = []
+    for _, row in recipe_df.iterrows():
+        material_name = row['material_name']
+        quantity_needed = row['quantity_needed']
+        required_amount = quantity_needed * quantity
+
+        material_info = get_raw_material(material_name)
+        if not material_info:
+            continue
+        material_id, name, stock_level, reorder_level, cost_per_unit = material_info
+        if stock_level is not None and stock_level < required_amount:
+            negative.append({
+                'material_name': material_name,
+                'current_stock': stock_level,
+                'required_amount': required_amount,
+                'resulting_stock': stock_level - required_amount,
+            })
+    return negative
+
+
+def get_all_recipes():
+    """
+    Returns all recipes and their materials as a DataFrame
+
+    Columns returned:
+    - recipe_product_name: Name of the recipe/product
+    - notes: Optional notes about the recipe
+    - material_name: Name of the material/ingredient
+    - quantity: Amount of material needed per batch
+    - unit: Unit of measurement (from raw_materials table)
+    """
+    db = get_db_connection()
+
+    query = """
+    SELECT
+        r.product_name AS recipe_product_name,
+        r.notes,
+        raw.name AS material_name,
+        rm.quantity_needed AS quantity,
+        raw.unit
+    FROM recipes r
+    JOIN recipe_materials rm ON r.recipe_id = rm.recipe_id
+    JOIN raw_materials raw ON rm.material_id = raw.material_id
+    ORDER BY r.product_name ASC, raw.name ASC
+    """
+    # Note: unit comes from raw_materials (raw.unit), NOT recipe_materials
+
+    result = pd.read_sql_query(query, db.conn)
+    db.close()
+    return result
+
+
+def add_recipe(product_name, materials, notes=None):
+
+    db = get_db_connection()
+    cursor = db.cursor()
+
+
+    """
+    Adds a new recipe to the database.
+
+    Parameters:
+        product_name (str): Name of the product.
+        materials (list of dict): Each dict contains 'material_name' and 'quantity_needed'.
+        notes (str, optional): Additional notes for the recipe.
+
+    Example:
+        materials = [
+            {'material_name': 'Matcha Powder', 'quantity_needed': 10},
+            {'material_name': 'Milk', 'quantity_needed': 200}
+        ]
+        add_recipe('Matcha Latte', materials, notes='Sweetened')
+    """
+
+    try:
+
+        db.execute(cursor,"""
+        INSERT INTO recipes (product_name, notes)
+        VALUES (%s, %s)
+         """,(product_name, notes))
+        recipe_id = db.get_last_insert_id(cursor) # get recipe_id, able to add to recipe_materials
+
+
+
+        for material in materials:
+            material_name = material["material_name"]
+            quantity_needed = material['quantity_needed']
+
+            #check material is in database
+
+            material_info = get_raw_material(material_name)
+
+            if not material_info:
+                logging.error(f"Material '{material_name}' not found in raw_materials while adding recipe '{product_name}'.")
+                raise ValueError(f"Material '{material_name}' not found in raw_materials. Please add it to inventory before creating the recipe.")
+
+
+            else:
+                material_id = material_info[0]#get material_id, first value from get_raw_material result
+
+
+            db.execute(cursor,"""
+            INSERT INTO recipe_materials (
+                   recipe_id,
+                   material_name,
+                   material_id,
+                   quantity_needed)
+            VALUES (%s,%s,%s,%s)
+              """,(recipe_id, material_name, material_id, quantity_needed))
+
+
+        db.commit()
+        print(f"Recipe '{product_name}' added successfully with {len(materials)} materials.")
+        return recipe_id
+
+
+
+    except Exception as e:
+        logging.error(f"Error: {e}")
+        db.rollback()
+        return None
+
+    finally:
+        db.close()
+
+
+def change_recipe(product_name, materials, notes= None):
+    """
+    changes a pre exisitng recipe
+
+    Parameters:
+        product_name (str): Name of the product.
+        materials (list of dict): Each dict contains 'material_name' and 'quantity_needed'.
+        notes (str, optional): Additional notes for the recipe.
+
+    Example:
+        materials = [
+            {'material_name': 'Matcha Powder', 'quantity_needed': 10},
+            {'material_name': 'Milk', 'quantity_needed': 200}
+        ]
+        change_recipe('Matcha Latte', materials, notes='Sweetened')
+
+
+
+        """
+
+    db = get_db_connection()
+    cursor = db.cursor()
+
+    try:
+
+        db.execute(cursor,"""
+        SELECT recipe_id
+        FROM recipes
+        WHERE LOWER(product_name) = LOWER(%s)
+
+                       """,(product_name,))
+        recipe_id = cursor.fetchone()
+
+        if not recipe_id:
+            print(f"No recipe found for {product_name}")
+            return None
+        recipe_id = recipe_id[0]
+
+
+
+        db.execute(cursor,"""
+        UPDATE recipes
+        SET notes = %s
+        WHERE LOWER(product_name) = LOWER(%s)
+
+                       """,(notes, product_name,))
+
+
+        db.execute(cursor,"""
+        DELETE FROM recipe_materials
+        WHERE recipe_id = %s
+                       """,(recipe_id,))
+
+
+        for material in materials:
+            material_name = material["material_name"]
+            quantity_needed = material['quantity_needed']
+
+
+            material_info = get_raw_material(material_name)
+
+            if not material_info:
+                logging.error(f"Material '{material_name}' not found in raw _materials while updating recipe '{product_name}'.")
+                raise ValueError(f"Material '{material_name}' not found in raw_materials. Please add it to inventory before updating the recipe.")
+
+
+            else:
+                material_id = material_info[0]#get material_id, first value from get_raw_material result
+
+
+            db.execute(cursor,"""
+            INSERT INTO recipe_materials (
+
+            recipe_id,
+            material_name,
+            material_id,
+            quantity_needed)
+            VALUES (%s,%s,%s,%s)
+                """, (recipe_id, material_name, material_id, quantity_needed))
+
+
+        db.commit()
+        print(f"Recipe '{product_name}' changed successfully with {len(materials)} materials.")
+        return recipe_id
+
+
+    except Exception as e:
+        logging.error(f"Error: {e}")
+        db.rollback()
+        return None
+
+    finally:
+        db.close()
+
+
+def delete_recipe(product_name):
+
+
+
+    "deletes recipe"
+
+    db = get_db_connection()
+    cursor = db.cursor()
+
+    try:
+
+        #get id
+        db.execute(cursor,"""
+        SELECT recipe_id
+        FROM recipes
+        WHERE LOWER(product_name) = LOWER(%s)
+                       """,(product_name,))
+        row = cursor.fetchone()
+
+        if not row:
+            print(f"Recipe for {product_name} not found.")
+            return None
+        recipe_id = row[0]
+
+
+
+        #get materials that will be deleted
+        query = ("""
+        SELECT material_name, quantity_needed
+        FROM recipe_materials
+        WHERE recipe_id = %s
+                       """)
+        df = pd.read_sql_query(query, db.conn, params=(recipe_id,) )
+
+        #clean query for presentation
+
+        df = df.rename(columns={
+            'material_name': 'Material',
+        'quantity_needed': 'Quantity Needed'
+            })
+
+
+        #delete recipe from recipes
+        db.execute(cursor,"""
+        DELETE FROM recipes
+        WHERE LOWER(product_name) = LOWER(%s)
+                       """,(product_name,))
+
+        if cursor.rowcount == 0:
+            print(f"Recipe '{product_name}' not found.")
+            db.close()
+            return None
+
+
+        db.execute(cursor, """
+        DELETE FROM recipe_materials
+        WHERE recipe_id = %s
+                       """,(recipe_id,))
+
+
+
+
+        db.commit()
+
+        print(f"Deleted {product_name} from recipe log, {product_name}'s recipe:\n{df}")
+
+    except Exception as e:
+        logging.error(f"Error: {e}")
+        db.rollback()
+        return None
+
+    finally:
+        db.close()
+
+
+def get_all_recipes_with_id():
+    """
+    returns all recipes with their recipe_id,
+    used for manage page when editing recipe,
+    to get recipe id from product name.
+    """
+
+
+    db = get_db_connection()
+    cursor = db.cursor()
+
+    try:
+        query = """
+        SELECT DISTINCT r.recipe_id, r.product_name, r.notes
+        FROM recipes r
+        JOIN recipe_materials rm ON rm.recipe_id = r.recipe_id
+        JOIN raw_materials raw ON rm.material_id = raw.material_id
+        ORDER BY r.product_name ASC
+        """
+# uses joins to get recipe_id, product name, and notes for all recipes, then uses DISTINCT to only get one row per recipe
+# (since there are multiple rows per recipe in recipe_materials), orders by product name.
+# this is done because view_recipes() uses joins aswell, so they both show same list of recipes.
+        result = pd.read_sql_query(query, db.conn)
+        return result
+
+    except Exception as e:
+        logging.error(f"Error getting all recipes with id: {e}")
+        return None
+
+    finally:
+        db.close()
+
+
+def get_recipe_by_id(recipe_id):
+    """
+    gets recipe by id, used for managment page,
+
+    returns full recipe details, including materials and quantities,
+    given recipe_id, used for manage page when editing recipe,
+    to get recipe details from recipe id.
+
+    """
+    db = get_db_connection()
+    cursor = db.cursor()
+
+    try:
+        query = ("""
+       SELECT r.recipe_id,
+       r.product_name,
+       r.notes,
+       rm.material_id,
+       raw.name AS material_name,
+       rm.quantity_needed
+       FROM recipes r
+       JOIN recipe_materials rm ON rm.recipe_id = r.recipe_id
+       JOIN raw_materials raw ON rm.material_id = raw.material_id
+       WHERE r.recipe_id = %s
+        """)
+
+        db.execute(cursor, query, (recipe_id,))
+        rows = cursor.fetchall()
+        columns = [desc[0] for desc in cursor.description]
+        df = pd.DataFrame(rows, columns=columns)
+
+        return df
+
+    except Exception as e:
+        logging.error(f"Error: {e} \ngetting recipe by id:{recipe_id}.")
+        return None
+
+    finally:
+        db.close()
+
+
+def update_recipe(recipe_id, product_name=None, materials=None, notes=None):
+    """
+    changes a pre exisitng recipe
+
+    Parameters:
+        recipe_id (int): The ID of the recipe to change.
+        materials (list of dict): Each dict contains 'material_name' and 'quantity_needed'.
+        notes (str, optional): Additional notes for the recipe.
+
+    Example:
+        materials = [
+            {'material_name': 'Matcha Powder', 'quantity_needed': 10},
+            {'material_name': 'Milk', 'quantity_needed': 200}
+        ]
+        change_recipe('Matcha Latte', materials, notes='Sweetened')
+
+
+
+        """
+
+    db = get_db_connection()
+    cursor = db.cursor()
+
+    try:
+
+
+        # for changing notes
+        db.execute(cursor,"""
+        UPDATE recipes
+        SET notes = %s
+        WHERE recipe_id = %s
+
+                """,(notes, recipe_id,))
+
+        if product_name is not None:
+            db.execute(cursor, """
+            UPDATE recipes
+            SET product_name = %s
+            WHERE recipe_id = %s
+            """, (product_name, recipe_id))
+
+
+        db.execute(cursor,"""
+        DELETE FROM recipe_materials
+        WHERE recipe_id = %s
+                       """,(recipe_id,)) # delete old materials
+
+
+        for material in materials:
+            material_name = material["material_name"]
+            quantity_needed = material['quantity_needed']
+
+
+            material_info = get_raw_material(material_name)
+
+            if not material_info:
+                print(f"Warning: Material '{material_name}' not found in raw_materials.")
+                material_id = None
+
+            else:
+                material_id = material_info[0]#get material_id, first value from get_raw_material result
+
+
+            db.execute(cursor,"""
+            INSERT INTO recipe_materials (
+
+            recipe_id,
+            material_name,
+            material_id,
+            quantity_needed)
+            VALUES (%s,%s,%s,%s)
+                """, (recipe_id, material_name, material_id, quantity_needed))
+
+
+            if cursor.rowcount == 0:
+                    raise ValueError(f"recipe ID {recipe_id} not found — nothing inserted")
+        db.commit()
+        logging.info(f"Recipe with recipe_id:{recipe_id} changed successfully with {len(materials)} materials.")
+        return recipe_id
+
+
+    except Exception as e:
+        logging.error(f"Error: {e}")
+        db.rollback()
+        return None
+
+    finally:
+        db.close()
+
+
+def delete_recipe_by_id(recipe_id):
+    "deletes recipe by id"
+
+    db = get_db_connection()
+    cursor = db.cursor()
+
+    try:
+        db.execute(cursor, """
+        DELETE FROM recipe_materials
+        WHERE recipe_id = %s
+        """, (recipe_id,))
+
+        db.execute(cursor, """
+        DELETE FROM recipes
+        WHERE recipe_id = %s
+        """, (recipe_id,))
+
+        if cursor.rowcount == 0:
+            raise ValueError(f"Recipe with id {recipe_id} not found.")
+
+        db.commit()
+        logging.info(f"Deleted recipe with id {recipe_id}")
+        return True
+
+    except Exception as e:
+        logging.error(f"Error: {e}")
+        db.rollback()
+        return None
+
+    finally:
+        db.close()

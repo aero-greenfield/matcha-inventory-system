@@ -1,103 +1,4 @@
-"""
-Matcha Inventory Management System - Complete Web Interface
 
-╔════════════════════════════════════════════════════════════════════════╗
-║                    PROJECT ARCHITECTURE OVERVIEW                       ║
-╚════════════════════════════════════════════════════════════════════════╝
-
-HOW ALL THE FILES WORK TOGETHER:
-=================================
-
-    USER (Browser)
-         ↓ HTTP Request (GET /inventory)
-         ↓
-    [app.py] Flask Web Framework)
-         │
-         ├─→ Handles URLs (@app.route)
-         ├─→ Checks authentication (@requires_auth)
-         ├─→ Processes forms (request.form)
-         └─→ Returns HTML to browser
-         ↓
-    [inventory_app.py] (Business Logic)
-         │
-         ├─→ get_all_materials()
-         ├─→ add_raw_material()
-         └─→ All database operations
-         ↓
-    [database.py] (Database Wrapper)
-         │
-         └─→ Handles PostgreSQL OR SQLite connection
-         ↓
-    [DATABASE] (PostgreSQL/SQLite)
-         └─→ Stores all your data
-
-    DATA FLOW: User Request → Flask → Business Logic → Database → Back to User
-
-╔════════════════════════════════════════════════════════════════════════╗
-║                        FLASK FRAMEWORK BASICS                          ║
-╚════════════════════════════════════════════════════════════════════════╝
-
-WHAT IS FLASK?
-==============
-Flask is a "micro web framework" for Python. It's a toolkit that makes it easy
-to create web applications by handling the complicated parts of HTTP for you.
-
-Think of Flask as a translator between:
-  - HTTP requests (what your browser sends) → Python functions
-  - Python functions → HTML pages (what your browser displays)
-
-KEY FLASK CONCEPTS YOU'LL SEE IN THIS FILE:
-============================================
-
-1. Routes (@app.route('/path'))
-   - Map URLs to Python functions
-   - Example: @app.route('/inventory') → def view_inventory()
-   - When user visits /inventory, Flask runs view_inventory()
-
-2. HTTP Methods (GET vs POST)
-   - GET: Viewing/retrieving data (show a page)
-   - POST: Sending/submitting data (submit a form)
-   - Routes can handle one or both
-
-3. Request Object (request.form, request.authorization)
-   - Access data from the browser
-   - request.form = form data from POST
-   - request.authorization = login credentials
-
-4. Response Types
-   - HTML string: Return webpage to display
-   - redirect(): Send user to different URL
-   - send_file(): Download a file
-   - jsonify(): Return JSON data (for APIs)
-
-5. Decorators (@app.route, @requires_auth)
-   - Functions that modify other functions
-   - @app.route: Tells Flask which URL triggers this function
-   - @requires_auth: Adds login requirement
-
-╔════════════════════════════════════════════════════════════════════════╗
-║                    REQUEST/RESPONSE CYCLE                              ║
-╚════════════════════════════════════════════════════════════════════════╝
-
-Example: User wants to view inventory
-
-1. USER: Types http://localhost:8000/inventory in browser
-2. BROWSER: Sends "GET /inventory" request to Flask server
-3. FLASK: Finds @app.route('/inventory')
-4. FLASK: Checks @requires_auth (prompts login if needed)
-5. FLASK: Calls view_inventory() function
-6. PYTHON: Queries database with get_all_materials()
-7. PYTHON: Converts data to HTML table
-8. FLASK: Sends HTML back to browser
-9. BROWSER: Displays the inventory page
-
-This cycle repeats for EVERY page load, form submission, export, etc.
-"""
-
-# =======================
-# LOAD ENVIRONMENT VARIABLES
-# =======================
-# Load .env file for local development (must be BEFORE other imports that use env vars)
 try:
     from dotenv import load_dotenv # load enviroment varibales, python has build in libracy that loads them in. 
     load_dotenv()
@@ -129,15 +30,34 @@ from functools import wraps  # Used for creating decorators (like @requires_auth
 
 from flask_wtf.csrf import CSRFProtect # security necesity. 
 
-# Import all our inventory functions from inventory_app.py
-from inventory_app import (
-    create_database, add_raw_material, delete_recipe_by_id, get_all_batches_with_id, get_all_lots_for_material, get_all_materials, get_all_recipes, get_batches_shipped, get_low_stock_materials,
-    increase_raw_material, decrease_raw_material, get_raw_material, add_to_batches,
-    get_batches, mark_as_shipped, delete_batch, get_recipe, add_recipe,
-    change_recipe, delete_recipe, delete_raw_material, get_material_by_id, get_all_materials_with_id, update_raw_material, get_all_batches_with_id, get_batch_by_id,
-    update_batch, update_batch_status, update_recipe, get_all_recipes_with_id, get_recipe_by_id, log_action, view_logs, get_batch_materials,
-    get_batches_planned, get_housemade_materials, get_mix_stock, adjust_batch_material, check_batch_materials_stock, check_negative_stock,
-    receive_lot as inventory_receive_lot, get_material_id)
+#Service layer imports. :
+
+
+
+
+from services.setup import create_database
+from services.audit import log_action, view_logs
+from services.materials import (
+    add_raw_material, get_all_materials, get_low_stock_materials,
+    get_material_by_id, get_raw_material, get_all_materials_with_id,
+    update_raw_material, increase_raw_material, decrease_raw_material,
+    delete_raw_material, get_housemade_materials, get_mix_stock, get_material_id,
+)
+from services.lots import (
+    receive_lot as inventory_receive_lot,
+    get_lots_for_material, get_all_lots_for_material, get_material_stock_from_lots,
+)
+from services.recipes import (
+    add_recipe, get_recipe, get_all_recipes, get_all_recipes_with_id,
+    get_recipe_by_id, change_recipe, update_recipe, delete_recipe, delete_recipe_by_id,
+    check_negative_stock,
+)
+from services.batches import (
+    add_to_batches, get_batches, get_batches_shipped, get_batches_planned,
+    get_all_batches_with_id, get_batch_by_id, mark_as_shipped, delete_batch,
+    update_batch, update_batch_status, get_batch_materials,
+    adjust_batch_material, check_batch_materials_stock,
+)
 
 
 # Import helper functions for exporting data
