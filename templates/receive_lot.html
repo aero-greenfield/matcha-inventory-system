@@ -58,6 +58,7 @@
     </form>
 </div>
 
+<script src="{{ url_for('static', filename='js/autocomplete.js') }}"></script>
 <script>
 (function () {
     const nameInput = document.getElementById('material_name');
@@ -80,10 +81,18 @@
         debounce = setTimeout(function () { fetchUnit(name); }, 300);
     });
 
+    // triggered when autocomplete selects an item (fires 'change')
+    nameInput.addEventListener('change', function () {
+        var name = nameInput.value.trim();
+        if (name) fetchUnit(name);
+    });
+
     // show unit on page load if name is pre-filled
     if (nameInput.value.trim()) {
         fetchUnit(nameInput.value.trim());
     }
+
+    attachAutocomplete(nameInput, fetchMaterials);
 }());
 </script>
 
