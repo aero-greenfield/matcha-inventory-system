@@ -26,7 +26,6 @@ from flask import Flask, request, redirect, url_for, jsonify, send_file, render_
 
 import os  # Operating system functions (file paths, environment variables)
 from datetime import datetime  # For timestamps in exports
-from functools import wraps  # Used for creating decorators (like @requires_auth)
 
 from flask_wtf.csrf import CSRFProtect # security necesity. 
 
@@ -45,7 +44,7 @@ from services.materials import (
 )
 from services.lots import (
     receive_lot as inventory_receive_lot,
-    get_lots_for_material, get_all_lots_for_material, get_material_stock_from_lots,
+    get_lots_for_material,
 )
 from services.recipes import (
     add_recipe, get_recipe, get_all_recipes, get_all_recipes_with_id,
@@ -66,7 +65,10 @@ from services.batches import (
 
 from helper_functions import (export_to_csv, export_to_excel,)
 
-# logging for actions. 
+from auth import requires_auth
+from routes.api import api_bp
+
+# logging for actions.
 import logging
 
 logging.basicConfig(
@@ -92,6 +94,7 @@ if not secret:
     raise RuntimeError("SECRET_KEY environment variable must be set")
 app.config['SECRET_KEY'] = secret
 csrf = CSRFProtect(app)
+app.register_blueprint(api_bp)
 
 
 # WHAT IS 'app':
@@ -117,7 +120,7 @@ if not os.path.exists('data'): # Make sure we have a 'data' folder for local SQL
 
 DATABASE_URL = os.environ.get('DATABASE_URL')
 try:
-    from database import get_connection, get_db_connection
+    from database import get_connection
     conn = get_connection()
     conn.close()
     logging.info("[SUCCESS] Database connection successful")
@@ -150,93 +153,8 @@ except:
 # ========================
 
 
-# takes authentication credentials from environment variables (or .env file) and checks them against incoming requests.
-
-AUTH_USERNAME = os.environ.get('AUTH_USERNAME')
-AUTH_PASSWORD = os.environ.get('AUTH_PASSWORD')
-
-assert(AUTH_USERNAME and AUTH_PASSWORD), "Error: AUTH_USERNAME and AUTH_PASSWORD must be set in environment variables or .env file" 
-#assert that it exists, otherwise app would run withouth authentication. 
 
 
-
-
-
-# using authentication decorator to protect routes that require login.
-
-
-
-
-def requires_auth(f):
-    """
-    Decorator to protect routes with authentication
-
-    Usage: Put @requires_auth above any route that should require login
-
-    Example:
-        @app.route('/inventory')
-        @requires_auth
-        def view_inventory():
-            return "Secret inventory!"
-
-    How it works:
-    1. @wraps(f) preserves the original function's name and docstring
-    2. decorated() is the wrapper function that adds auth checking
-    3. Returns the wrapped function
-
-
-    This funciton 
-    """
-    @wraps(f)  # Preserves metadata from original function
-
-    def decorated(*args, **kwargs):
-        """
-        This wrapper function runs BEFORE the actual route function
-
-        Flow:
-        1. Get auth credentials from request
-        2. Validate credentials
-        3. If valid → run the original function
-           If invalid → return 401 error
-        """
-        # request.authorization contains username/password from browser's login popup
-        auth = request.authorization
-
-        # Check if auth exists AND is valid
-        if not auth or not check_auth(auth.username, auth.password):
-            logging.warning(f"Failed auth attempt for user: {auth.username if auth else 'no credentials'}")
-            return authenticate()  # Show login prompt
-
-        # Authentication successful! Run the original function
-        return f(*args, **kwargs)
-
-    return decorated  # Return the wrapped function
-
-
-def check_auth(username, password):
-    """
-    Validates username and password
-
-    Returns:
-        True if credentials match
-        False if credentials don't match
-    """
-    return username == AUTH_USERNAME and password == AUTH_PASSWORD
-
-
-def authenticate():
-    """
-    Sends HTTP 401 response that triggers browser's login popup
-
-    HTTP Status Codes:
-    - 200: Success
-    - 401: Unauthorized (need to login)
-    - 404: Not found
-    - 500: Server error
-
-    The 'WWW-Authenticate' header tells the browser to show a login popup
-    """
-    return jsonify({'message': 'Authentication required.'}), 401, {'WWW-Authenticate': 'Basic realm="Login Required"'}
 
 
 
@@ -264,8 +182,7 @@ def index():
     
     return render_template("index.html") #return the html file for the home page. 
 
-#???:
-# does this actually create buttons for pages? is the html code in idex. html responsible for the buttons?
+
 
 #=================
 #LOGGING PAGE
@@ -1784,68 +1701,6 @@ def delete_recipe_route(recipe_id):
 
 
 
-
-# ========================
-# API ENDPOINTS
-# ========================
-
-@app.route('/api/health')
-def health_check():
-    try:
-        db = get_db_connection() # check if connection string is working
-        cursor = db.cursor() # make sure we can get a cursor
-        db.execute(cursor, "SELECT 1") # simple query  to check if we can execute queries
-        db.close() # close connection after check
-        db_status = 'connected' # status is connected if all above steps work. 
-    except Exception as e:
-        logging.error(f"health_check: {e}", exc_info=True)
-        db_status = 'error'
-    return jsonify({'status': 'healthy', 'db': db_status, 'service': 'matcha-inventory', 'timestamp': datetime.now().isoformat()})
-
-
-# api for drop down autocomplete search on recipes, (required js to impliment)
-@app.route('/api/materials')
-@requires_auth
-def api_materials():
-    df = get_all_materials()
-    if df.empty:
-        return jsonify([])
-    return jsonify(df['name'].dropna().sort_values().tolist())
-
-
-# api for drop down autocomplete search on batches, (required js to impliment)
-#automatically detects users search when making batch
-@app.route('/api/recipes')
-@requires_auth
-def api_recipes():
-    df = get_all_recipes()
-    if df.empty:
-        return jsonify([])
-    return jsonify(df['recipe_product_name'].dropna().drop_duplicates().sort_values().tolist())
-
-
-@app.route('/api/lots/<material_id>')
-@requires_auth
-def api_lots(material_id):
-    df = get_all_lots_for_material(material_id=material_id)
-    if df is None or df.empty:
-        return jsonify([])
-    return jsonify(df.to_dict(orient='records'))
-
-
-@app.route('/api/material-unit')
-@requires_auth
-def api_material_unit():
-    name = request.args.get('name', '').strip()
-    if not name:
-        return jsonify({'exists': False})
-    df = get_all_materials()
-    if df is None or df.empty:
-        return jsonify({'exists': False})
-    match = df[df['name'].str.lower() == name.lower()]
-    if match.empty:
-        return jsonify({'exists': False})
-    return jsonify({'exists': True, 'unit': match.iloc[0]['unit']})
 
 # ========================
 # START THE APP
