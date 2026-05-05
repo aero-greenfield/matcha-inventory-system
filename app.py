@@ -15,7 +15,7 @@ except ImportError:
 from unicodedata import category 
 
 
-from flask import Flask, request, redirect, url_for, jsonify, send_file, render_template
+from flask import Flask, json, request, redirect, url_for, jsonify, send_file, render_template
 
 # - Flask: The main application class
 # - request: obejct that give you access to income http request data. 
@@ -1020,6 +1020,7 @@ def create_batch():
                     back_link=True, back_link_url="/create-batch", back_link_label="Go back to Create Batch"
                 ), 400
         
+        # batch type validation:
         if batch_type not in ('standard', 'mix', 'finished'):
             return render_template('error.html',
                 title="Invalid Input",
@@ -1027,7 +1028,30 @@ def create_batch():
                 back_link=True, back_link_url="/create-batch", back_link_label="Go back to Create Batch"
             ), 400
 
-        defer_deduction = (batch_type == 'finished' and bool(planned_completion_date))
+
+        #LOT SELECTION PARSING:
+        lot_selections_raw = request.form.get('lot_selection', '').strip()# get the raw string from the form
+        lot_selections = None
+        if lot_selections_raw:
+            try:
+                raw = json.loads(lot_selections_raw) # parse the JSON string into a Python object (list of dicts)
+                lot_selections = {int(k): v for k, v in raw.items()} # convert keys to int for easier handling later
+            except (ValueError, TypeError):
+                return render_template(
+                    'error.html',
+                    title="Invalid Input",
+                    message="Invalid lot selection format.",
+                    back_link=True, back_link_url="/create-batch", back_link_label="Go back to Create Batch"
+                ), 400
+
+
+
+
+        #INPUT VALIDATION DONE===============================
+
+
+        # see if its okay that batch creation makes stock go negative. 
+        defer_deduction = (batch_type == 'finished' and bool(planned_completion_date)) 
         confirm_negative = request.form.get('confirm_negative') == '1'
 
         if not defer_deduction and not confirm_negative:
@@ -1043,12 +1067,14 @@ def create_batch():
                         'expiration_date': expiration_date or '',
                         'planned_completion_date': planned_completion_date or '',
                         'batch_type': batch_type,
+                        'lot_selections': lot_selections_raw, # raw JSON string, must be string because
+                        #confirm_negative_stock.html needs to pass back an GTML form hidden input (whcih only holds strings).
                     }
                 )
 
         # call function
         try:
-            result = add_to_batches(product_name, quantity, notes=notes, batch_number=batch_number, deduct_resources=True, expiration_date=expiration_date, planned_completion_date=planned_completion_date, batch_type=batch_type, allow_negative=confirm_negative)
+            result = add_to_batches(product_name, quantity, notes=notes, batch_number=batch_number, deduct_resources=True, expiration_date=expiration_date, planned_completion_date=planned_completion_date, batch_type=batch_type, allow_negative=confirm_negative, lot_selections=lot_selections)
             if result:
                 logging.info(f"Batch created: product='{product_name}', quantity={quantity}, batch_number={batch_number}, batch_type={batch_type}")
                 log_action('batch_created', f"product={product_name}, quantity={quantity}, batch_id={result}, batch_number={batch_number}, batch_type={batch_type}")

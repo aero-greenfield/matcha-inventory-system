@@ -5,8 +5,8 @@ import logging
 from auth import requires_auth
 from database import get_db_connection
 from services.materials import get_all_materials
-from services.lots import get_all_lots_for_material
-from services.recipes import get_all_recipes
+from services.lots import get_all_lots_for_material, get_lots_for_material
+from services.recipes import get_all_recipes, get_recipe
 
 api_bp = Blueprint('api', __name__, url_prefix='/api')
 
@@ -70,3 +70,25 @@ def api_material_unit():
     if match.empty:
         return jsonify({'exists': False})
     return jsonify({'exists': True, 'unit': match.iloc[0]['unit']})
+
+
+
+#will return all AVAILABLE lots for batch creation drop down. 
+@api_bp.route('/available-lots/<material_id>')
+@requires_auth
+def api_available_lots(material_id):
+    df = get_lots_for_material(material_id=material_id)
+    if df is None or df.empty:
+        return jsonify([])
+    available_lots = df[df['available_quantity'] > 0]
+    return jsonify(available_lots.to_dict(orient='records'))
+
+
+#will return recipe given a name, for frontend of batch creation. needs to know which lots to ask user about. 
+@api_bp.route('/recipe-materials/<path:product_name>')
+@requires_auth
+def api_recipe_materials(product_name):
+    df = get_recipe(product_name)
+    if df is None or df.empty:
+        return jsonify([])
+    return jsonify(df.to_dict(orient='records'))

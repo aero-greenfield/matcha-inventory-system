@@ -46,6 +46,11 @@
             </ul>
             <span style="display:block;margin-top:6px;">If this batch requires more than what is available, it will stay Planned until a mix batch is completed first.</span>
         </div>
+        <div id="lot-selection-area" style="display:none; margin-bottom:16px;">
+            <h3 style="font-size:14px;font-weight:600;margin-bottom:8px;">Lot Selection</h3>
+            <div id="lot-material-cards"></div>
+        </div>
+        <input type="hidden" id="lot_selections_json" name="lot_selection" value="">
         <button type="submit" class="btn btn-primary">Create Batch</button>
         <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
     </form>
@@ -75,6 +80,98 @@ document.addEventListener('DOMContentLoaded', () => {
             mixWarning.style.display = this.dataset.type === 'finished' ? 'block' : 'none';
         });
     });
+
+    // --- Lot selection ---
+    var productInput = document.querySelector('[name="product_name"]');
+    var quantityInput = document.querySelector('[name="quantity"]');
+    var lotArea = document.getElementById('lot-selection-area');
+    var lotCards = document.getElementById('lot-material-cards');
+    var lotHidden = document.getElementById('lot_selections_json');
+    var recipeMaterials = [];
+    var availableLots = {};
+
+    function loadLotSelection() {
+        var name = productInput.value.trim();
+        var qty = parseFloat(quantityInput.value) || 0;
+        if (!name || qty <= 0) { lotArea.style.display = 'none'; return; }
+        fetch('/api/recipe-materials/' + encodeURIComponent(name))
+            .then(function(r) { return r.json(); })
+            .then(function(materials) {
+                if (!materials.length) { lotArea.style.display = 'none'; return; }
+                recipeMaterials = materials;
+                var fetches = materials.map(function(m) {
+                    return fetch('/api/available-lots/' + m.material_id)
+                        .then(function(r) { return r.json(); })
+                        .then(function(lots) { availableLots[m.material_id] = lots; });
+                });
+                Promise.all(fetches).then(function() { renderLotCards(qty); });
+            });
+    }
+
+    function renderLotCards(batchQty) {
+        lotCards.innerHTML = '';
+        recipeMaterials.forEach(function(mat) {
+            var required = mat.quantity_needed * batchQty;
+            var lots = availableLots[mat.material_id] || [];
+            var card = document.createElement('div');
+            card.style.cssText = 'border:1px solid var(--border);border-radius:8px;padding:12px 14px;margin-bottom:10px;';
+            card.dataset.materialId = mat.material_id;
+            var optHtml = '<option value="">-- select lot --</option>';
+            lots.forEach(function(l) {
+                optHtml += '<option value="' + l.lot_id + '">' + l.lot_number + ' (' + l.available_quantity + ' avail)</option>';
+            });
+            card.innerHTML =
+                '<div style="font-weight:600;font-size:13px;margin-bottom:6px;">' + mat.material_name +
+                ' <span style="font-weight:400;color:var(--text-muted);">— need ' + required.toFixed(2) + '</span></div>' +
+                '<div class="lot-rows"></div>' +
+                '<button type="button" class="add-lot-btn" style="margin-top:6px;font-size:12px;padding:4px 10px;border:1px dashed var(--border);border-radius:5px;background:transparent;cursor:pointer;">+ Add lot</button>' +
+                '<div class="lot-error" style="color:#dc2626;font-size:12px;margin-top:4px;display:none;"></div>';
+            function addRow() {
+                var row = document.createElement('div');
+                row.style.cssText = 'display:flex;gap:8px;align-items:center;margin-bottom:4px;';
+                row.innerHTML =
+                    '<select style="flex:1;padding:5px 8px;border:1px solid var(--border);border-radius:5px;font-size:13px;">' + optHtml + '</select>' +
+                    '<input type="number" step="0.01" min="0.01" placeholder="qty" style="width:90px;padding:5px 8px;border:1px solid var(--border);border-radius:5px;font-size:13px;">' +
+                    '<button type="button" style="padding:4px 8px;border:1px solid var(--border);border-radius:5px;background:transparent;cursor:pointer;color:#dc2626;">×</button>';
+                row.querySelector('button').addEventListener('click', function() { row.remove(); });
+                card.querySelector('.lot-rows').appendChild(row);
+            }
+            addRow();
+            card.querySelector('.add-lot-btn').addEventListener('click', addRow);
+            lotCards.appendChild(card);
+        });
+        lotArea.style.display = 'block';
+    }
+
+    document.querySelector('form').addEventListener('submit', function(e) {
+        if (!recipeMaterials.length) return;
+        var selections = {};
+        var valid = true;
+        document.querySelectorAll('#lot-material-cards > div').forEach(function(card) {
+            var matId = card.dataset.materialId;
+            var errEl = card.querySelector('.lot-error');
+            var entries = [];
+            card.querySelectorAll('.lot-rows > div').forEach(function(row) {
+                var lotId = parseInt(row.querySelector('select').value);
+                var qty = parseFloat(row.querySelector('input[type="number"]').value);
+                if (lotId && qty > 0) entries.push({lot_id: lotId, qty: qty});
+            });
+            if (!entries.length) {
+                errEl.textContent = 'Select at least one lot.';
+                errEl.style.display = 'block';
+                valid = false;
+            } else {
+                errEl.style.display = 'none';
+                selections[matId] = entries;
+            }
+        });
+        if (!valid) { e.preventDefault(); return; }
+        lotHidden.value = JSON.stringify(selections);
+    });
+
+    productInput.addEventListener('change', loadLotSelection);
+    productInput.addEventListener('blur', loadLotSelection);
+    quantityInput.addEventListener('change', loadLotSelection);
 });
 </script>
 
