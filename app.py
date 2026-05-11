@@ -40,7 +40,7 @@ from services.materials import (
     add_raw_material, get_all_materials, get_low_stock_materials,
     get_material_by_id, get_raw_material, get_all_materials_with_id,
     update_raw_material, increase_raw_material, decrease_raw_material,
-    delete_raw_material, get_housemade_materials, get_mix_stock, get_material_id,
+    delete_raw_material, get_mix_stock, get_material_id,
 )
 from services.lots import (
     receive_lot as inventory_receive_lot,
@@ -1102,8 +1102,11 @@ def create_batch():
             ), 500
 
 
-    housemade_df = get_housemade_materials()
-    housemade_materials = housemade_df.to_dict(orient='records') if not housemade_df.empty else []
+    all_materials_df = get_all_materials()
+    if not all_materials_df.empty:
+        housemade_materials = all_materials_df[all_materials_df['is_housemade'] == True][['name', 'stock_level', 'unit']].to_dict(orient='records')
+    else:
+        housemade_materials = []
     return render_template("create_batch.html",
         housemade_materials = housemade_materials,
         back_link=True,

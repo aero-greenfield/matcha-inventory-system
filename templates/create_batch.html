@@ -118,7 +118,7 @@ document.addEventListener('DOMContentLoaded', () => {
             card.dataset.materialId = mat.material_id;
             var optHtml = '<option value="">-- select lot --</option>';
             lots.forEach(function(l) {
-                optHtml += '<option value="' + l.lot_id + '">' + l.lot_number + ' (' + l.available_quantity + ' avail)</option>';
+                optHtml += '<option value="' + l.lot_id + '">' + l.lot_number + ' (' + l.quantity + ' avail)</option>';
             });
             card.innerHTML =
                 '<div style="font-weight:600;font-size:13px;margin-bottom:6px;">' + mat.material_name +

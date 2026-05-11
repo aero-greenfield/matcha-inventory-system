@@ -80,8 +80,7 @@ def api_available_lots(material_id):
     df = get_lots_for_material(material_id=material_id)
     if df is None or df.empty:
         return jsonify([])
-    available_lots = df[df['available_quantity'] > 0]
-    return jsonify(available_lots.to_dict(orient='records'))
+    return jsonify(df.to_dict(orient='records'))
 
 
 #will return recipe given a name, for frontend of batch creation. needs to know which lots to ask user about. 

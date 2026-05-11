@@ -8,6 +8,7 @@ import logging
 #        add_recipe, change_recipe, update_recipe, and check_negative_stock to
 #        validate that a material exists before inserting into recipe_materials.
 from services.materials import get_raw_material
+from services.lots import get_material_stock_from_lots
 
 
 # ========================
@@ -82,19 +83,18 @@ def check_negative_stock(product_name, quantity):
     negative = []
     for _, row in recipe_df.iterrows():
         material_name = row['material_name']
-        quantity_needed = row['quantity_needed']
-        required_amount = quantity_needed * quantity
+        material_id = row['material_id']
+        required_amount = row['quantity_needed'] * quantity
 
-        material_info = get_raw_material(material_name)
-        if not material_info:
+        current_stock = get_material_stock_from_lots(material_id)
+        if current_stock is None:
             continue
-        material_id, name, stock_level, reorder_level, cost_per_unit = material_info
-        if stock_level is not None and stock_level < required_amount:
+        if current_stock < required_amount:
             negative.append({
                 'material_name': material_name,
-                'current_stock': stock_level,
+                'current_stock': current_stock,
                 'required_amount': required_amount,
-                'resulting_stock': stock_level - required_amount,
+                'resulting_stock': current_stock - required_amount,
             })
     return negative
 
