@@ -413,9 +413,9 @@ document.querySelectorAll('.materials-toggle').forEach(function(btn) {
           if (materials.length === 0) {
             detail.innerHTML = '<em>No materials recorded for this batch.</em>';
           } else {
-            var html = '<table class="materials-inner-table"><thead><tr><th>Material</th><th>Quantity Used</th><th>Unit</th></tr></thead><tbody>';
+            var html = '<table class="materials-inner-table"><thead><tr><th>Material</th><th>Lot #</th><th>Quantity Used</th><th>Unit</th></tr></thead><tbody>';
             materials.forEach(function(m) {
-              html += '<tr><td>' + m.material_name + '</td><td>' + m.quantity_used + '</td><td>' + m.unit + '</td></tr>';
+              html += '<tr><td>' + m.material_name + '</td><td>' + m.lot_number + '</td><td>' + m.quantity_used + '</td><td>' + m.unit + '</td></tr>';
             });
             html += '</tbody></table>';
             detail.innerHTML = html;

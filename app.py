@@ -868,9 +868,18 @@ def mark_batch_as_shipped(batch_id):
 @app.route('/batches/<int:batch_id>/materials')
 @requires_auth
 def batch_materials(batch_id):
+    """
+    shows in details when clicking on detials of batch, 
+    when calling function, it returns: material name, quantity, unit, batch material lot id, lot number, and batch id,
+    but for batch details, user only sees: material name, quantity used, unit, and lot number. 
+    
+    the batch material lot id and batch id are just for reference and not shown to user.
+    
+    
+    """
     rows = get_batch_materials(batch_id)
     materials = [
-        {'material_name': r[0], 'quantity_used': r[1], 'unit': r[2], 'material_id': r[3]}
+        {'material_name': r[0], 'quantity_used': r[1], 'unit': r[2], 'batch_material_lot_id': r[3], 'lot_number': r[4], 'batch_id':r[5]}
         for r in rows
     ]
     return jsonify(materials)

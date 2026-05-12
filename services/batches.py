@@ -157,12 +157,13 @@ def add_to_batches(product_name, quantity, notes=None, batch_number=None, deduct
                     if not lot_row:
                         raise ValueError(f"Lot ID {lot_id} for material {material_name} not found or is not active/expired.")
 
-                    available_qty = lot_row[0] #got our quantity for lot
-
+                    available_qty = lot_row[0] #got  our quantity for lot
+                    
                     #quantity validation
                     if available_qty < qty: # available quanitity must be greater than qty user wants from said lot
                         raise ValueError(f"Insufficient quantity in lot {lot_id} for material {material_name}. Required: {required_amount}, Available: {available_qty}")
 
+                    cost_per_unit = lot_row[1] # got our cost per unit for lot, will need it for batch_materials log
 
                     # if we pass all validation, then we can do the deduction from the lots and materials.
 
@@ -181,7 +182,7 @@ def add_to_batches(product_name, quantity, notes=None, batch_number=None, deduct
                     db.execute(cursor, """
                         INSERT INTO batch_materials (batch_id, material_id, lot_id, quantity_used, cost_per_unit)
                         VALUES (%s, %s, %s, %s, %s)
-                    """, (batch_id, material_id, lot_id, qty, lot_row[1]))
+                    """, (batch_id, material_id, lot_id, qty, cost_per_unit))
                     #log into batch_materials
 
                     #validaiton and deduciton done for lot
@@ -826,6 +827,8 @@ def get_batch_materials(batch_id):
     """
     Gets all batch materials for specific batch_id
 
+    will return: material name, quantity used, unit, lot_id (not visible to user), lot_number, and batch_id(not visible to user)
+
     """
     db = get_db_connection()
     cursor = db.cursor()
@@ -833,9 +836,10 @@ def get_batch_materials(batch_id):
     try:
 
         query="""
-        SELECT rm.name AS material_name, bm.quantity_used, rm.unit, bm.material_id
+        SELECT rm.name AS material_name, bm.quantity_used, rm.unit, bm.lot_id, rml.lot_number, bm.material_id
         FROM batch_materials bm
         JOIN raw_materials rm ON bm.material_id = rm.material_id
+        JOIN raw_material_lots rml ON bm.lot_id = rml.lot_id
         WHERE bm.batch_id = %s
         ORDER BY rm.name ASC
         """

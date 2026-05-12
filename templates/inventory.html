@@ -227,6 +227,9 @@ document.querySelectorAll('.lot-toggle').forEach(function(btn) {
                     panel.dataset.lots = JSON.stringify(lots);
                     panel.dataset.loaded = 'true';
                     renderLots(panel, lots, false);
+                })
+                .catch(function() {
+                    panel.innerHTML = '<p class="lot-no-data">Failed to load lots.</p>';
                 });
         }
     });
