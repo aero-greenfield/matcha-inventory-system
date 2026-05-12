@@ -82,9 +82,8 @@ def api_available_lots(material_id):
     if df is None or df.empty:
         return jsonify([])
     return jsonify(json.loads(df.to_json(orient='records')))
-# pd.notna(df) -- creates a boolean mask, TRUE where values are real, FALSE where values are NULL. 
-# every Nan value in df becomes None, which is JSON-serializable and shows up as 
-# null in JS. This way we don't have to worry about NaN values breaking our API 
+# json.loads(df.to_json(orient='records')) converts the DataFrame to a list of dictionaries, 
+# which can be easily consumed by the frontend JavaScript code.
 
 #will return recipe given a name, for frontend of batch creation. needs to know which lots to ask user about. 
 @api_bp.route('/recipe-materials/<path:product_name>')

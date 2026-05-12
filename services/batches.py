@@ -338,17 +338,54 @@ def delete_batch(batch_id, materials_to_reallocate=None, reallocate=False):
                 material_id = mat['material_id']
                 quantity_used = mat['quantity_used']
                 material_name = mat['material_name']
-
+                
+                #get lot_id and lot_number
                 db.execute(cursor, """
-                    UPDATE raw_materials
-                    SET stock_level = stock_level + %s
-                    WHERE material_id = %s
-                """, (quantity_used, material_id))
+                     SELECT bm.lot_id, rml.lot_number
+                     FROM batch_materials bm
+                     JOIN batch_material_lots bml ON bm.lot_id = rml.lot_id
+                     WHERE material_id = %s AND batch_id = %s       
+                            
+                            """, (material_id, batch_id,))
+                lot_row = cursor.fetchone()
+                if not lot_row:
+                    raise ValueError(f"Lot ID for material {material_name} not found in batch materials for batch {batch_id}. Cannot reallocate.")
+                
+                lot_id = lot_row[0] #got lot_id
+                lot_number = lot_row[1] # got lot_number for logging purposes
+                
+                
+                
+                #deduct here
+                db.execute(cursor, """
+                    UPDATE raw_material_lots rml
+                    SET rml.quantity = rml.quantity + %s
+                    WHERE rml.material_id = %s AND rml.lot_id = %s
+                """, (quantity_used, material_id, lot_id))
 
                 materials_added.append({
                     "material": material_name,
-                    "quantity_added": quantity_used
+                    "quantity_added": quantity_used,
+                    "lot_number": lot_number
                     })
+                
+                #CURRENTLY HERE =======================================================================================================
+
+
+
+                            
+
+
+
+
+
+
+
+
+
+
+                #====================================================================================================================================
+
             # delete batch materials after adding to list
             db.execute(cursor, """
                 DELETE
@@ -827,7 +864,7 @@ def get_batch_materials(batch_id):
     """
     Gets all batch materials for specific batch_id
 
-    will return: material name, quantity used, unit, lot_id (not visible to user), lot_number, and batch_id(not visible to user)
+    will return: material name, quantity used, unit, lot_id (not visible to user), lot_number, and material_id(not visible to user)
 
     """
     db = get_db_connection()
