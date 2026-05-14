@@ -85,7 +85,8 @@ def create_database():
                     planned_completion_date TEXT,
                     batch_type TEXT DEFAULT 'standard',
                     planned_lot_selections TEXT,
-                    promotion_failure_reason TEXT
+                    promotion_failure_reason TEXT,
+                    mix_lot_id INTEGER DEFAULT NULL REFERENCES raw_material_lots(lot_id)
 
 
 

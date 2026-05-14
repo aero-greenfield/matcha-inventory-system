@@ -209,8 +209,12 @@ def add_to_batches(product_name, quantity, notes=None, batch_number=None, deduct
             """, (lot_number, mix_material_id, quantity, datetime.now().strftime('%Y-%m-%d'), 'active'))
             if cursor.rowcount == 0:
                 raise ValueError(f"Failed to create lot for mixed batch {batch_number}")
-
-
+            
+            #get lot_id for mixed batch itself. 
+            mix_lot_id = db.get_last_insert_id(cursor)
+            db.execute(cursor, """
+                UPDATE batches SET mix_lot_id = %s WHERE batch_id = %s
+            """, (mix_lot_id, batch_id))
 
         db.commit()
         print(f"Added {quantity} units of {product_name} (Batch {batch_id})")
@@ -313,7 +317,7 @@ def delete_batch(batch_id, materials_to_reallocate=None, reallocate=False):
     try:
         # Get batch info
         db.execute(cursor, """
-            SELECT product_name, quantity, batch_type
+            SELECT product_name, quantity, batch_type, mix_lot_id
             FROM batches
             WHERE batch_id = %s
         """, (batch_id,))
@@ -323,7 +327,7 @@ def delete_batch(batch_id, materials_to_reallocate=None, reallocate=False):
             logging.info(f"Batch ID {batch_id} not found in batches.")
             return None
 
-        product_name, quantity, batch_type = row
+        product_name, quantity, batch_type, mix_lot_id = row
 
 
 
@@ -336,55 +340,43 @@ def delete_batch(batch_id, materials_to_reallocate=None, reallocate=False):
 
             for mat in materials_to_reallocate: #for each material to reallocate, add back to stock level
                 material_id = mat['material_id']
-                quantity_used = mat['quantity_used']
                 material_name = mat['material_name']
-                
-                #get lot_id and lot_number
-                db.execute(cursor, """
-                     SELECT bm.lot_id, rml.lot_number
-                     FROM batch_materials bm
-                     JOIN batch_material_lots bml ON bm.lot_id = rml.lot_id
-                     WHERE material_id = %s AND batch_id = %s       
-                            
-                            """, (material_id, batch_id,))
-                lot_row = cursor.fetchone()
-                if not lot_row:
-                    raise ValueError(f"Lot ID for material {material_name} not found in batch materials for batch {batch_id}. Cannot reallocate.")
-                
-                lot_id = lot_row[0] #got lot_id
-                lot_number = lot_row[1] # got lot_number for logging purposes
-                
-                
-                
-                #deduct here
-                db.execute(cursor, """
-                    UPDATE raw_material_lots rml
-                    SET rml.quantity = rml.quantity + %s
-                    WHERE rml.material_id = %s AND rml.lot_id = %s
-                """, (quantity_used, material_id, lot_id))
 
-                materials_added.append({
-                    "material": material_name,
-                    "quantity_added": quantity_used,
-                    "lot_number": lot_number
+                # get all lot rows for this material in this batch (may span multiple lots)
+                db.execute(cursor, """
+                    SELECT lot_id, quantity_used
+                    FROM batch_materials
+                    WHERE material_id = %s AND batch_id = %s
+                """, (material_id, batch_id))
+                lot_rows = cursor.fetchall()
+
+                if not lot_rows:
+                    raise ValueError(f"No batch_materials record found for material {material_name} in batch {batch_id}. Cannot reallocate.")
+
+                for lot_id, qty_to_restore in lot_rows:
+                    if lot_id is None:
+                        raise ValueError(f"Lot ID for material {material_name} in batch {batch_id} is not tracked. Cannot reallocate.")
+
+                    # look up lot_number for logging
+                    db.execute(cursor, "SELECT lot_number FROM raw_material_lots WHERE lot_id = %s", (lot_id,))
+                    rml_row = cursor.fetchone()
+                    lot_number = rml_row[0] if rml_row else str(lot_id)
+
+
+                    #Reallocate
+                    db.execute(cursor, """
+                        UPDATE raw_material_lots
+                        SET quantity = quantity + %s
+                        WHERE lot_id = %s
+                    """, (qty_to_restore, lot_id))
+
+                    materials_added.append({
+                        "material": material_name,
+                        "quantity_added": qty_to_restore,
+                        "lot_number": lot_number
                     })
                 
-                #CURRENTLY HERE =======================================================================================================
-
-
-
-                            
-
-
-
-
-
-
-
-
-
-
-                #====================================================================================================================================
+                
 
             # delete batch materials after adding to list
             db.execute(cursor, """
@@ -402,12 +394,12 @@ def delete_batch(batch_id, materials_to_reallocate=None, reallocate=False):
             if cursor.rowcount == 0:
                 raise ValueError(f"batch ID {batch_id} not found — nothing deleted")
 
-            if batch_type == 'mix':
+            if batch_type == 'mix' and mix_lot_id:
                 db.execute(cursor, """
-                    UPDATE raw_materials
-                    SET stock_level = stock_level - %s
-                    WHERE LOWER(name) = LOWER(%s) AND is_housemade = TRUE
-                """, (quantity, product_name))
+                    UPDATE raw_material_lots
+                    SET quantity = 0, status = 'inactive'
+                    WHERE lot_id = %s
+                """, (mix_lot_id,))
 
             db.commit()
 
@@ -430,12 +422,12 @@ def delete_batch(batch_id, materials_to_reallocate=None, reallocate=False):
             if cursor.rowcount == 0:
                 raise ValueError(f"batch ID {batch_id} not found — nothing deleted")
 
-            if batch_type == 'mix':
+            if batch_type == 'mix' and mix_lot_id:
                 db.execute(cursor, """
-                    UPDATE raw_materials
-                    SET stock_level = stock_level - %s
-                    WHERE LOWER(name) = LOWER(%s) AND is_housemade = TRUE
-                """, (quantity, product_name))
+                    UPDATE raw_material_lots
+                    SET quantity = 0, status = 'inactive'
+                    WHERE lot_id = %s
+                """, (mix_lot_id,))
 
             db.commit()
             logging.info(f"Successfully deleted batch {batch_id}.")
@@ -464,7 +456,7 @@ def get_all_batches_with_id():
     try:
         query = """
 
-        SELECT batch_id, product_name, quantity, date_completed, status, notes, date_shipped, expiration_date, planned_completion_date, batch_type
+        SELECT batch_id, batch_number, product_name, quantity, date_completed, status, notes, date_shipped, expiration_date, planned_completion_date, batch_type
         FROM batches
         ORDER BY date_completed DESC
         """

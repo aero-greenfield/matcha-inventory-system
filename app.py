@@ -1163,7 +1163,7 @@ def edit_batch(batch_id):
     batch_materials_rows = get_batch_materials(batch_id) # get materials used in this batch, to show in the edit page and allow adjustments.
     batch_materials = [] #get materials df and convert to list of dicts for display in edit batch page.
     for r in batch_materials_rows:
-        batch_materials.append({'material_name': r[0], 'quantity_used': r[1], 'material_id': r[3]}) # convert materials to a format for display in the edit batch page.
+        batch_materials.append({'material_name': r[0], 'quantity_used': r[1], 'lot_id': r[3], 'lot_number': r[4], 'material_id': r[5]}) # convert materials to a format for display in the edit batch page.
     
     if not batch:
         return render_template('error.html', # if batch not found, show error page.

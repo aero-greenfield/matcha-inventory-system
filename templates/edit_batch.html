@@ -212,10 +212,10 @@
             <div style="display:flex;flex-direction:column;gap:6px;">
                 {% for m in batch_materials %}
                 <div class="checkbox-group">
-                    <input type="checkbox" name="reallocate_material" value="{{ m.material_id }}" id="mat-{{ m.material_id }}">
+                    <input type="checkbox" name="reallocate_material" value="{{ m.material_id }}" id="mat-{{ m.lot_id }}">
                     <input type="hidden" name="qty_{{ m.material_id }}" value="{{ m.quantity_used }}">
                     <input type="hidden" name="matname_{{ m.material_id }}" value="{{ m.material_name }}">
-                    <label for="mat-{{ m.material_id }}">{{ m.material_name }} <span style="color:var(--text-muted);font-size:12px;">({{ m.quantity_used }} used)</span></label>
+                    <label for="mat-{{ m.lot_id }}">{{ m.material_name }} <span style="color:var(--text-muted);font-size:12px;">({{ m.quantity_used }} used — Lot: {{ m.lot_number }})</span></label>
                 </div>
                 {% endfor %}
             </div>
