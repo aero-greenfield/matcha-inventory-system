@@ -163,3 +163,84 @@ def receive_lot(material_id, lot_number, quantity, received_date, expiry_date=No
 
     finally:
         db.close()
+
+
+def get_all_lots(material_id=None):
+    """
+    returns all lots, for given material_id if provided, otherwise all materials. 
+    
+    returns:
+    lot_id, lot_number, material_name, material_id, quantity, received_date, expiration, 
+    location, supplier, cost_per_unit, status
+    """
+
+    db = get_db_connection()
+    cursor = db.cursor()
+
+
+
+    if material_id:
+
+        db.execute(cursor, """
+        SELECT rml.lot_id, rml.lot_number, rm.name AS material_name, rm.material_id,
+        rml.quantity, rml.received_date, rml.expiration_date,
+        rml.location, rml.supplier, rml.cost_per_unit, rml.status
+        FROM raw_material_lots rml
+        JOIN raw_materials rm ON rml.material_id = rm.material_id
+        WHERE rml.material_id = %s 
+        ORDER BY rm.name ASC, rml.received_date ASC           
+                
+                """, (material_id,))
+        
+        result = cursor.fetchall()
+    else:
+        db.execute(cursor, """
+        SELECT rml.lot_id, rml.lot_number, rm.name AS material_name, rm.material_id,
+        rml.quantity, rml.received_date, rml.expiration_date,
+        rml.location, rml.supplier, rml.cost_per_unit, rml.status
+        FROM raw_material_lots rml
+        JOIN raw_materials rm ON rml.material_id = rm.material_id
+        ORDER BY rm.name ASC, rml.received_date ASC           
+                
+                """)
+        result = cursor.fetchall()
+    
+    
+    return result
+
+def get_lot_by_id(lot_id):
+
+    """
+    
+    returns:
+    every lot column, material name, material is housemad boolean
+    
+    
+    """
+    pass
+
+
+def update_lot(lot_id, lot_number=None, quantity=None, received_date=None, expiration_date=None, location=None, supplier=None, cost_per_unit=None, status=None, is_housemade=None):
+    """
+    
+    lets user update any lot information. 
+
+
+    If is_housemade is True 
+    (or lot_number starts with MIX-BATCH-), skip updating quantity (guard in service layer).
+
+
+    returns updated lot info. 
+    
+    """
+
+    pass
+
+
+
+
+
+
+
+
+
