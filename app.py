@@ -43,6 +43,8 @@ from services.materials import (
     delete_raw_material, get_mix_stock, get_material_id,
 )
 from services.lots import (
+    get_all_lots,
+    get_lot_by_id,
     receive_lot as inventory_receive_lot,
     get_lots_for_material,
 )
@@ -1735,6 +1737,69 @@ def delete_recipe_route(recipe_id):
     logging.info(f"Recipe deleted: recipe_id={recipe_id}")
     log_action('recipe_deleted', f"recipe_id={recipe_id}")
     return redirect(url_for('manage_recipes'))
+
+
+
+
+
+#==================
+#LOT PAGES
+#==================
+
+@app.route('/manage-lots') # Page to view all lots with edit/delete options (view only)
+@requires_auth
+def manage_lots():
+    """
+    This is a page to view all lots with edit/delete options.
+    simple GET, just viewing, but with buttons. 
+    """
+    df = get_all_lots()
+    lots = df.to_dict(orient='records') if (df is not None and not df.empty) else [] # convert to HTML format like usual. 
+    return render_template("manage_lots.html", # load html template for this page.
+        lots=lots,
+        count=len(lots),
+        back_link=True,
+        back_link_url="/",
+        back_link_label="Back to Home"
+)
+
+
+
+
+
+@app.route('/edit-lot/<int:lot_id>') # dynamic URL for editing a specific lot, identified by lot_id. (view only)
+@requires_auth
+def edit_lot(lot_id):
+    """
+    view lot details page, with form to edit lot details. 
+    this is from manage lots page, 
+    where each lot has an edit button that takes you to this page with the lot_id in the URL. 
+    this page will show lot details, but no editing allowed for now since lot management is more complex and we want to avoid accidental stock changes. 
+
+    GET page route
+    """
+
+    df = get_lot_by_id(lot_id) #get lot details for the lot being viewed
+
+    
+    
+    if not df:
+        return render_template('error.html',
+            title="Lot Not Found",
+            message="The lot you requested could not be found.",
+            back_link=True, back_link_url="/manage-lots", back_link_label="Back to Manage Lots"
+        ), 404
+    
+    lot = df.to_dict(orient='records') if (df is not None and not df.empty) else [] # convert to dictionary for HTML display, like usual.
+
+    return render_template("edit_lot.html",
+        lot=lot,
+        back_link=True,
+        back_link_url="/manage-lots",
+        back_link_label="Back to Manage Lots"
+    )
+
+
 
 
 

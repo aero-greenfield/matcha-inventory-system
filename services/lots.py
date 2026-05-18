@@ -177,36 +177,47 @@ def get_all_lots(material_id=None):
     db = get_db_connection()
     cursor = db.cursor()
 
+    try:
 
+        if material_id:
 
-    if material_id:
-
-        db.execute(cursor, """
-        SELECT rml.lot_id, rml.lot_number, rm.name AS material_name, rm.material_id,
-        rml.quantity, rml.received_date, rml.expiration_date,
-        rml.location, rml.supplier, rml.cost_per_unit, rml.status
-        FROM raw_material_lots rml
-        JOIN raw_materials rm ON rml.material_id = rm.material_id
-        WHERE rml.material_id = %s 
-        ORDER BY rm.name ASC, rml.received_date ASC           
-                
-                """, (material_id,))
-        
-        result = cursor.fetchall()
-    else:
-        db.execute(cursor, """
-        SELECT rml.lot_id, rml.lot_number, rm.name AS material_name, rm.material_id,
-        rml.quantity, rml.received_date, rml.expiration_date,
-        rml.location, rml.supplier, rml.cost_per_unit, rml.status
-        FROM raw_material_lots rml
-        JOIN raw_materials rm ON rml.material_id = rm.material_id
-        ORDER BY rm.name ASC, rml.received_date ASC           
-                
-                """)
-        result = cursor.fetchall()
+            db.execute(cursor, """
+            SELECT rml.lot_id, rml.lot_number, rm.name AS material_name, rm.material_id,
+            rml.quantity, rml.received_date, rml.expiration_date,
+            rml.location, rml.supplier, rml.cost_per_unit, rml.status
+            FROM raw_material_lots rml
+            JOIN raw_materials rm ON rml.material_id = rm.material_id
+            WHERE rml.material_id = %s 
+            ORDER BY rm.name ASC, rml.received_date ASC           
+                    
+                    """, (material_id,))
+            
+            result = cursor.fetchall()
+            columns = ['lot_id', 'lot_number', 'material_name', 'material_id', 'quantity', 'received_date', 'expiration_date', 'location', 'supplier', 'cost_per_unit', 'status']
+            df = pd.DataFrame(result, columns=columns)
+        else:
+            db.execute(cursor, """
+            SELECT rml.lot_id, rml.lot_number, rm.name AS material_name, rm.material_id,
+            rml.quantity, rml.received_date, rml.expiration_date,
+            rml.location, rml.supplier, rml.cost_per_unit, rml.status
+            FROM raw_material_lots rml
+            JOIN raw_materials rm ON rml.material_id = rm.material_id
+            ORDER BY rm.name ASC, rml.received_date ASC           
+                    
+                    """)
+            result = cursor.fetchall()
+            columns = ['lot_id', 'lot_number', 'material_name', 'material_id', 'quantity', 'received_date', 'expiration_date', 'location', 'supplier', 'cost_per_unit', 'status']
+            df = pd.DataFrame(result, columns=columns)
+            
     
+    except Exception as e:
+        logging.error(f"Error fetching all lots (with or without material_id {material_id}): {e}")
+        return None
+
+    finally:
+        db.close()
     
-    return result
+    return df
 
 def get_lot_by_id(lot_id):
 
@@ -217,7 +228,35 @@ def get_lot_by_id(lot_id):
     
     
     """
-    pass
+    db = get_db_connection()
+    cursor = db.cursor()
+
+    try:
+        db.execute(cursor, """
+        SELECT rml.*, rm.name AS material_name, rm.is_housemade
+        FROM raw_material_lots rml
+        JOIN raw_materials rm ON rml.material_id = rm.material_id
+        WHERE rml.lot_id = %s
+        """, (lot_id,))
+        result = cursor.fetchone()
+        if result is None:
+            raise ValueError(f"Lot with ID {lot_id} not found.")
+        
+        columns = ['lot_id', 'material_id', 'lot_number', 'quantity', 'received_date', 'expiration_date', 'location', 'supplier', 'cost_per_unit', 'status', 'material_name', 'is_housemade']
+        df = pd.DataFrame([result], columns=columns) # create a dataframe with a single row. 
+
+        return df
+
+    except ValueError as e:
+        logging.error(f"Value error fetching lot by id {lot_id}. Error: {e}")
+        return None
+
+    except Exception as e:
+        logging.error(f"Error fetching lot by id {lot_id}. Error: {e}")
+        return None
+
+    finally:
+        db.close()
 
 
 def update_lot(lot_id, lot_number=None, quantity=None, received_date=None, expiration_date=None, location=None, supplier=None, cost_per_unit=None, status=None, is_housemade=None):
@@ -230,11 +269,64 @@ def update_lot(lot_id, lot_number=None, quantity=None, received_date=None, expir
     (or lot_number starts with MIX-BATCH-), skip updating quantity (guard in service layer).
 
 
-    returns updated lot info. 
+    returns True if successful, False otherwise.
     
     """
 
-    pass
+    db = get_db_connection()
+    cursor = db.cursor()
+
+    
+
+    field = {}
+    # for each value provided, add to field dict. 
+    for key, value in { 
+        'lot_number': lot_number, 
+        'quantity': quantity, 
+        'received_date': received_date, 
+        'expiration_date': expiration_date, 
+        'location': location, 
+        'supplier': supplier, 
+        'cost_per_unit': cost_per_unit, 
+        'status': status,
+        
+    }.items():
+        if value is not None:
+            field[key] = value
+
+    if not field:
+        raise ValueError("No fields provided for update.")
+    
+    #cant update quantity for housemade lots, this is done in batch field. 
+    if (is_housemade or (lot_number and lot_number.startswith("MIX-BATCH-"))) and 'quantity' in field:
+        logging.warning(f"Attempted to update quantity for housemade lot {lot_id}. This is not allowed. Quantity will not be updated.")
+        del field['quantity']
+    
+    try:
+        for key in field: #for each key and its value, update the lot.
+            db.execute(cursor,f"""
+            UPDATE raw_material_lots
+            SET {key} = %s
+            WHERE lot_id = %s
+            """, (field[key], lot_id,))
+
+        if cursor.rowcount == 0:
+                raise ValueError(f"lot ID {lot_id} not found — nothing updated")
+        db.commit()
+        logging.info(f"Updated lot with id:{lot_id}")
+
+        return True
+    
+    except ValueError as e:
+        logging.error(f"Value error updating lot with id {lot_id}. Error: {e}")
+        db.rollback()
+        return False
+    
+    finally:
+        db.close()
+    
+
+        
 
 
 
