@@ -1,0 +1,83 @@
+{% extends "base.html" %}
+
+{% block title %}Edit Lot {{ lot[0].lot_number }}{% endblock %}
+
+{% block content %}
+
+<div class="page-header">
+    <div>
+        <h1>Edit Lot: {{ lot[0].lot_number }}</h1>
+        <p class="page-subtitle">{{ lot[0].material_name }}</p>
+    </div>
+    <a href="/manage-lots" class="btn btn-secondary">&#8592; Back</a>
+</div>
+
+{% if request.args.get('msg') %}<div class="alert alert-success">{{ request.args.get('msg') }}</div>{% endif %}
+{% if request.args.get('err') %}<div class="alert alert-error">{{ request.args.get('err') }}</div>{% endif %}
+
+<div class="section-card">
+    <h2>Edit Details</h2>
+    <form method="POST" action="/edit-lot/{{ lot[0].lot_id }}/update" autocomplete="off">
+        <div class="form-row">
+            <div class="form-group">
+                <label>Lot Number</label>
+                <input type="text" name="lot_number" value="{{ lot[0].lot_number }}">
+            </div>
+            {% if lot[0].is_housemade %}
+            <div class="form-group">
+                <label>Quantity</label>
+                <input type="number" step="0.01" name="quantity" disabled placeholder="Managed by batch system">
+                <small style="color:var(--text-muted);font-size:12px;">Quantity is managed automatically for housemade materials.</small>
+            </div>
+            {% else %}
+            <div class="form-group">
+                <label>Quantity</label>
+                <input type="number" step="0.01" name="quantity" value="{{ lot[0].quantity }}" min="0.01">
+            </div>
+            {% endif %}
+        </div>
+        <div class="form-row">
+            <div class="form-group">
+                <label>Expiration Date</label>
+                <input type="date" name="expiration_date" value="{{ lot[0].expiration_date or '' }}">
+            </div>
+            <div class="form-group">
+                <label>Location</label>
+                <input type="text" name="location" value="{{ lot[0].location or '' }}">
+            </div>
+        </div>
+        <div class="form-row">
+            <div class="form-group">
+                <label>Supplier</label>
+                <input type="text" name="supplier" value="{{ lot[0].supplier or '' }}">
+            </div>
+            <div class="form-group">
+                <label>Cost per Unit</label>
+                <input type="number" step="0.01" name="cost_per_unit" value="{{ lot[0].cost_per_unit or '' }}" min="0">
+            </div>
+        </div>
+        <button type="submit" class="btn btn-primary">Save Changes</button>
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    </form>
+</div>
+
+<div class="section-card danger-card">
+    <h2>Delete Lot</h2>
+    <p style="color:var(--text-muted);font-size:13px;margin-bottom:16px;">Permanently removes lot <strong>{{ lot[0].lot_number }}</strong> from inventory. This cannot be undone.</p>
+    {% if lot_batches %}
+    <div class="alert alert-warning" style="margin-bottom:16px;">
+        <strong>Warning:</strong> This lot is tracked in {{ lot_batches | length }} batch{{ 'es' if lot_batches | length > 1 else '' }}:
+        {% for b in lot_batches %}
+            <strong>{{ b.batch_name }}</strong>{% if not loop.last %}, {% endif %}
+        {% endfor %}.
+        Deleting it will remove the lot reference from those batches.
+    </div>
+    {% endif %}
+    <form method="POST" action="/edit-lot/{{ lot[0].lot_id }}/delete" autocomplete="off"
+          onsubmit="return confirm('{% if lot_batches %}This lot is tracked in {{ lot_batches | length }} batch{{ 'es' if lot_batches | length > 1 else '' }}. {% endif %}Delete lot {{ lot[0].lot_number }}? This cannot be undone.')">
+        <button type="submit" class="btn btn-danger">Delete Lot</button>
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    </form>
+</div>
+
+{% endblock %}

@@ -47,6 +47,9 @@ from services.lots import (
     get_lot_by_id,
     receive_lot as inventory_receive_lot,
     get_lots_for_material,
+    update_lot,
+    delete_lot,
+    get_batches_for_lot,
 )
 from services.recipes import (
     add_recipe, get_recipe, get_all_recipes, get_all_recipes_with_id,
@@ -602,7 +605,7 @@ def manage_materials():
     This is a page to view all materials with edit/delete options.
     simple GET, just viewing, but with buttons. 
     """
-    df = get_all_materials_with_id()
+    df = get_all_materials()
     materials = df.to_dict(orient='records') if (df is not None and not df.empty) else [] # convert to HTML format like usual. 
     return render_template("manage_materials.html", # load html template for this page.
         materials=materials,
@@ -1758,9 +1761,11 @@ def edit_lot(lot_id):
         ), 404
     
     lot = df.to_dict(orient='records') if (df is not None and not df.empty) else [] # convert to dictionary for HTML display, like usual.
+    lot_batches = get_batches_for_lot(lot_id)
 
     return render_template("edit_lot.html",
         lot=lot,
+        lot_batches=lot_batches,
         back_link=True,
         back_link_url="/manage-lots",
         back_link_label="Back to Manage Lots"
@@ -1778,24 +1783,11 @@ def update_lot_route(lot_id):
     status. 
 
     """
-
+    
     try:
 
-        lot_number_raw = request.form.get('lot_number')
-        lot_number = lot_number_raw.strip() if lot_number_raw else None
-
-        quantity_str = request.form.get('quantity').strip()
-        quantity = float(quantity_str) if quantity_str else None
-
-        expiration_date_raw = request.form.get('expiration_date')
-        expiration_date = expiration_date_raw.strip() if expiration_date_raw else None
-
-        location_raw = request.form.get('location')
-        location = location_raw.strip() if location_raw else None
 
 
-        cost_per_unit_str = request.form. get('cost_per_unit').strip()
-        cost_per_unit = float(cost_per_unit_str) if cost_per_unit_str else None
 
         #see if quantity field needs to be removed
         lot_df = get_lot_by_id(lot_id)
@@ -1806,25 +1798,112 @@ def update_lot_route(lot_id):
                 back_link=True, back_link_url=f"/edit-lot/{lot_id}", back_link_label="Go back to Edit Lot"
             ), 404
         
+        
+
+
+        lot_number_raw = request.form.get('lot_number')
+        lot_number = lot_number_raw.strip() if lot_number_raw else None
+
+        quantity_str = request.form.get('quantity', '').strip()
+        quantity = float(quantity_str) if quantity_str else None
+
+        expiration_date_raw = request.form.get('expiration_date')
+        expiration_date = expiration_date_raw.strip() if expiration_date_raw else None
+
+        location_raw = request.form.get('location')
+        location = location_raw.strip() if location_raw else None
+
+        supplier_raw = request.form.get('supplier')
+        supplier = supplier_raw.strip() if supplier_raw else None
+
+
+        cost_per_unit_str = request.form.get('cost_per_unit', '').strip()
+        cost_per_unit = float(cost_per_unit_str) if cost_per_unit_str else None
+
+        
         if lot_df['is_housemade'].iloc[0]: # if this is a housemade material,
             quantity = None
-
         
         #validate float inputs
-        if quantity <= 0:
-            raise ValueError("Quantity must be greater than 0.")
+        if quantity is not None and quantity <= 0:
+            return render_template('error.html',
+                title="Invalid Input",
+                message="Quantity must be greater than zero.",
+                back_link=True, back_link_url=f"/edit-lot/{lot_id}", back_link_label="Go back to Edit Lot"
+            ), 400
+        
+        if cost_per_unit is not None and cost_per_unit < 0:
+            return render_template('error.html',
+                title="Invalid Input",
+                message="Cost per unit cannot be negative.",
+                back_link=True, back_link_url=f"/edit-lot/{lot_id}", back_link_label="Go back to Edit Lot"
+            ), 400
+        
+        #validate date input
+        if expiration_date:
+            try:
+                datetime.strptime(expiration_date, '%Y-%m-%d')
+            except ValueError:
+                return render_template('error.html',
+                    title="Invalid Input",
+                    message="Invalid expiration date format. Use YYYY-MM-DD.",
+                    back_link=True, back_link_url=f"/edit-lot/{lot_id}", back_link_label="Go back to Edit Lot"
+                ), 400
             
+        result = update_lot(lot_id, lot_number=lot_number, quantity=quantity, expiration_date=expiration_date, location=location, cost_per_unit=cost_per_unit, supplier=supplier)
+
+        
+        
 
 
+        if result:
+            logging.info(f"Lot updated: lot_id={lot_id}, lot_number={lot_number}, quantity={quantity}")
+            log_action('lot_updated', f"lot_id={lot_id}, lot_number={lot_number}, quantity={quantity}")
+            return redirect(url_for('edit_lot', lot_id=lot_id, msg='Lot details updated successfully'))
+        
+        else:
+            return redirect(url_for('edit_lot', lot_id=lot_id, err='Failed to update lot details'))
 
+
+    
     except ValueError as e:
+            logging.error(f"update_lot_route: {e}", exc_info=True)
+            return render_template('error.html',
+                title="Invalid Input",
+                message="Please ensure all fields are filled out correctly.",
+                back_link=True, back_link_url=f"/edit-lot/{lot_id}", back_link_label="Go back to Edit Lot"
+            ), 400
         
 
         
+    
+    
 
-    pass
 
 
+
+@app.route('/edit-lot/<int:lot_id>/delete', methods=['POST'])
+@requires_auth
+def delete_lot_route(lot_id):
+    """
+    POST route to permanently delete a lot.
+    """
+    lot_df = get_lot_by_id(lot_id)
+    if lot_df is None or lot_df.empty:
+        return render_template('error.html',
+            title="Lot Not Found",
+            message="The lot you are trying to delete could not be found.",
+            back_link=True, back_link_url="/manage-lots", back_link_label="Back to Manage Lots"
+        ), 404
+
+    lot_number = lot_df['lot_number'].iloc[0]
+    result = delete_lot(lot_id)
+
+    if result:
+        log_action('lot_deleted', f"lot_id={lot_id}, lot_number={lot_number}")
+        return redirect(url_for('manage_lots', msg='Lot deleted successfully'))
+    else:
+        return redirect(url_for('edit_lot', lot_id=lot_id, err='Failed to delete lot'))
 
 
 # ========================

@@ -202,9 +202,9 @@ def get_all_lots(material_id=None):
             rml.location, rml.supplier, rml.cost_per_unit, rml.status
             FROM raw_material_lots rml
             JOIN raw_materials rm ON rml.material_id = rm.material_id
-            ORDER BY rm.name ASC, rml.received_date ASC           
-                    
-                    """)
+            ORDER BY rm.name ASC, rml.received_date ASC
+
+                    """, ())
             result = cursor.fetchall()
             columns = ['lot_id', 'lot_number', 'material_name', 'material_id', 'quantity', 'received_date', 'expiration_date', 'location', 'supplier', 'cost_per_unit', 'status']
             df = pd.DataFrame(result, columns=columns)
@@ -321,16 +321,57 @@ def update_lot(lot_id, lot_number=None, quantity=None, received_date=None, expir
         logging.error(f"Value error updating lot with id {lot_id}. Error: {e}")
         db.rollback()
         return False
-    
+
     finally:
         db.close()
-    
-
-        
 
 
+def get_batches_for_lot(lot_id):
+    """
+    Returns all batches that reference this lot in batch_materials.
+    Used to warn the user before deleting a lot that is tracked in a batch.
+    Returns a list of dicts with batch_id and batch_name, or an empty list.
+    """
+    db = get_db_connection()
+    cursor = db.cursor()
+    try:
+        db.execute(cursor, """
+        SELECT DISTINCT b.batch_id, b.batch_name
+        FROM batch_materials bm
+        JOIN batches b ON bm.batch_id = b.batch_id
+        WHERE bm.lot_id = %s
+        """, (lot_id,))
+        rows = cursor.fetchall()
+        cols = [d[0] for d in cursor.description]
+        return [dict(zip(cols, row)) for row in rows]
+    except Exception as e:
+        logging.error(f"Error fetching batches for lot {lot_id}: {e}")
+        return []
+    finally:
+        db.close()
 
 
+def delete_lot(lot_id):
+    """
+    Permanently deletes a lot from raw_material_lots.
+    Returns True on success, False on failure.
+    """
+    db = get_db_connection()
+    cursor = db.cursor()
+    try:
+        db.execute(cursor, """
+        DELETE FROM raw_material_lots
+        WHERE lot_id = %s
+        """, (lot_id,))
+        db.commit()
+        logging.info(f"Deleted lot with id:{lot_id}")
+        return True
+    except Exception as e:
+        logging.error(f"Error deleting lot with id {lot_id}. Error: {e}")
+        db.rollback()
+        return False
+    finally:
+        db.close()
 
 
 

@@ -1,0 +1,61 @@
+{% extends "base.html" %}
+
+{% block title %}Manage Lots{% endblock %}
+
+{% block content %}
+
+<div class="page-header">
+    <div>
+        <h1>Manage Lots</h1>
+        <p class="page-subtitle">Edit or remove lots from inventory</p>
+    </div>
+    <a href="/receive-lot" class="btn btn-primary">+ Receive Lot</a>
+</div>
+
+{% if request.args.get('msg') %}
+<div class="alert alert-success">{{ request.args.get('msg') }}</div>
+{% endif %}
+{% if request.args.get('err') %}
+<div class="alert alert-error">{{ request.args.get('err') }}</div>
+{% endif %}
+
+{% if lots %}
+<div class="table-container">
+    <table class="data-table">
+        <thead>
+            <tr>
+                <th>Lot #</th>
+                <th>Material</th>
+                <th>Qty Remaining</th>
+                <th>Received Date</th>
+                <th>Expiry Date</th>
+                <th>Status</th>
+                <th></th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for row in lots %}
+            <tr>
+                <td><strong>{{ row.lot_number }}</strong></td>
+                <td>{{ row.material_name }}</td>
+                <td>{{ row.quantity }}</td>
+                <td>{{ row.received_date or '' }}</td>
+                <td>{{ row.expiration_date or '—' }}</td>
+                <td>
+                    <span class="badge {% if row.status == 'active' %}badge-in-stock{% else %}badge-out{% endif %}">
+                        {{ row.status }}
+                    </span>
+                </td>
+                <td><a href="/edit-lot/{{ row.lot_id | int }}" class="btn btn-secondary" style="padding:5px 12px;font-size:12px;">Edit</a></td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+</div>
+{% else %}
+<div class="table-container" style="padding:40px 24px;text-align:center;color:var(--text-muted);">
+    <p>No lots found. <a href="/receive-lot" style="color:var(--accent);">Receive your first lot</a></p>
+</div>
+{% endif %}
+
+{% endblock %}
