@@ -26,8 +26,6 @@
                 <th>Stock Level</th>
                 <th>Unit</th>
                 <th>Reorder Level</th>
-                <th>Cost Per Unit</th>
-                <th>Supplier</th>
                 <th>Status</th>
             </tr>
         </thead>
@@ -39,8 +37,6 @@
                 <td>{{ row.stock_level }}</td>
                 <td>{{ row.unit }}</td>
                 <td>{{ row.reorder_level }}</td>
-                <td>{{ row.cost_per_unit }}</td>
-                <td>{{ row.supplier }}</td>
                 <td>
                     {% if row.stock_level == 0 %}
                         <span class="badge badge-out">Out of Stock</span>

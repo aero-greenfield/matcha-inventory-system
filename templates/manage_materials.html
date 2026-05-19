@@ -26,8 +26,6 @@
                 <th>Stock</th>
                 <th>Unit</th>
                 <th>Reorder Level</th>
-                <th>Cost / Unit</th>
-                <th>Supplier</th>
                 <th></th>
             </tr>
         </thead>
@@ -39,8 +37,6 @@
                 <td>{{ row.stock_level }}</td>
                 <td>{{ row.unit or '' }}</td>
                 <td>{{ row.reorder_level or '' }}</td>
-                <td>{{ row.cost_per_unit or '' }}</td>
-                <td>{{ row.supplier or '' }}</td>
                 <td><a href="/edit-material/{{ row.material_id | int }}" class="btn btn-secondary" style="padding:5px 12px;font-size:12px;">Edit</a></td>
             </tr>
             {% endfor %}

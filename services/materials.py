@@ -43,7 +43,7 @@ def get_low_stock_materials():
 
     query = """
 
-    SELECT name, category, stock_level, reorder_level, unit, cost_per_unit, supplier
+    SELECT name, category, stock_level, reorder_level, unit
     FROM raw_materials
     WHERE stock_level <= reorder_level
     ORDER BY (stock_level / NULLIF(reorder_level, 0))
@@ -91,7 +91,7 @@ def get_material_by_id(material_id):
 
     try:
         db.execute(cursor, """
-        SELECT material_id, name, category, stock_level, unit, reorder_level, cost_per_unit, supplier, is_housemade
+        SELECT material_id, name, category, stock_level, unit, reorder_level, is_housemade
         FROM raw_materials
         WHERE material_id = %s
                        """,(material_id,))
@@ -106,7 +106,7 @@ def get_material_by_id(material_id):
         db.close()
 
 
-def update_raw_material(material_id, name=None, category=None, stock_level=None, unit=None, reorder_level=None, cost_per_unit=None, supplier=None):
+def update_raw_material(material_id, name=None, category=None, stock_level=None, unit=None, reorder_level=None):
     """changes raw material info given id and which parameters are not None (ONLY CHANGES details, not stock level)"""
 
     db = get_db_connection()
@@ -115,7 +115,7 @@ def update_raw_material(material_id, name=None, category=None, stock_level=None,
     field = {} # dictionary to hold fields to update, only the ones that are not None
 
     #iterate through params, if not None, add to field dict to update
-    for key, value in [("name", name), ("category", category), ("stock_level", stock_level), ("unit", unit), ("reorder_level", reorder_level), ("cost_per_unit", cost_per_unit), ("supplier", supplier)]:
+    for key, value in [("name", name), ("category", category), ("stock_level", stock_level), ("unit", unit), ("reorder_level", reorder_level)]:
         if value is not None:
             field[key] = value
 
@@ -236,7 +236,7 @@ def get_all_materials_with_id():
     try:
 
         query = """
-        SELECT material_id, name, category, stock_level, unit, reorder_level, cost_per_unit, supplier, is_housemade
+        SELECT material_id, name, category, stock_level, unit, reorder_level, is_housemade
         FROM raw_materials
         ORDER BY category, name
         """

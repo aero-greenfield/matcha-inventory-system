@@ -113,7 +113,7 @@ def get_material_stock_from_lots(material_id):
 
 #Write functions:
 
-def receive_lot(material_id, lot_number, quantity, received_date, expiry_date=None, location=None, supplier=None):
+def receive_lot(material_id, lot_number, quantity, received_date, expiry_date=None, location=None, supplier=None, cost_per_unit=None):
     """
     adds new row into raw_material_lots
 
@@ -134,9 +134,9 @@ def receive_lot(material_id, lot_number, quantity, received_date, expiry_date=No
 
 
         db.execute(cursor, """
-        INSERT INTO raw_material_lots (material_id, lot_number, quantity, received_date, expiration_date, location, supplier)
-        VALUES(%s, %s, %s, %s, %s, %s, %s)
-                   """,(material_id, lot_number, quantity, received_date, expiry_date, location, supplier))
+        INSERT INTO raw_material_lots (material_id, lot_number, quantity, received_date, expiration_date, location, supplier, cost_per_unit)
+        VALUES(%s, %s, %s, %s, %s, %s, %s, %s)
+                   """,(material_id, lot_number, quantity, received_date, expiry_date, location, supplier, cost_per_unit))
 
 
         if cursor.rowcount == 0:
@@ -327,6 +327,9 @@ def update_lot(lot_id, lot_number=None, quantity=None, received_date=None, expir
     
 
         
+
+
+
 
 
 

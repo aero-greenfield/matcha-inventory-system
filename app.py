@@ -303,7 +303,7 @@ def receive_lot():
     adds row to raw_material_lots table, 
 
     inputs needed: (when calling receive_lot)
-    material_id, lot_number, quantity, received_date, expiry_date=None, location=None, supplier=None):
+    material_id, lot_number, quantity, received_date, expiry_date=None, location=None, supplier=None, cost_per_unit=None):
 
     """
 
@@ -313,9 +313,10 @@ def receive_lot():
         lot_number    = request.form.get('lot_number', '').strip()
         quantity_str  = request.form.get('quantity', '').strip()
         received_date = request.form.get('received_date', '').strip()
-        expiry_date   = request.form.get('expiry_date', '').strip() or None
-        location      = request.form.get('location', '').strip() or None
-        supplier      = request.form.get('supplier', '').strip() or None
+        expiry_date       = request.form.get('expiry_date', '').strip() or None
+        location          = request.form.get('location', '').strip() or None
+        supplier          = request.form.get('supplier', '').strip() or None
+        cost_per_unit_str = request.form.get('cost_per_unit', '').strip()
 
 
         # for the required fields, check if they are blank 
@@ -344,25 +345,31 @@ def receive_lot():
                 expiry_date=expiry_date or '',
                 location=location or '',
                 supplier=supplier or '',
+                cost_per_unit_lot=cost_per_unit_str,
             ))
 
             #user will fill out needed on this route, 
             #then it will be directed back here. 
 
-        #validate non string inputs. 
+        #validate non string inputs.
         try:
             quantity = float(quantity_str)
+            cost_per_unit = float(cost_per_unit_str) if cost_per_unit_str else None
         except ValueError:
-            return render_template('error.html', title="Invalid Input", message="Quantity must be a valid number.",
+            return render_template('error.html', title="Invalid Input", message="Quantity and Cost per Unit must be valid numbers.",
                 back_link=True, back_link_url="/receive-lot", back_link_label="Go back"), 400
 
         #quant cant be negative
         if quantity <= 0:
             return render_template('error.html', title="Invalid Input", message="Quantity must be greater than 0.",
                 back_link=True, back_link_url="/receive-lot", back_link_label="Go back"), 400
-        
+
+        if cost_per_unit is not None and cost_per_unit <= 0:
+            return render_template('error.html', title="Invalid Input", message="Cost per Unit must be greater than 0.",
+                back_link=True, back_link_url="/receive-lot", back_link_label="Go back"), 400
+
         #call function, add to lots
-        lot_id = inventory_receive_lot(material_id, lot_number, quantity, received_date, expiry_date, location, supplier)
+        lot_id = inventory_receive_lot(material_id, lot_number, quantity, received_date, expiry_date, location, supplier, cost_per_unit)
         
         if lot_id is None: # if failed to add lot, return error page.
             return render_template('error.html', title="Error", message="Failed to add lot. Check logs for details.",
@@ -383,6 +390,7 @@ def receive_lot():
         expiry_date=request.args.get('expiry_date', ''),
         location=request.args.get('location', ''),
         supplier=request.args.get('supplier', ''),
+        cost_per_unit=request.args.get('cost_per_unit', ''),
     )
 
 
@@ -413,19 +421,17 @@ def add_material_route():
         - etc.
 
         Note: HTML form sends everything as strings, so we convert:
-        - float() for decimal numbers (stock_level, cost_per_unit)
+        - float() for decimal numbers (stock_level, reorder_level)
         - int() for whole numbers (if needed)
         """
         #input string parsing
         name = request.form.get('name') # Get value from <input name="name"> handled in add_material.html
         category=request.form.get('category')
         unit=request.form.get('unit')
-        supplier=request.form.get('supplier')
 
         name = name.strip() if name else None
         category = category.strip() if category else None
         unit = unit.strip() if unit else None
-        supplier = supplier.strip() if supplier else None
 
         
         
@@ -452,64 +458,37 @@ def add_material_route():
                 ), 400
         
     
-        #supplier can be blank
-
         # numeric input validation (cant be <0 )
         try:
-            cost_per_unit_str = request.form.get('cost_per_unit')
-            cost_per_unit = float(cost_per_unit_str) if cost_per_unit_str else None
             stock_level=float(request.form.get('stock_level', 0))
             reorder_level=float(request.form.get('reorder_level', 0))
 
         except ValueError:
             return render_template('error.html',
                 title="Invalid Input",
-                message="Stock Level, Reorder Level, and Cost must be valid numbers.",
+                message="Stock Level and Reorder Level must be valid numbers.",
                 back_link=True, back_link_url="/add-material", back_link_label="Go back"
             ), 400
 
         if reorder_level <= 0 or stock_level <= 0:
             return render_template('error.html',
                 title="Invalid Input",
-                message="Stock Level and Reorder Level must be valid numbers and more than 0",
+                message="Stock Level and Reorder Level must be more than 0",
                 back_link=True, back_link_url="/add-material", back_link_label="Go back"
             ), 400
-
-        if cost_per_unit is not None and cost_per_unit <= 0:
-            return render_template('error.html',
-                title="Invalid Input",
-                message="Cost per Unit must be greater than 0",
-                back_link=True, back_link_url="/add-material", back_link_label="Go back"
-            ), 400
-        
 
 
         #function call.
-        
-        
-            # get new material data from html input from add_material.html, and call add_raw_material() to add it to database.
         result = add_raw_material(
-                name=name,  
-                category= category, 
-                stock_level=stock_level,  
-                unit= unit,
+                name=name,
+                category=category,
+                unit=unit,
                 reorder_level=reorder_level,
-                cost_per_unit= cost_per_unit,
-                supplier= supplier # Optional field
-            )    
+            )
 
-        # after getting data, use REDIRECT to go back to inventory page. this is needed because if we just return the inventory page 
-        # html here, the URL would still be /add-material, which is not ideal. we want the URL to reflect the 
-        # actual page we're on, which is /inventory. also, redirecting after POST is a common 
-        # best practice to prevent form resubmission if user refreshes the page.
+        from_receive_lot = request.form.get('from_receive_lot', '')
 
-
-
-        from_receive_lot = request.form.get('from_receive_lot', '') # this is to check if the user was redirected here from receive_lot route due to missing material.
-        # if so, after adding the material, we want to redirect them back to receive_lot instead of inventory, 
-        # and pre-fill the receive_lot form with the data they entered here. 
-
-        if result == "duplicate": # error if name exists. 
+        if result == "duplicate": # error if name exists.
             return render_template("add_material.html",
                 error=f"A material named '{name}' already exists. Please use a different name or update the existing one.",
                 from_receive_lot=from_receive_lot,
@@ -520,13 +499,13 @@ def add_material_route():
                 expiry_date=request.form.get('expiry_date', ''),
                 location=request.form.get('location', ''),
                 supplier_lot=request.form.get('supplier_lot', ''),
+                cost_per_unit_lot=request.form.get('cost_per_unit_lot', ''),
             )
-        
 
-        elif result: # if result is good. 
-            logging.info(f"Material added: '{name}' | category={category}, stock={stock_level}, unit={unit}")
-            log_action('material_added', f"name={name}, category={category}, stock={stock_level}, unit={unit}")
-            if from_receive_lot == '1': #if this route was directed via lot recieve func, go back to that when done. 
+        elif result: # if result is good.
+            logging.info(f"Material added: '{name}' | category={category}, unit={unit}")
+            log_action('material_added', f"name={name}, category={category}, unit={unit}")
+            if from_receive_lot == '1': #if this route was directed via lot recieve func, go back to that when done.
                 return redirect(url_for('receive_lot',
                     material_name=name,
                     lot_number=request.form.get('lot_number', ''),
@@ -535,6 +514,7 @@ def add_material_route():
                     expiry_date=request.form.get('expiry_date', ''),
                     location=request.form.get('location', ''),
                     supplier=request.form.get('supplier_lot', ''),
+                    cost_per_unit=request.form.get('cost_per_unit_lot', ''),
                 ))
             return redirect(url_for('view_inventory'))
         else:
@@ -661,18 +641,13 @@ def edit_material(material_id):
 
 
     
-    mat_id, name, category, stock_level, unit, reorder_level, cost_per_unit, supplier, is_housemade = material # unpack material details for display in edit form.
-    
-    # msg and err are for redirecting back to this page after form submission with a success or error message. (after adjusting stock or updating details)
+    mat_id, name, category, stock_level, unit, reorder_level, is_housemade = material # unpack material details for display in edit form.
 
-    msg = request.args.get('msg', '') # if there's a 'msg' parameter in the URL (e.g., /edit-material/1?msg=Stock+updated), 
-    # get its value to show success messages after form submissions. if not, default to empty string.
-
-    err = request.args.get('err', '') # similarly, get 'err' parameter for error messages.
-    return render_template("edit_material.html", # show the edit material form, with current material details filled in, and any success/error messages.
+    msg = request.args.get('msg', '')
+    err = request.args.get('err', '')
+    return render_template("edit_material.html",
         mat_id=mat_id, name=name, category=category,
         stock_level=stock_level, unit=unit, reorder_level=reorder_level,
-        cost_per_unit=cost_per_unit, supplier=supplier,
         msg=msg, err=err,
         back_link=True,
         back_link_url="/manage-materials",
@@ -747,32 +722,24 @@ def update_material_details(material_id):
         unit = request.form.get('unit') # Get updated unit (or None if empty)
         unit = unit.strip() if unit else None #validate
         reorder_level_str = request.form.get('reorder_level')
-        cost_per_unit_str = request.form.get('cost_per_unit')
-        reorder_level = float(reorder_level_str) if reorder_level_str else None#validate
-        cost_per_unit = float(cost_per_unit_str) if cost_per_unit_str else None#validate
-        supplier = request.form.get('supplier')
-        supplier = supplier.strip() if supplier else None 
+        reorder_level = float(reorder_level_str) if reorder_level_str else None
     
     except ValueError:
-        return render_template('error.html', # if there's a value error (e.g., user entered text in reorder level), show error page.
+        return render_template('error.html',
             title="Invalid Input",
-            message = "Reorder Level and Cost must be valid numbers.",
+            message = "Reorder Level must be a valid number.",
             back_link=True, back_link_url=f"/edit-material/{material_id}", back_link_label="Go back"
         ), 400
-    
-    #numeric input validation( cant be be zero or less)
-    if (reorder_level is not None and reorder_level <= 0)  or (cost_per_unit is not None and cost_per_unit<= 0):
-        return render_template('error.html', # if there's a value error (e.g., user entered text in reorder level), show error page.
+
+    if reorder_level is not None and reorder_level <= 0:
+        return render_template('error.html',
             title="Invalid Input",
-            message = "Reorder Level and Cost must be greater than 0.",
+            message = "Reorder Level must be greater than 0.",
             back_link=True, back_link_url=f"/edit-material/{material_id}", back_link_label="Go back"
         ), 400
-    
-
-
 
     result = update_raw_material(material_id, name=name, category=category, unit=unit,
-                                 reorder_level=reorder_level, cost_per_unit=cost_per_unit, supplier=supplier) # call function, with updated details. 
+                                 reorder_level=reorder_level)
 
     if result:
         logging.info(f"Material details updated: material_id={material_id}, name={name}, category={category}, unit={unit}")
@@ -1812,8 +1779,48 @@ def update_lot_route(lot_id):
 
     """
 
+    try:
+
+        lot_number_raw = request.form.get('lot_number')
+        lot_number = lot_number_raw.strip() if lot_number_raw else None
+
+        quantity_str = request.form.get('quantity').strip()
+        quantity = float(quantity_str) if quantity_str else None
+
+        expiration_date_raw = request.form.get('expiration_date')
+        expiration_date = expiration_date_raw.strip() if expiration_date_raw else None
+
+        location_raw = request.form.get('location')
+        location = location_raw.strip() if location_raw else None
 
 
+        cost_per_unit_str = request.form. get('cost_per_unit').strip()
+        cost_per_unit = float(cost_per_unit_str) if cost_per_unit_str else None
+
+        #see if quantity field needs to be removed
+        lot_df = get_lot_by_id(lot_id)
+        if lot_df is None or lot_df.empty:
+            return render_template('error.html',
+                title="Lot Not Found",
+                message="The lot you are trying to update could not be found.",
+                back_link=True, back_link_url=f"/edit-lot/{lot_id}", back_link_label="Go back to Edit Lot"
+            ), 404
+        
+        if lot_df['is_housemade'].iloc[0]: # if this is a housemade material,
+            quantity = None
+
+        
+        #validate float inputs
+        if quantity <= 0:
+            raise ValueError("Quantity must be greater than 0.")
+            
+
+
+
+    except ValueError as e:
+        
+
+        
 
     pass
 

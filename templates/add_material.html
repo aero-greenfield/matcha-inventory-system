@@ -29,6 +29,7 @@
         <input type="hidden" name="expiry_date" value="{{ expiry_date }}">
         <input type="hidden" name="location" value="{{ location }}">
         <input type="hidden" name="supplier_lot" value="{{ supplier_lot }}">
+        <input type="hidden" name="cost_per_unit_lot" value="{{ cost_per_unit_lot }}">
         {% endif %}
         <div class="form-row">
             <div class="form-group"><label>Material Name *</label><input type="text" name="name" value="{{ material_name if from_receive_lot else '' }}" required></div>
@@ -38,11 +39,7 @@
             <div class="form-group"><label>Initial Stock Level *</label><input type="number" step="0.01" name="stock_level" required></div>
             <div class="form-group"><label>Unit *</label><input type="text" name="unit" required></div>
         </div>
-        <div class="form-row">
-            <div class="form-group"><label>Reorder Level *</label><input type="number" step="0.01" name="reorder_level" required></div>
-            <div class="form-group"><label>Cost per Unit (optional)</label><input type="number" step="0.01" name="cost_per_unit"></div>
-        </div>
-        <div class="form-group"><label>Supplier (optional)</label><input type="text" name="supplier"></div>
+        <div class="form-group"><label>Reorder Level *</label><input type="number" step="0.01" name="reorder_level" required></div>
         <button type="submit" class="btn btn-primary">Add Material</button>
         <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
     </form>
