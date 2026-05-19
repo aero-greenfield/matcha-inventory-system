@@ -1802,7 +1802,18 @@ def edit_lot(lot_id):
 
 @app.route('/edit-lot/<int:lot_id>/update', methods=['POST']) # dynamic URL for editing a specific lot, identified by lot_id. (view only)
 @requires_auth
-def update_lot(lot_id):
+def update_lot_route(lot_id):
+    """
+
+    calls update_lot function. 
+    POST route for processing edit lot submission.
+    takes user requests: lot number, quantity (if not homemade mat), expiration date, location, supplier, cost per unit, 
+    status. 
+
+    """
+
+
+
 
     pass
 
