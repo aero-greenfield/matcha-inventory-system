@@ -463,20 +463,19 @@ def add_material_route():
     
         # numeric input validation (cant be <0 )
         try:
-            stock_level=float(request.form.get('stock_level', 0))
             reorder_level=float(request.form.get('reorder_level', 0))
 
         except ValueError:
             return render_template('error.html',
                 title="Invalid Input",
-                message="Stock Level and Reorder Level must be valid numbers.",
+                message="Reorder Level must be a valid number.",
                 back_link=True, back_link_url="/add-material", back_link_label="Go back"
             ), 400
 
-        if reorder_level <= 0 or stock_level <= 0:
+        if reorder_level <= 0:
             return render_template('error.html',
                 title="Invalid Input",
-                message="Stock Level and Reorder Level must be more than 0",
+                message="Reorder Level must be more than 0",
                 back_link=True, back_link_url="/add-material", back_link_label="Go back"
             ), 400
 
@@ -851,7 +850,7 @@ def batch_materials(batch_id):
     """
     rows = get_batch_materials(batch_id)
     materials = [
-        {'material_name': r[0], 'quantity_used': r[1], 'unit': r[2], 'batch_material_lot_id': r[3], 'lot_number': r[4], 'batch_id':r[5]}
+        {'material_name': r[0], 'quantity_used': r[1], 'unit': r[2], 'batch_material_lot_id': r[3], 'lot_number': r[4], 'material_id': r[5]}
         for r in rows
     ]
     return jsonify(materials)

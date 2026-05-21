@@ -317,6 +317,11 @@ def delete_raw_material(material_id):
         affected_batches = [row[0] for row in cursor.fetchall()]
 
         db.execute(cursor, """
+        DELETE FROM raw_material_lots
+        WHERE material_id = %s
+        """, (material_id,))
+
+        db.execute(cursor, """
         DELETE FROM recipe_materials
         WHERE material_id = %s
         """, (material_id,))

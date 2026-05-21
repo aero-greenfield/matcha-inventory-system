@@ -21,7 +21,6 @@ def create_database():
                    category TEXT,
                    unit TEXT,
                    reorder_level REAL,
-                   supplier TEXT,
                    is_housemade BOOLEAN DEFAULT FALSE
 
                    )
