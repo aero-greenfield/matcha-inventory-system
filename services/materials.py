@@ -91,7 +91,7 @@ def get_material_by_id(material_id):
 
     try:
         db.execute(cursor, """
-        SELECT material_id, name, category, stock_level, unit, reorder_level, is_housemade
+        SELECT material_id, name, category, unit, reorder_level
         FROM raw_materials
         WHERE material_id = %s
                        """,(material_id,))

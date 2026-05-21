@@ -644,13 +644,13 @@ def edit_material(material_id):
 
 
     
-    mat_id, name, category, stock_level, unit, reorder_level, is_housemade = material # unpack material details for display in edit form.
+    mat_id, name, category,  unit, reorder_level = material # unpack material details for display in edit form.
 
     msg = request.args.get('msg', '')
     err = request.args.get('err', '')
     return render_template("edit_material.html",
         mat_id=mat_id, name=name, category=category,
-        stock_level=stock_level, unit=unit, reorder_level=reorder_level,
+        unit=unit, reorder_level=reorder_level,
         msg=msg, err=err,
         back_link=True,
         back_link_url="/manage-materials",
@@ -1753,7 +1753,7 @@ def edit_lot(lot_id):
 
     
     
-    if not df:
+    if df is None or df.empty:
         return render_template('error.html',
             title="Lot Not Found",
             message="The lot you requested could not be found.",
