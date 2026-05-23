@@ -66,12 +66,17 @@
                             <th style="text-align:right;padding:4px 8px;">Current Used</th>
                             <th style="text-align:right;padding:4px 8px;">New Amount</th>
                             <th style="text-align:left;padding:4px 8px;">Unit</th>
+                            <th style="text-align:left;padding:4px 8px;">Lot <span style="color:var(--text-muted);font-weight:400;font-size:11px;">(if increasing)</span></th>
                         </tr>
                     </thead>
                     <tbody id="deduction-rows"></tbody>
                 </table>
+                <p id="lot-note" style="font-size:12px;color:var(--text-muted);margin-top:6px;display:none;">
+                    Select a lot for materials whose quantity is increasing. Decreases are returned to the original lot automatically.
+                </p>
             </div>
         </div>
+        <input type="hidden" id="lot-selections-json" name="lot_selections_json" value="">
 
         <button type="submit" class="btn btn-primary" style="margin-top:16px;">Save Changes</button>
         <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
@@ -83,39 +88,109 @@
     var batchId = {{ batch[0] }};
     var originalQty = parseFloat('{{ batch[2] }}') || 0;
     var materials = [];
+    var availableLots = {}; // { material_id: [{lot_id, lot_number, quantity}, ...] }
 
     var section = document.getElementById('deduction-section');
     var cb = document.getElementById('adjust-deductions-cb');
     var controls = document.getElementById('deduction-controls');
     var tbody = document.getElementById('deduction-rows');
     var qtyInput = document.querySelector('input[name="quantity"]');
+    var lotNote = document.getElementById('lot-note');
+    var lotSelectionsInput = document.getElementById('lot-selections-json');
 
-    // Fetch materials and show section if any exist
+    // Fetch materials then fetch available lots for each
     fetch('/batches/' + batchId + '/materials')
         .then(function(r) { return r.json(); })
         .then(function(data) {
             if (!data.length) return;
             materials = data;
+            var fetches = data.map(function(m) {
+                return fetch('/api/available-lots/' + m.material_id)
+                    .then(function(r) { return r.json(); })
+                    .then(function(lots) { availableLots[m.material_id] = lots; });
+            });
+            return Promise.all(fetches);
+        })
+        .then(function() {
+            if (!materials.length) return;
             section.style.display = '';
-            renderRows(data, data.map(function(m) { return m.quantity_used; }));
+            renderRows(materials, materials.map(function(m) { return m.quantity_used; }));
         })
         .catch(function() {});
 
     function renderRows(data, values) {
         tbody.innerHTML = '';
+        var anyIncreasing = false;
         data.forEach(function(m, i) {
+            var newVal = Math.round(values[i] * 10000) / 10000;
+            var isIncreasing = newVal > m.quantity_used;
+            if (isIncreasing) anyIncreasing = true;
+
+            var lots = availableLots[m.material_id] || [];
+            var lotCell;
+            if (isIncreasing) {
+                var opts = lots.map(function(l) {
+                    return '<option value="' + l.lot_id + '">Lot ' + l.lot_number + ' (' + l.quantity + ' avail)</option>';
+                }).join('');
+                if (!opts) {
+                    lotCell = '<span style="color:var(--danger);font-size:12px;">No lots available</span>';
+                } else {
+                    lotCell = '<select id="lot-select-' + i + '" data-material-id="' + m.material_id + '" style="font-size:12px;max-width:200px;">' + opts + '</select>';
+                }
+            } else {
+                lotCell = '<span style="color:var(--text-muted);font-size:12px;">— original lot</span>';
+            }
+
             var tr = document.createElement('tr');
             tr.innerHTML =
                 '<td style="padding:4px 8px;">' + m.material_name + '</td>' +
                 '<td style="text-align:right;padding:4px 8px;">' + m.quantity_used + '</td>' +
                 '<td style="text-align:right;padding:4px 8px;">' +
                     '<input type="number" step="0.0001" min="0" name="material_' + m.material_id + '" ' +
-                    'value="' + (Math.round(values[i] * 10000) / 10000) + '" ' +
-                    'style="width:90px;text-align:right;" id="mat-input-' + i + '">' +
+                    'value="' + newVal + '" ' +
+                    'style="width:90px;text-align:right;" id="mat-input-' + i + '" data-idx="' + i + '">' +
                 '</td>' +
-                '<td style="padding:4px 8px;">' + m.unit + '</td>';
+                '<td style="padding:4px 8px;">' + m.unit + '</td>' +
+                '<td style="padding:4px 8px;" id="lot-cell-' + i + '">' + lotCell + '</td>';
             tbody.appendChild(tr);
+
+            // Re-render lot column when new amount changes
+            var inp = tr.querySelector('#mat-input-' + i);
+            inp.addEventListener('input', function() { refreshLotCell(i, m); });
         });
+        lotNote.style.display = anyIncreasing ? '' : 'none';
+    }
+
+    function refreshLotCell(i, m) {
+        var inp = document.getElementById('mat-input-' + i);
+        var cell = document.getElementById('lot-cell-' + i);
+        if (!inp || !cell) return;
+        var newVal = parseFloat(inp.value) || 0;
+        var isIncreasing = newVal > m.quantity_used;
+        var lots = availableLots[m.material_id] || [];
+
+        var anyIncreasing = false;
+        materials.forEach(function(mat, idx) {
+            var v = parseFloat((document.getElementById('mat-input-' + idx) || {}).value) || 0;
+            if (v > mat.quantity_used) anyIncreasing = true;
+        });
+        lotNote.style.display = anyIncreasing ? '' : 'none';
+
+        if (isIncreasing) {
+            // Preserve current selection if possible
+            var currentSel = (cell.querySelector('select') || {}).value;
+            var opts = lots.map(function(l) {
+                var sel = String(l.lot_id) === String(currentSel) ? ' selected' : '';
+                return '<option value="' + l.lot_id + '"' + sel + '>Lot ' + l.lot_number + ' (' + l.quantity + ' avail)</option>';
+            }).join('');
+            if (!opts) {
+                cell.innerHTML = '<span style="color:var(--danger);font-size:12px;">No lots available</span>';
+            } else {
+                cell.innerHTML = '<select id="lot-select-' + i + '" data-material-id="' + m.material_id + '" style="font-size:12px;max-width:200px;">' + opts + '</select>';
+            }
+        } else {
+            cell.innerHTML = '<span style="color:var(--text-muted);font-size:12px;">— original lot</span>';
+        }
     }
 
     function getProportionalValues() {
@@ -128,11 +203,13 @@
         var vals = getProportionalValues();
         materials.forEach(function(m, i) {
             var inp = document.getElementById('mat-input-' + i);
-            if (inp) inp.value = Math.round(vals[i] * 10000) / 10000;
+            if (inp) {
+                inp.value = Math.round(vals[i] * 10000) / 10000;
+                refreshLotCell(i, m);
+            }
         });
     }
 
-    // Toggle controls visibility
     cb.addEventListener('change', function() {
         controls.style.display = this.checked ? '' : 'none';
         if (this.checked) {
@@ -141,28 +218,51 @@
         }
     });
 
-    // Mode switch
     document.querySelectorAll('input[name="deduction_mode"]').forEach(function(radio) {
         radio.addEventListener('change', function() {
             if (this.value === 'proportional') applyProportional();
         });
     });
 
-    // When quantity changes, update proportional inputs if that mode is active
     qtyInput.addEventListener('input', function() {
         if (!cb.checked) return;
         var mode = document.querySelector('input[name="deduction_mode"]:checked').value;
         if (mode === 'proportional') applyProportional();
     });
 
-    // Disable material inputs when checkbox is unchecked so they don't submit
     var form = cb.closest('form');
-    form.addEventListener('submit', function() {
+    form.addEventListener('submit', function(e) {
         if (!cb.checked) {
             tbody.querySelectorAll('input[type="number"]').forEach(function(inp) {
                 inp.disabled = true;
             });
+            lotSelectionsInput.value = '';
+            return;
         }
+
+        // Collect lot selections for materials with positive delta
+        var selections = {};
+        var missingLot = false;
+        materials.forEach(function(m, i) {
+            var inp = document.getElementById('mat-input-' + i);
+            var newVal = parseFloat((inp || {}).value) || 0;
+            if (newVal > m.quantity_used) {
+                var sel = document.getElementById('lot-select-' + i);
+                if (sel && sel.value) {
+                    selections[m.material_id] = parseInt(sel.value);
+                } else {
+                    missingLot = true;
+                }
+            }
+        });
+
+        if (missingLot) {
+            e.preventDefault();
+            alert('Please select a lot for each material whose quantity is increasing.');
+            return;
+        }
+
+        lotSelectionsInput.value = JSON.stringify(selections);
     });
 })();
 </script>

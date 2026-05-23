@@ -884,61 +884,69 @@ def get_batch_materials(batch_id):
         db.close()
 
 
-def adjust_batch_material(batch_id, new_quantities: dict):
+def adjust_batch_material(batch_id, new_quantities: dict, lot_selections: dict = None):
     """
     Updates batch_materials.quantity_used and applies delta to raw_materials.stock_level.
     new_quantities: {material_id (int): new_quantity_used (float)}
+    lot_selections: {material_id (int): lot_id (int)} — lot to deduct from when delta > 0
     Delta logic: stock_level -= (new - old), so increasing qty deducts more, decreasing returns stock.
+    When lot_selections provided: also tracks deduction/return at the lot level.
     """
     db = get_db_connection()
     cursor = db.cursor()
 
     try:
-        for material_id, new_qty in new_quantities.items(): #for each material and its new quantity.
+        for material_id, new_qty in new_quantities.items():
             db.execute(cursor, """
-                SELECT quantity_used FROM batch_materials
+                SELECT quantity_used, lot_id FROM batch_materials
                 WHERE batch_id = %s AND material_id = %s
-            """, (batch_id, material_id)) # get old quantity
+            """, (batch_id, material_id))
             row = cursor.fetchone()
-            if row is None: # make sure batch_material record exists for this batch and material
+            if row is None:
                 logging.warning(f"No batch_material record for batch {batch_id}, material {material_id} — aborting")
                 db.rollback()
                 return None
 
-            old_qty = row[0] # get old quantity
-            delta = new_qty - old_qty# data is change in quantity
+            old_qty = row[0]
+            original_lot_id = row[1]
+            delta = new_qty - old_qty
 
-            #must check if there is enough stock to increase quantity if delta is positive
             if delta > 0:
                 db.execute(cursor, """
-                    SELECT stock_level
-                    FROM raw_materials
-                    WHERE material_id = %s
+                    SELECT stock_level FROM raw_materials WHERE material_id = %s
                 """, (material_id,))
                 stock_row = cursor.fetchone()
                 if not stock_row:
                     logging.warning(f"Material ID {material_id} not found in raw_materials during batch adjustment — aborting")
                     db.rollback()
                     return None
-
-                stock_level = stock_row[0]
-                if stock_level < delta:
-                    logging.warning(f"Insufficient stock to increase material {material_id} for batch {batch_id}: need additional {delta}, have {stock_level} — aborting")
+                if stock_row[0] < delta:
+                    logging.warning(f"Insufficient stock to increase material {material_id} for batch {batch_id}: need {delta}, have {stock_row[0]} — aborting")
                     db.rollback()
                     return None
 
+                # Deduct from user-selected lot if provided, otherwise from original lot
+                lot_id = (lot_selections or {}).get(material_id, original_lot_id)
+                if lot_id:
+                    db.execute(cursor, """
+                        UPDATE raw_material_lots SET quantity = quantity - %s WHERE lot_id = %s
+                    """, (delta, lot_id))
+
+            elif delta < 0:
+                # Return material to the original lot
+                if original_lot_id:
+                    db.execute(cursor, """
+                        UPDATE raw_material_lots SET quantity = quantity + %s WHERE lot_id = %s
+                    """, (abs(delta), original_lot_id))
 
             db.execute(cursor, """
-                UPDATE batch_materials
-                SET quantity_used = %s
+                UPDATE batch_materials SET quantity_used = %s
                 WHERE batch_id = %s AND material_id = %s
-            """, (new_qty, batch_id, material_id))#update batch_materials with new quantity
+            """, (new_qty, batch_id, material_id))
 
             db.execute(cursor, """
-                UPDATE raw_materials
-                SET stock_level = stock_level - %s
-                WHERE material_id = %s
-            """, (delta, material_id))# apply delta to stock level
+                UPDATE raw_materials SET stock_level = stock_level - %s WHERE material_id = %s
+            """, (delta, material_id))
 
         db.commit()
         logging.info(f"Adjusted materials for batch {batch_id} with changes: {new_quantities}")
@@ -953,48 +961,57 @@ def adjust_batch_material(batch_id, new_quantities: dict):
         db.close()
 
 
-def check_batch_materials_stock(batch_id, new_quantities: dict):
+def check_batch_materials_stock(batch_id, new_quantities: dict, lot_selections: dict = None):
     """
-    Used to check if new qantites for batch materials availible in stock before adjusting.
-
+    Checks if new quantities for batch materials are available in stock before adjusting.
+    lot_selections: {material_id: lot_id} — when provided, also validates the specific lot has enough.
     """
     db = get_db_connection()
     cursor = db.cursor()
 
-    for material_id, new_qty in new_quantities.items():
-
-        try:
+    try:
+        for material_id, new_qty in new_quantities.items():
             db.execute(cursor, """
-                SELECT quantity_used FROM batch_materials
+                SELECT quantity_used, lot_id FROM batch_materials
                 WHERE batch_id = %s AND material_id = %s
-            """, (batch_id, material_id)) # get old quantity
+            """, (batch_id, material_id))
             row = cursor.fetchone()
-            if row is None: # make sure batch_material record exists for this batch and material
+            if row is None:
                 logging.warning(f"No batch_material record for batch {batch_id}, material {material_id} during stock check")
                 return False
 
-            old_qty = row[0] # get old quantity
-            delta = new_qty - old_qty# data is change in quantity
+            old_qty = row[0]
+            original_lot_id = row[1]
+            delta = new_qty - old_qty
 
             if delta > 0:
                 db.execute(cursor, """
-                    SELECT stock_level
-                    FROM raw_materials
-                    WHERE material_id = %s
+                    SELECT stock_level FROM raw_materials WHERE material_id = %s
                 """, (material_id,))
                 stock_row = cursor.fetchone()
                 if not stock_row:
                     logging.warning(f"Material ID {material_id} not found in raw_materials during stock check")
                     return False
-
-                stock_level = stock_row[0]
-                if stock_level < delta:
-                    logging.warning(f"Insufficient stock to increase material {material_id} for batch {batch_id} during stock check: need additional {delta}, have {stock_level}")
+                if stock_row[0] < delta:
+                    logging.warning(f"Insufficient overall stock for material {material_id}: need {delta}, have {stock_row[0]}")
                     return False
 
-        except Exception as e:
-            logging.error(f"Error checking batch materials stock: {e}")
-            return False
+                # Validate the specific lot has enough if one was selected
+                lot_id = (lot_selections or {}).get(material_id, original_lot_id)
+                if lot_id:
+                    db.execute(cursor, """
+                        SELECT quantity FROM raw_material_lots WHERE lot_id = %s
+                    """, (lot_id,))
+                    lot_row = cursor.fetchone()
+                    if not lot_row or lot_row[0] < delta:
+                        logging.warning(f"Lot {lot_id} has insufficient quantity for material {material_id}: need {delta}, have {lot_row[0] if lot_row else 0}")
+                        return False
 
-        finally:
-            db.close()
+        return True
+
+    except Exception as e:
+        logging.error(f"Error checking batch materials stock: {e}")
+        return False
+
+    finally:
+        db.close()

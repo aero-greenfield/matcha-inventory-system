@@ -1217,6 +1217,7 @@ def update_batch_details(batch_id):
             ), 400
         
     new_quantities = {}
+    lot_selections = {}
     if request.form.get('adjust_deductions') == '1':
         for key, value in request.form.items():
             if key.startswith('material_'):
@@ -1224,9 +1225,19 @@ def update_batch_details(batch_id):
                     material_id = int(key[len('material_'):])
                     new_quantities[material_id] = float(value)
                 except (ValueError, TypeError):
-                    pass  # skip malformed entries
+                    pass
 
-        if new_quantities and not check_batch_materials_stock(batch_id, new_quantities):
+        # Parse lot selections for materials where quantity is increasing
+        import json as _json
+        raw_lot_selections = request.form.get('lot_selections_json', '')
+        if raw_lot_selections:
+            try:
+                parsed = _json.loads(raw_lot_selections)
+                lot_selections = {int(k): int(v) for k, v in parsed.items()}
+            except (ValueError, TypeError, _json.JSONDecodeError):
+                pass
+
+        if new_quantities and not check_batch_materials_stock(batch_id, new_quantities, lot_selections or None):
             return redirect(url_for('edit_batch', batch_id=batch_id, err='Could not update — insufficient stock for new material quantities'))
 
     result = update_batch(batch_id, product_name=product_name, quantity=quantity, notes=notes, expiration_date=expiration_date, planned_completion_date=planned_completion_date)
@@ -1236,7 +1247,7 @@ def update_batch_details(batch_id):
         log_action('batch_updated', f"batch_id={batch_id}, product_name={product_name}, quantity={quantity}")
 
         if new_quantities:
-            adj_result = adjust_batch_material(batch_id, new_quantities)
+            adj_result = adjust_batch_material(batch_id, new_quantities, lot_selections or None)
             if adj_result:
                 log_action('batch_materials_adjusted', f"batch_id={batch_id}, adjustments={new_quantities}")
                 return redirect(url_for('edit_batch', batch_id=batch_id, msg='Batch details and material deductions updated successfully'))
