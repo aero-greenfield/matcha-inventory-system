@@ -3,12 +3,15 @@
 from database import get_db_connection
 import pandas as pd
 import logging
+from datetime import datetime
 
 # ADDED: get_raw_material lives in services.materials. recipes.py calls it inside
 #        add_recipe, change_recipe, update_recipe, and check_negative_stock to
 #        validate that a material exists before inserting into recipe_materials.
-from services.materials import get_raw_material
-from services.lots import get_material_stock_from_lots
+# REMOVED: get_raw_material import — add_recipe/change_recipe/update_recipe now batch-fetch
+#          all material names in one query instead of calling this per ingredient
+# REMOVED: get_material_stock_from_lots import — check_negative_stock now uses an inline
+#          batch GROUP BY query instead of calling this per ingredient
 
 
 # ========================
@@ -80,15 +83,48 @@ def check_negative_stock(product_name, quantity):
     if recipe_df is None or recipe_df.empty:
         return []
 
+    # ISSUE: the original loop called get_material_stock_from_lots(material_id) once per
+    #        ingredient row. Each call opened its own DB connection and ran SELECT SUM(...).
+    #        A 10-ingredient recipe = 11 total connections and 11 round-trips.
+    # FIX: collect all material_ids, fetch their stock totals in one GROUP BY query,
+    #      build a dict, then loop the DataFrame with no DB calls inside.
+
+    # ADDED: gather all material ids so we can batch-fetch stock in one query
+    material_ids = recipe_df['material_id'].tolist()
+    placeholders = ', '.join(['%s'] * len(material_ids))  # one %s per id; DatabaseConnection.execute converts to ? for SQLite
+
+    db = get_db_connection()
+    cursor = db.cursor()
+    try:
+        date_now = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+        # ADDED: single GROUP BY query replacing N per-material SUM queries
+        db.execute(cursor, f"""
+            SELECT material_id, COALESCE(SUM(quantity), 0)
+            FROM raw_material_lots
+            WHERE material_id IN ({placeholders})
+              AND status = 'active'
+              AND (expiration_date IS NULL OR expiration_date > %s)
+            GROUP BY material_id
+        """, (*material_ids, date_now))
+        stock_map = {row[0]: row[1] for row in cursor.fetchall()}  # ADDED: {material_id: stock}
+    except Exception as e:
+        import logging as _log
+        _log.error(f"check_negative_stock: batch stock query failed: {e}")
+        return []
+    finally:
+        db.close()
+
     negative = []
     for _, row in recipe_df.iterrows():
         material_name = row['material_name']
         material_id = row['material_id']
         required_amount = row['quantity_needed'] * quantity
 
-        current_stock = get_material_stock_from_lots(material_id)
-        if current_stock is None:
-            continue
+        # REMOVED: get_material_stock_from_lots(material_id) — opened a new connection each iteration
+        # current_stock = get_material_stock_from_lots(material_id)
+
+        # ADDED: dict lookup — no DB call
+        current_stock = stock_map.get(material_id, 0.0)
         if current_stock < required_amount:
             negative.append({
                 'material_name': material_name,
@@ -161,24 +197,35 @@ def add_recipe(product_name, materials, notes=None):
          """,(product_name, notes))
         recipe_id = db.get_last_insert_id(cursor) # get recipe_id, able to add to recipe_materials
 
+        # ISSUE: the loop below called get_raw_material(name) once per material — each call
+        #        opened its own DB connection (SELECT on raw_materials) and closed it.
+        #        10 ingredients = 10 extra connections inside a function that already has one open.
+        # FIX: batch-fetch all material names in one query on the already-open connection,
+        #      build a name→id dict, then resolve ids from the dict inside the loop.
 
+        # ADDED: collect all names so we can look them all up in one query
+        names = [m["material_name"] for m in materials]
+        placeholders = ', '.join(['%s'] * len(names))  # one %s per name; wrapper converts to ? for SQLite
+        db.execute(cursor, f"""
+            SELECT material_id, name
+            FROM raw_materials
+            WHERE LOWER(name) IN ({placeholders})
+        """, [n.lower() for n in names])
+        # ADDED: {lowercase_name: material_id} lookup dict — replaces per-name get_raw_material calls
+        material_lookup = {row[1].lower(): row[0] for row in cursor.fetchall()}
 
         for material in materials:
             material_name = material["material_name"]
             quantity_needed = material['quantity_needed']
 
-            #check material is in database
+            # REMOVED: get_raw_material(material_name) — opened a new connection per iteration
+            # material_info = get_raw_material(material_name)
 
-            material_info = get_raw_material(material_name)
-
-            if not material_info:
+            # ADDED: dict lookup — no extra connection or query
+            material_id = material_lookup.get(material_name.lower())
+            if material_id is None:
                 logging.error(f"Material '{material_name}' not found in raw_materials while adding recipe '{product_name}'.")
                 raise ValueError(f"Material '{material_name}' not found in raw_materials. Please add it to inventory before creating the recipe.")
-
-
-            else:
-                material_id = material_info[0]#get material_id, first value from get_raw_material result
-
 
             db.execute(cursor,"""
             INSERT INTO recipe_materials (
@@ -258,22 +305,31 @@ def change_recipe(product_name, materials, notes= None):
         WHERE recipe_id = %s
                        """,(recipe_id,))
 
+        # ISSUE: loop called get_raw_material(name) once per material — new connection each time.
+        # FIX: batch-fetch all names on the already-open connection, resolve from dict in the loop.
+
+        # ADDED: one batch SELECT replacing N per-name get_raw_material calls
+        names = [m["material_name"] for m in materials]
+        placeholders = ', '.join(['%s'] * len(names))
+        db.execute(cursor, f"""
+            SELECT material_id, name
+            FROM raw_materials
+            WHERE LOWER(name) IN ({placeholders})
+        """, [n.lower() for n in names])
+        material_lookup = {row[1].lower(): row[0] for row in cursor.fetchall()}
 
         for material in materials:
             material_name = material["material_name"]
             quantity_needed = material['quantity_needed']
 
+            # REMOVED: get_raw_material(material_name) — opened a new connection per iteration
+            # material_info = get_raw_material(material_name)
 
-            material_info = get_raw_material(material_name)
-
-            if not material_info:
-                logging.error(f"Material '{material_name}' not found in raw _materials while updating recipe '{product_name}'.")
+            # ADDED: dict lookup — no extra connection or query
+            material_id = material_lookup.get(material_name.lower())
+            if material_id is None:
+                logging.error(f"Material '{material_name}' not found in raw_materials while updating recipe '{product_name}'.")
                 raise ValueError(f"Material '{material_name}' not found in raw_materials. Please add it to inventory before updating the recipe.")
-
-
-            else:
-                material_id = material_info[0]#get material_id, first value from get_raw_material result
-
 
             db.execute(cursor,"""
             INSERT INTO recipe_materials (
@@ -496,21 +552,30 @@ def update_recipe(recipe_id, product_name=None, materials=None, notes=None):
         WHERE recipe_id = %s
                        """,(recipe_id,)) # delete old materials
 
+        # ISSUE: loop called get_raw_material(name) once per material — new connection each time.
+        # FIX: batch-fetch all names on the already-open connection, resolve from dict in the loop.
+
+        # ADDED: one batch SELECT replacing N per-name get_raw_material calls
+        names = [m["material_name"] for m in materials]
+        placeholders = ', '.join(['%s'] * len(names))
+        db.execute(cursor, f"""
+            SELECT material_id, name
+            FROM raw_materials
+            WHERE LOWER(name) IN ({placeholders})
+        """, [n.lower() for n in names])
+        material_lookup = {row[1].lower(): row[0] for row in cursor.fetchall()}
 
         for material in materials:
             material_name = material["material_name"]
             quantity_needed = material['quantity_needed']
 
+            # REMOVED: get_raw_material(material_name) — opened a new connection per iteration
+            # material_info = get_raw_material(material_name)
 
-            material_info = get_raw_material(material_name)
-
-            if not material_info:
+            # ADDED: dict lookup — no extra connection or query
+            material_id = material_lookup.get(material_name.lower())
+            if material_id is None:
                 print(f"Warning: Material '{material_name}' not found in raw_materials.")
-                material_id = None
-
-            else:
-                material_id = material_info[0]#get material_id, first value from get_raw_material result
-
 
             db.execute(cursor,"""
             INSERT INTO recipe_materials (

@@ -18,15 +18,37 @@ import sqlite3
 # This prevents import warnings in your IDE
 try:
     import psycopg2
+    from psycopg2 import pool as pg_pool  # ADDED: ThreadedConnectionPool lives here
     PSYCOPG2_AVAILABLE = True
 except ImportError:
     # psycopg2 not installed (local development)
     PSYCOPG2_AVAILABLE = False
     psycopg2 = None
+    pg_pool = None
 
 # Check if we're running in cloud
 # Railway automatically sets DATABASE_URL environment variable
 DATABASE_URL = os.getenv('DATABASE_URL')
+
+# ISSUE: every get_db_connection() call opened a fresh TCP connection to PostgreSQL —
+#        a full handshake on each service function call. A single HTTP request that calls
+#        five service functions opens and destroys five connections serially.
+# FIX: keep a module-level ThreadedConnectionPool alive for the process lifetime.
+#      get_connection() draws from it; DatabaseConnection.close() returns to it.
+#      SQLite is unaffected (no pool needed for a local file).
+
+# ADDED: module-level pool singleton; None until first PostgreSQL connection is requested
+_pool = None
+
+
+def _init_pool():
+    # ADDED: lazily creates the pool on first use so import-time startup isn't blocked
+    #        by network. min=2 keeps two warm connections ready; max=10 caps concurrency
+    #        at a safe level for Railway's free tier (which allows ~25 simultaneous conns).
+    global _pool
+    if _pool is None:
+        connection_string = DATABASE_URL.replace('postgres://', 'postgresql://', 1)
+        _pool = pg_pool.ThreadedConnectionPool(minconn=2, maxconn=10, dsn=connection_string)
 
 
 
@@ -57,15 +79,12 @@ def get_connection():
                "Install it with: pip install psycopg2-binary"
            )
 
-       # Railway gives URL like: postgres://user:pass@host/db
-       # psycopg2 expects: postgresql://user:pass@host/db
-       # Fix: Replace "postgres://" with "postgresql://"
-       connection_string = DATABASE_URL.replace('postgres://', 'postgresql://', 1)
+       # REMOVED: bare psycopg2.connect() — opened a new TCP connection on every call
+       # return psycopg2.connect(connection_string)
 
-       
-
-       # Connect to PostgreSQL
-       return psycopg2.connect(connection_string)
+       # ADDED: draw a connection from the pool (no TCP handshake if one is already warm)
+       _init_pool()
+       return _pool.getconn()
 
    else:
        # ========================================
@@ -134,8 +153,17 @@ class DatabaseConnection:
 
 
     def close(self):
-        """Close the database connection."""
-        return self.conn.close()
+        """Close the database connection (or return it to the pool for PostgreSQL)."""
+        # ISSUE: conn.close() destroyed the physical connection every time, so the next
+        #        service function had to open a brand-new TCP connection.
+        # FIX: for PostgreSQL, putconn() returns the connection to the pool so it stays
+        #      alive and ready for the next caller. For SQLite, close() as before.
+        if _pool is not None:
+            # ADDED: return to pool instead of closing — connection stays alive
+            _pool.putconn(self.conn)
+        else:
+            # SQLite: still close the file handle normally
+            self.conn.close()
 
 
     def execute(self, cursor, query, params=None):

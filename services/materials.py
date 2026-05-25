@@ -124,16 +124,22 @@ def update_raw_material(material_id, name=None, category=None, stock_level=None,
         return
 
     try:
-        for key in field:
-            db.execute(cursor,f"""
-            UPDATE raw_materials
-            SET {key} = %s
-            WHERE material_id = %s
-            """, (field[key], material_id,))
+        # ISSUE: the loop issued one UPDATE per field — a separate round-trip for each column
+        #        changed. 5 changed fields = 5 sequential SQL statements.
+        # FIX: build the SET clause dynamically and run one multi-column UPDATE.
+        #      Keys come from the hardcoded list above (not user input) so f-string is safe.
 
+        # REMOVED: per-field UPDATE loop
+        # for key in field:
+        #     db.execute(cursor, f"UPDATE raw_materials SET {key} = %s WHERE material_id = %s", ...)
 
-            if cursor.rowcount == 0:
-                    raise ValueError(f"material ID {material_id} not found — nothing updated")
+        # ADDED: single multi-column UPDATE replacing the loop
+        set_clause = ', '.join(f"{key} = %s" for key in field)
+        params = (*field.values(), material_id)  # *field.values() unpacks column values; material_id goes last for the WHERE
+        db.execute(cursor, f"UPDATE raw_materials SET {set_clause} WHERE material_id = %s", params)
+
+        if cursor.rowcount == 0:
+            raise ValueError(f"material ID {material_id} not found — nothing updated")
         db.commit()
         logging.info(f"Updated material with id:{material_id}")
 

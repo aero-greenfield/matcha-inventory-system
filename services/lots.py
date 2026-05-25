@@ -303,15 +303,22 @@ def update_lot(lot_id, lot_number=None, quantity=None, received_date=None, expir
         del field['quantity']
     
     try:
-        for key in field: #for each key and its value, update the lot.
-            db.execute(cursor,f"""
-            UPDATE raw_material_lots
-            SET {key} = %s
-            WHERE lot_id = %s
-            """, (field[key], lot_id,))
+        # ISSUE: the loop issued one UPDATE per field — a separate round-trip for each column
+        #        changed. 5 changed fields = 5 sequential SQL statements.
+        # FIX: build the SET clause dynamically and run one multi-column UPDATE.
+        #      Keys come from the hardcoded dict above (not user input) so f-string is safe.
+
+        # REMOVED: per-field UPDATE loop
+        # for key in field:
+        #     db.execute(cursor, f"UPDATE raw_material_lots SET {key} = %s WHERE lot_id = %s", ...)
+
+        # ADDED: single multi-column UPDATE replacing the loop
+        set_clause = ', '.join(f"{key} = %s" for key in field)
+        params = (*field.values(), lot_id)  # *field.values() unpacks column values; lot_id goes last for the WHERE
+        db.execute(cursor, f"UPDATE raw_material_lots SET {set_clause} WHERE lot_id = %s", params)
 
         if cursor.rowcount == 0:
-                raise ValueError(f"lot ID {lot_id} not found — nothing updated")
+            raise ValueError(f"lot ID {lot_id} not found — nothing updated")
         db.commit()
         logging.info(f"Updated lot with id:{lot_id}")
 
