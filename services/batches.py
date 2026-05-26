@@ -916,28 +916,30 @@ def adjust_batch_material(batch_id, new_quantities: dict, lot_selections: dict =
             delta = new_qty - old_qty
 
             if delta > 0:
-                db.execute(cursor, """
-                    SELECT stock_level FROM raw_materials WHERE material_id = %s
-                """, (material_id,))
-                stock_row = cursor.fetchone()
-                if not stock_row:
-                    logging.warning(f"Material ID {material_id} not found in raw_materials during batch adjustment — aborting")
-                    db.rollback()
-                    return None
-                if stock_row[0] < delta:
-                    logging.warning(f"Insufficient stock to increase material {material_id} for batch {batch_id}: need {delta}, have {stock_row[0]} — aborting")
-                    db.rollback()
-                    return None
-
-                # Deduct from user-selected lot if provided, otherwise from original lot
                 lot_id = (lot_selections or {}).get(material_id, original_lot_id)
                 if lot_id:
                     db.execute(cursor, """
+                        SELECT quantity FROM raw_material_lots WHERE lot_id = %s
+                    """, (lot_id,))
+                    lot_row = cursor.fetchone()
+                    if not lot_row or lot_row[0] < delta:
+                        logging.warning(f"Insufficient lot stock for material {material_id} in lot {lot_id} for batch {batch_id}: need {delta}, have {lot_row[0] if lot_row else 0} — aborting")
+                        db.rollback()
+                        return None
+                    db.execute(cursor, """
                         UPDATE raw_material_lots SET quantity = quantity - %s WHERE lot_id = %s
                     """, (delta, lot_id))
+                else:
+                    db.execute(cursor, """
+                        SELECT COALESCE(SUM(quantity), 0) FROM raw_material_lots WHERE material_id = %s
+                    """, (material_id,))
+                    total = cursor.fetchone()[0]
+                    if total < delta:
+                        logging.warning(f"Insufficient total lot stock for material {material_id} for batch {batch_id}: need {delta}, have {total} — aborting")
+                        db.rollback()
+                        return None
 
             elif delta < 0:
-                # Return material to the original lot
                 if original_lot_id:
                     db.execute(cursor, """
                         UPDATE raw_material_lots SET quantity = quantity + %s WHERE lot_id = %s
@@ -947,10 +949,6 @@ def adjust_batch_material(batch_id, new_quantities: dict, lot_selections: dict =
                 UPDATE batch_materials SET quantity_used = %s
                 WHERE batch_id = %s AND material_id = %s
             """, (new_qty, batch_id, material_id))
-
-            db.execute(cursor, """
-                UPDATE raw_materials SET stock_level = stock_level - %s WHERE material_id = %s
-            """, (delta, material_id))
 
         db.commit()
         logging.info(f"Adjusted materials for batch {batch_id} with changes: {new_quantities}")
@@ -989,18 +987,6 @@ def check_batch_materials_stock(batch_id, new_quantities: dict, lot_selections: 
             delta = new_qty - old_qty
 
             if delta > 0:
-                db.execute(cursor, """
-                    SELECT stock_level FROM raw_materials WHERE material_id = %s
-                """, (material_id,))
-                stock_row = cursor.fetchone()
-                if not stock_row:
-                    logging.warning(f"Material ID {material_id} not found in raw_materials during stock check")
-                    return False
-                if stock_row[0] < delta:
-                    logging.warning(f"Insufficient overall stock for material {material_id}: need {delta}, have {stock_row[0]}")
-                    return False
-
-                # Validate the specific lot has enough if one was selected
                 lot_id = (lot_selections or {}).get(material_id, original_lot_id)
                 if lot_id:
                     db.execute(cursor, """
@@ -1009,6 +995,14 @@ def check_batch_materials_stock(batch_id, new_quantities: dict, lot_selections: 
                     lot_row = cursor.fetchone()
                     if not lot_row or lot_row[0] < delta:
                         logging.warning(f"Lot {lot_id} has insufficient quantity for material {material_id}: need {delta}, have {lot_row[0] if lot_row else 0}")
+                        return False
+                else:
+                    db.execute(cursor, """
+                        SELECT COALESCE(SUM(quantity), 0) FROM raw_material_lots WHERE material_id = %s
+                    """, (material_id,))
+                    total = cursor.fetchone()[0]
+                    if total < delta:
+                        logging.warning(f"Insufficient total lot stock for material {material_id}: need {delta}, have {total}")
                         return False
 
         return True
