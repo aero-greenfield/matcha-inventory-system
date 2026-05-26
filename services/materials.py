@@ -5,6 +5,8 @@ import pandas as pd
 from datetime import datetime
 import logging
 
+_MATERIAL_UPDATABLE_COLS = frozenset({"name", "category", "stock_level", "unit", "reorder_level"})
+
 
 def add_raw_material(name, category, unit, reorder_level, is_housemade=False):
     # adds material to raw_materials
@@ -122,6 +124,10 @@ def update_raw_material(material_id, name=None, category=None, stock_level=None,
     if not field: #empty dictionary, no fields to update
         print("No fields to update")
         return
+
+    invalid = set(field) - _MATERIAL_UPDATABLE_COLS
+    if invalid:
+        raise ValueError(f"Invalid column name(s): {invalid}")
 
     try:
         # ISSUE: the loop issued one UPDATE per field — a separate round-trip for each column

@@ -7,6 +7,9 @@ import logging
 import time
 import json
 
+_BATCH_UPDATABLE_COLS = frozenset({"product_name", "quantity", "date_completed", "notes",
+                                    "batch_number", "expiration_date", "planned_completion_date"})
+
 # ADDED: batches.py calls get_raw_material (for mix batch logic in add_to_batches
 #        and promote_planned_batches) and get_recipe (for deduction and promotion).
 #        They live in their own service modules now, so we import them explicitly.
@@ -531,13 +534,14 @@ def update_batch(batch_id, product_name=None, quantity=None, date_completed=None
         logging.info("No fields to update")
         return
 
+    invalid = set(field) - _BATCH_UPDATABLE_COLS
+    if invalid:
+        raise ValueError(f"Invalid column name(s): {invalid}")
+
     try:
-        for key in field: #for each key and its value, update the batch.
-            db.execute(cursor,f"""
-            UPDATE batches
-            SET {key} = %s
-            WHERE batch_id = %s
-            """, (field[key], batch_id,))
+        set_clause = ', '.join(f"{key} = %s" for key in field)
+        params = (*field.values(), batch_id)
+        db.execute(cursor, f"UPDATE batches SET {set_clause} WHERE batch_id = %s", params)
 
         if cursor.rowcount == 0:
                 raise ValueError(f"batch ID {batch_id} not found — nothing updated")

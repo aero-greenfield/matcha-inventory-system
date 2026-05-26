@@ -5,6 +5,9 @@ import pandas as pd
 from datetime import datetime
 import logging
 
+_LOT_UPDATABLE_COLS = frozenset({"lot_number", "quantity", "received_date", "expiration_date",
+                                  "location", "supplier", "cost_per_unit", "status"})
+
 
 #=======================
 #LOT NUMBER FUNCTIONS
@@ -301,7 +304,11 @@ def update_lot(lot_id, lot_number=None, quantity=None, received_date=None, expir
     if (is_housemade or (lot_number and lot_number.startswith("MIX-BATCH-"))) and 'quantity' in field:
         logging.warning(f"Attempted to update quantity for housemade lot {lot_id}. This is not allowed. Quantity will not be updated.")
         del field['quantity']
-    
+
+    invalid = set(field) - _LOT_UPDATABLE_COLS
+    if invalid:
+        raise ValueError(f"Invalid column name(s): {invalid}")
+
     try:
         # ISSUE: the loop issued one UPDATE per field — a separate round-trip for each column
         #        changed. 5 changed fields = 5 sequential SQL statements.
