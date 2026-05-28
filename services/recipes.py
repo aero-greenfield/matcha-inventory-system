@@ -19,6 +19,24 @@ from datetime import datetime
 # ========================
 
 
+def get_recipe_names(q=""):
+    # ADDED: lightweight name-search for the /api/recipes autocomplete endpoint.
+    #        Returns up to 50 distinct recipe names matching the search string.
+    #        Filtering happens in SQL, not by fetching the full recipes table into Python.
+    db = get_db_connection()
+    cursor = db.cursor()
+    try:
+        db.execute(cursor,
+            "SELECT DISTINCT product_name FROM recipes WHERE LOWER(product_name) LIKE LOWER(%s) ORDER BY product_name LIMIT 50",
+            (f"%{q}%",))
+        return [row[0] for row in cursor.fetchall()]
+    except Exception as e:
+        logging.error(f"get_recipe_names: {e}")
+        return []
+    finally:
+        db.close()
+
+
 def get_recipe(product_name):
     """
     Gets recipe from recipes, which refrences recipe materials
@@ -135,9 +153,9 @@ def check_negative_stock(product_name, quantity):
     return negative
 
 
-def get_all_recipes():
+def get_all_recipes(page=None, per_page=50):
     """
-    Returns all recipes and their materials as a DataFrame
+    Returns all recipes and their materials as a DataFrame.
 
     Columns returned:
     - recipe_product_name: Name of the recipe/product
@@ -145,26 +163,63 @@ def get_all_recipes():
     - material_name: Name of the material/ingredient
     - quantity: Amount of material needed per batch
     - unit: Unit of measurement (from raw_materials table)
+
+    # ADDED: page/per_page pagination parameters. Pagination is at the RECIPE level, not the
+    #        ingredient-row level, so a recipe is never split across page boundaries.
+    # page=None → full table, no LIMIT (used by export routes); returns (df, None)
+    # page=int  → recipes N through N+per_page and all their ingredients; returns (df, total_recipe_count)
+    #
+    # CHANGED: was pd.read_sql_query(query, db.conn) — converted to cursor approach so the
+    #          %s→? wrapper handles both SQLite and PostgreSQL consistently.
     """
     db = get_db_connection()
+    cursor = db.cursor()
+    columns = ['recipe_product_name', 'notes', 'material_name', 'quantity', 'unit']
 
-    query = """
-    SELECT
-        r.product_name AS recipe_product_name,
-        r.notes,
-        raw.name AS material_name,
-        rm.quantity_needed AS quantity,
-        raw.unit
-    FROM recipes r
-    JOIN recipe_materials rm ON r.recipe_id = rm.recipe_id
-    JOIN raw_materials raw ON rm.material_id = raw.material_id
-    ORDER BY r.product_name ASC, raw.name ASC
-    """
-    # Note: unit comes from raw_materials (raw.unit), NOT recipe_materials
+    try:
+        full_query = """
+        SELECT r.product_name AS recipe_product_name, r.notes,
+               raw.name AS material_name, rm.quantity_needed AS quantity, raw.unit
+        FROM recipes r
+        JOIN recipe_materials rm ON r.recipe_id = rm.recipe_id
+        JOIN raw_materials raw ON rm.material_id = raw.material_id
+        ORDER BY r.product_name ASC, raw.name ASC
+        """
+        # Note: unit comes from raw_materials (raw.unit), NOT recipe_materials
 
-    result = pd.read_sql_query(query, db.conn)
-    db.close()
-    return result
+        if page is None:
+            # ADDED: page=None → full table without LIMIT (for exports)
+            db.execute(cursor, full_query)
+            result = cursor.fetchall()
+            return (pd.DataFrame(result, columns=columns), None)
+
+        # ADDED: total distinct recipe count for pagination metadata
+        db.execute(cursor, "SELECT COUNT(*) FROM recipes")
+        total = cursor.fetchone()[0]
+
+        # ADDED: paginate at the recipe level using a subquery so no recipe is split across pages.
+        #        Inner SELECT gets the recipe_ids for this page; outer JOIN fetches all their ingredients.
+        paginated_query = """
+        SELECT r.product_name AS recipe_product_name, r.notes,
+               raw.name AS material_name, rm.quantity_needed AS quantity, raw.unit
+        FROM recipes r
+        JOIN recipe_materials rm ON r.recipe_id = rm.recipe_id
+        JOIN raw_materials raw ON rm.material_id = raw.material_id
+        WHERE r.recipe_id IN (
+            SELECT recipe_id FROM recipes ORDER BY product_name ASC LIMIT %s OFFSET %s
+        )
+        ORDER BY r.product_name ASC, raw.name ASC
+        """
+        db.execute(cursor, paginated_query, (per_page, (page - 1) * per_page))
+        result = cursor.fetchall()
+        return (pd.DataFrame(result, columns=columns), total)
+
+    except Exception as e:
+        logging.error(f"Error getting all recipes: {e}")
+        return (pd.DataFrame(), 0)
+
+    finally:
+        db.close()
 
 
 def add_recipe(product_name, materials, notes=None):
@@ -431,34 +486,54 @@ def delete_recipe(product_name):
         db.close()
 
 
-def get_all_recipes_with_id():
+def get_all_recipes_with_id(page=None, per_page=50):
     """
     returns all recipes with their recipe_id,
     used for manage page when editing recipe,
     to get recipe id from product name.
-    """
 
+    # ADDED: page/per_page pagination parameters. One row per recipe (DISTINCT), so
+    #        simple LIMIT/OFFSET is safe here — no risk of splitting a recipe across pages.
+    # page=None → full table; returns (df, None)
+    # page=int  → paginated slice; returns (df, total_recipe_count)
+    #
+    # CHANGED: was pd.read_sql_query(query, db.conn) — converted to cursor approach so
+    #          LIMIT/OFFSET params go through the %s→? wrapper consistently.
+    """
 
     db = get_db_connection()
     cursor = db.cursor()
+    columns = ['recipe_id', 'product_name', 'notes']
 
     try:
-        query = """
+        # uses DISTINCT to return one row per recipe; joins ensure only recipes with
+        # at least one valid material are included (same list as the recipes view page).
+        base_query = """
         SELECT DISTINCT r.recipe_id, r.product_name, r.notes
         FROM recipes r
         JOIN recipe_materials rm ON rm.recipe_id = r.recipe_id
         JOIN raw_materials raw ON rm.material_id = raw.material_id
         ORDER BY r.product_name ASC
         """
-# uses joins to get recipe_id, product name, and notes for all recipes, then uses DISTINCT to only get one row per recipe
-# (since there are multiple rows per recipe in recipe_materials), orders by product name.
-# this is done because view_recipes() uses joins aswell, so they both show same list of recipes.
-        result = pd.read_sql_query(query, db.conn)
-        return result
+
+        if page is None:
+            # ADDED: full table path — no LIMIT/OFFSET
+            db.execute(cursor, base_query)
+            result = cursor.fetchall()
+            return (pd.DataFrame(result, columns=columns), None)
+
+        # ADDED: total distinct recipe count for pagination metadata
+        db.execute(cursor, "SELECT COUNT(*) FROM recipes")
+        total = cursor.fetchone()[0]
+
+        # ADDED: LIMIT/OFFSET for the requested page
+        db.execute(cursor, base_query + " LIMIT %s OFFSET %s", (per_page, (page - 1) * per_page))
+        result = cursor.fetchall()
+        return (pd.DataFrame(result, columns=columns), total)
 
     except Exception as e:
         logging.error(f"Error getting all recipes with id: {e}")
-        return None
+        return (pd.DataFrame(), 0)
 
     finally:
         db.close()

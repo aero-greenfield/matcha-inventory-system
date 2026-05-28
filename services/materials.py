@@ -55,32 +55,50 @@ def get_low_stock_materials():
     return result
 
 
-def get_all_materials():
+def get_all_materials(page=None, per_page=50):
     """
-    Returns all materials
-    the stock is dirived from a SUM of all lot number quantity.
+    Returns all materials. Stock is derived from SUM of active lot quantities.
 
+    # ADDED: page/per_page pagination parameters.
+    # page=None  → full table, no LIMIT (used by export routes and create-batch); returns (df, None)
+    # page=int   → paginated slice; returns (df, total_material_count)
     """
     db = get_db_connection()
     cursor = db.cursor()
     try:
-        db.execute(cursor, """
-        SELECT rm.material_id, rm.name, rm.category, SUM(CASE WHEN rm_lot.quantity > 0 AND (rm_lot.expiration_date IS NULL OR rm_lot.expiration_date > %s) THEN rm_lot.quantity ELSE 0 END) as stock_level, rm.unit, rm.reorder_level, rm.is_housemade
+        now = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+        columns = ['material_id', 'name', 'category', 'stock_level', 'unit', 'reorder_level', 'is_housemade']
+
+        # does not include expired lots in the stock quantity
+        base_query = """
+        SELECT rm.material_id, rm.name, rm.category,
+               SUM(CASE WHEN rm_lot.quantity > 0 AND (rm_lot.expiration_date IS NULL OR rm_lot.expiration_date > %s)
+                   THEN rm_lot.quantity ELSE 0 END) as stock_level,
+               rm.unit, rm.reorder_level, rm.is_housemade
         FROM raw_materials rm
-        LEFT JOIN raw_material_lots rm_lot on rm.material_id = rm_lot.material_id
+        LEFT JOIN raw_material_lots rm_lot ON rm.material_id = rm_lot.material_id
         GROUP BY rm.material_id
         ORDER BY category, name
-        """, (datetime.now().strftime('%Y-%m-%d %H:%M:%S'),))
+        """
 
-        #CUrrently: does not include expired lots in the quantity.
+        if page is None:
+            # ADDED: page=None → return full table without LIMIT (exports, create-batch)
+            db.execute(cursor, base_query, (now,))
+            result = cursor.fetchall()
+            return (pd.DataFrame(result, columns=columns), None)
+
+        # ADDED: get total row count for pagination metadata (one count per material, not per lot)
+        db.execute(cursor, "SELECT COUNT(DISTINCT material_id) FROM raw_materials")
+        total = cursor.fetchone()[0]
+
+        # ADDED: append LIMIT/OFFSET for the requested page
+        db.execute(cursor, base_query + " LIMIT %s OFFSET %s", (now, per_page, (page - 1) * per_page))
         result = cursor.fetchall()
-        columns=['material_id', 'name', 'category', 'stock_level', 'unit', 'reorder_level', 'is_housemade']
-        df = pd.DataFrame(result, columns=columns)
-        return df
+        return (pd.DataFrame(result, columns=columns), total)
 
     except Exception as e:
         logging.error(f"Error getting all materials, (get_all_materials function) e: {e}")
-        return None
+        return (pd.DataFrame(), 0)
 
     finally:
         db.close()
@@ -239,28 +257,46 @@ def get_raw_material(name):
         db.close()
 
 
-def get_all_materials_with_id():
+def get_all_materials_with_id(page=None, per_page=50):
+    # ADDED: page/per_page pagination parameters (same sentinel convention as get_all_materials).
+    # page=None → full table; returns (df, None)
+    # page=int  → paginated slice; returns (df, total_count)
+    #
+    # CHANGED: was pd.read_sql_query(query, db.conn) — converted to cursor approach so
+    #          LIMIT/OFFSET params go through the %s→? wrapper consistently.
 
     db = get_db_connection()
     cursor = db.cursor()
 
-
     try:
-
-        query = """
+        columns = ['material_id', 'name', 'category', 'stock_level', 'unit', 'reorder_level', 'is_housemade']
+        base_query = """
         SELECT material_id, name, category, stock_level, unit, reorder_level, is_housemade
         FROM raw_materials
         ORDER BY category, name
         """
 
-        result = pd.read_sql_query(query, db.conn)
-        db.close()
-        return result
+        if page is None:
+            # ADDED: full table path — no LIMIT/OFFSET
+            db.execute(cursor, base_query)
+            result = cursor.fetchall()
+            return (pd.DataFrame(result, columns=columns), None)
+
+        # ADDED: count total materials for pagination metadata
+        db.execute(cursor, "SELECT COUNT(*) FROM raw_materials")
+        total = cursor.fetchone()[0]
+
+        # ADDED: LIMIT/OFFSET for requested page
+        db.execute(cursor, base_query + " LIMIT %s OFFSET %s", (per_page, (page - 1) * per_page))
+        result = cursor.fetchall()
+        return (pd.DataFrame(result, columns=columns), total)
 
     except Exception as e:
         logging.error(f"error getting all materials with id: {e}")
+        return (pd.DataFrame(), 0)
+
+    finally:
         db.close()
-        return None
 
 def decrease_raw_material(material_id, decrease_amount):
     """Decreases amount of material given its material_id and amount to subtract"""
@@ -403,6 +439,41 @@ def get_mix_stock(material_name):
     except Exception as e:
         logging.error(f"get_mix_stock: {e}")
         return 0.0
+    finally:
+        db.close()
+
+
+def get_material_by_name(name):
+    # ADDED: single-row lookup replacing the get_all_materials() + pandas filter pattern
+    #        in /api/material-unit. One indexed seek; no JOIN, no GROUP BY, no aggregation.
+    db = get_db_connection()
+    cursor = db.cursor()
+    try:
+        db.execute(cursor,
+            "SELECT name, unit FROM raw_materials WHERE LOWER(name) = LOWER(%s) LIMIT 1",
+            (name,))
+        return cursor.fetchone()  # (name, unit) tuple or None
+    except Exception as e:
+        logging.error(f"get_material_by_name: {e}")
+        return None
+    finally:
+        db.close()
+
+
+def get_material_names(q=""):
+    # ADDED: lightweight name-search for the /api/materials autocomplete endpoint.
+    #        Returns up to 50 names matching the search string; filtering happens in SQL,
+    #        not by fetching the full table into Python.
+    db = get_db_connection()
+    cursor = db.cursor()
+    try:
+        db.execute(cursor,
+            "SELECT name FROM raw_materials WHERE LOWER(name) LIKE LOWER(%s) ORDER BY name LIMIT 50",
+            (f"%{q}%",))
+        return [row[0] for row in cursor.fetchall()]
+    except Exception as e:
+        logging.error(f"get_material_names: {e}")
+        return []
     finally:
         db.close()
 

@@ -168,59 +168,75 @@ def receive_lot(material_id, lot_number, quantity, received_date, expiry_date=No
         db.close()
 
 
-def get_all_lots(material_id=None):
+def get_all_lots(material_id=None, page=None, per_page=50):
     """
-    returns all lots, for given material_id if provided, otherwise all materials. 
-    
+    returns all lots, for given material_id if provided, otherwise all materials.
+
     returns:
-    lot_id, lot_number, material_name, material_id, quantity, received_date, expiration, 
+    lot_id, lot_number, material_name, material_id, quantity, received_date, expiration,
     location, supplier, cost_per_unit, status
+
+    # ADDED: page/per_page pagination parameters.
+    # page=None → full table, no LIMIT; returns (df, None)
+    # page=int  → paginated slice; returns (df, total_lot_count)
     """
 
     db = get_db_connection()
     cursor = db.cursor()
+    columns = ['lot_id', 'lot_number', 'material_name', 'material_id', 'quantity', 'received_date', 'expiration_date', 'location', 'supplier', 'cost_per_unit', 'status']
 
     try:
-
         if material_id:
-
-            db.execute(cursor, """
+            base_query = """
             SELECT rml.lot_id, rml.lot_number, rm.name AS material_name, rm.material_id,
-            rml.quantity, rml.received_date, rml.expiration_date,
-            rml.location, rml.supplier, rml.cost_per_unit, rml.status
+                   rml.quantity, rml.received_date, rml.expiration_date,
+                   rml.location, rml.supplier, rml.cost_per_unit, rml.status
             FROM raw_material_lots rml
             JOIN raw_materials rm ON rml.material_id = rm.material_id
-            WHERE rml.material_id = %s 
-            ORDER BY rm.name ASC, rml.received_date ASC           
-                    
-                    """, (material_id,))
-            
-            result = cursor.fetchall()
-            columns = ['lot_id', 'lot_number', 'material_name', 'material_id', 'quantity', 'received_date', 'expiration_date', 'location', 'supplier', 'cost_per_unit', 'status']
-            df = pd.DataFrame(result, columns=columns)
+            WHERE rml.material_id = %s
+            ORDER BY rm.name ASC, rml.received_date ASC
+            """
+            base_params = (material_id,)
+            # ADDED: count query for this material's lots
+            count_query = "SELECT COUNT(*) FROM raw_material_lots WHERE material_id = %s"
+            count_params = (material_id,)
         else:
-            db.execute(cursor, """
+            base_query = """
             SELECT rml.lot_id, rml.lot_number, rm.name AS material_name, rm.material_id,
-            rml.quantity, rml.received_date, rml.expiration_date,
-            rml.location, rml.supplier, rml.cost_per_unit, rml.status
+                   rml.quantity, rml.received_date, rml.expiration_date,
+                   rml.location, rml.supplier, rml.cost_per_unit, rml.status
             FROM raw_material_lots rml
             JOIN raw_materials rm ON rml.material_id = rm.material_id
             ORDER BY rm.name ASC, rml.received_date ASC
+            """
+            base_params = ()
+            # ADDED: count all lots
+            count_query = "SELECT COUNT(*) FROM raw_material_lots"
+            count_params = ()
 
-                    """, ())
+        if page is None:
+            # ADDED: page=None → full table without LIMIT (no callers currently need this
+            #        but kept consistent with other get_all_* functions)
+            db.execute(cursor, base_query, base_params if base_params else None)
             result = cursor.fetchall()
-            columns = ['lot_id', 'lot_number', 'material_name', 'material_id', 'quantity', 'received_date', 'expiration_date', 'location', 'supplier', 'cost_per_unit', 'status']
-            df = pd.DataFrame(result, columns=columns)
-            
-    
+            return (pd.DataFrame(result, columns=columns), None)
+
+        # ADDED: total count for pagination metadata
+        db.execute(cursor, count_query, count_params if count_params else None)
+        total = cursor.fetchone()[0]
+
+        # ADDED: LIMIT/OFFSET for the requested page
+        paginated_params = (*base_params, per_page, (page - 1) * per_page)
+        db.execute(cursor, base_query + " LIMIT %s OFFSET %s", paginated_params)
+        result = cursor.fetchall()
+        return (pd.DataFrame(result, columns=columns), total)
+
     except Exception as e:
         logging.error(f"Error fetching all lots (with or without material_id {material_id}): {e}")
-        return None
+        return (pd.DataFrame(), 0)
 
     finally:
         db.close()
-    
-    return df
 
 def get_lot_by_id(lot_id):
 

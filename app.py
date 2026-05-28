@@ -25,6 +25,7 @@ from flask import Flask, json, request, redirect, url_for, jsonify, send_file, r
 # - send_file:  sends file to browser for download
 
 import os  # Operating system functions (file paths, environment variables)
+import math  # ADDED: math.ceil for computing total_pages in paginated routes
 from datetime import datetime  # For timestamps in exports
 
 from flask_wtf.csrf import CSRFProtect # security necesity. 
@@ -248,18 +249,26 @@ def view_inventory():
     """
 
     
-    df = get_all_materials() # get data in dataframe format from inventory.app func. 
+    # ADDED: read page number from URL (?page=N); default to page 1
+    PER_PAGE = 50
+    page = max(1, int(request.args.get('page', 1)))
 
-    materials = df.to_dict(orient='records') if not df.empty else [] 
-    #converts dataframe to list of dictionaries, where each dictionary represents what a material (one row). 
-    # the "orient = recors" is just a specific dictionary format.
-    
+    # CHANGED: was get_all_materials() returning a plain df.
+    #          Now returns (df, total) tuple; page= triggers LIMIT/OFFSET in the query.
+    df, total = get_all_materials(page=page, per_page=PER_PAGE)
 
-    return render_template("inventory.html", # render the inventory page html from template. 
-        materials=materials, # pass material data in list of dictionary form to html. 
-        count=len(df), # number of materials for display in html. this is needed because we need to check if there are materials in the html to decide whether to show the table or a "no materials" message.
-        back_link=True,  # back link, this is to present the back link in top left corner. back link is in the base.html, and this variable is used to decide whether to show it or not.
-        back_link_url="/", # back link to home. (index)
+    materials = df.to_dict(orient='records') if not df.empty else []
+    # ADDED: compute total page count for pagination controls in the template
+    total_pages = math.ceil(total / PER_PAGE) if total else 1
+
+    return render_template("inventory.html",
+        materials=materials,
+        count=len(df),
+        page=page,
+        total_pages=total_pages,
+        total=total,
+        back_link=True,
+        back_link_url="/",
         back_link_label="Back to Home"
 )
 
@@ -277,7 +286,9 @@ def export_inventory_excel():
     3. Calls export_to_excel() to create timestamped .xlsx file
     4. Uses send_file() to trigger browser download
     """
-    df = get_all_materials() # Get fresh data from database
+    # CHANGED: get_all_materials now returns (df, total). page=None skips LIMIT/OFFSET
+    #          so the export still contains all rows, not just one page.
+    df, _ = get_all_materials(page=None)
 
     # Return error if no data to export
     if df.empty:
@@ -604,11 +615,23 @@ def manage_materials():
     This is a page to view all materials with edit/delete options.
     simple GET, just viewing, but with buttons. 
     """
-    df = get_all_materials()
-    materials = df.to_dict(orient='records') if (df is not None and not df.empty) else [] # convert to HTML format like usual. 
-    return render_template("manage_materials.html", # load html template for this page.
+    # ADDED: pagination for manage-materials page
+    PER_PAGE = 50
+    page = max(1, int(request.args.get('page', 1)))
+
+    # CHANGED: get_all_materials now returns (df, total) tuple
+    df, total = get_all_materials(page=page, per_page=PER_PAGE)
+
+    materials = df.to_dict(orient='records') if (df is not None and not df.empty) else []
+    # ADDED: total_pages for pagination controls in template
+    total_pages = math.ceil(total / PER_PAGE) if total else 1
+
+    return render_template("manage_materials.html",
         materials=materials,
         count=len(materials),
+        page=page,
+        total_pages=total_pages,
+        total=total,
         back_link=True,
         back_link_url="/",
         back_link_label="Back to Home"
@@ -1082,7 +1105,9 @@ def create_batch():
             ), 500
 
 
-    all_materials_df = get_all_materials()
+    # CHANGED: get_all_materials now returns (df, total). page=None fetches the full table
+    #          so the housemade filter below still sees every material.
+    all_materials_df, _ = get_all_materials(page=None)
     if not all_materials_df.empty:
         housemade_materials = all_materials_df[all_materials_df['is_housemade'] == True][['name', 'stock_level', 'unit']].to_dict(orient='records')
     else:
@@ -1345,36 +1370,42 @@ def view_recipes():
     GET route
     """
 
-    # ========================================
-    # STEP 1: Get raw data from database
-    # ========================================
-    # Each row = one material in a recipe
-    # Example raw data:
-    #   recipe_product_name | notes | material_name | quantity | unit
-    #   matcha latte        | sweet | sugar         | 10       | grams
-    #   matcha latte        | sweet | matcha powder | 20       | grams
-    #   lavender tea        | None  | lavender      | 10       | grams
-    df = get_all_recipes()
+    # ADDED: read page number from URL (?page=N); default to page 1
+    PER_PAGE = 50
+    page = max(1, int(request.args.get('page', 1)))
+
+    # CHANGED: get_all_recipes now returns (df, total). Pagination is at the recipe level
+    #          (never splits a recipe across pages). total = total number of distinct recipes.
+    df, total = get_all_recipes(page=page, per_page=PER_PAGE)
+
     if df.empty:
         return render_template("recipes.html",
             recipes=[], recipe_count=0,
+            page=1, total_pages=1, total=0,
             back_link=True, back_link_url="/", back_link_label="Back to Home"
     )
 
-    # extra df display alteration to show recipe name and notes only on the first row of each recipe, 
-    # for better readability in the HTML table. 
-    # this is just for display purposes, it doesn't change the actual data in the database or how we process it.
-    
-    df_display = df.copy() #make copy of dataframe for display
-    duplicate_mask = df_display['recipe_product_name'].duplicated() # create mask for duplicate recipe names, will have all rows except the first occurrence of each recipe name marked as True.
-    df_display.loc[duplicate_mask, 'recipe_product_name'] = '' # make them invisible. 
-    df_display.loc[duplicate_mask, 'notes'] = '' # also make notes invisible for duplicate rows, 
-    recipe_count = df['recipe_product_name'].nunique() # count unique recipe names
-    recipes = df_display.to_dict(orient='records') # convert to list of dictionaries for HTML display, like usual.
+    # Show recipe name and notes only on the first ingredient row of each recipe —
+    # duplicate rows get blank values so the name doesn't repeat in the table.
+    df_display = df.copy()
+    duplicate_mask = df_display['recipe_product_name'].duplicated()
+    df_display.loc[duplicate_mask, 'recipe_product_name'] = ''
+    df_display.loc[duplicate_mask, 'notes'] = ''
+
+    # CHANGED: recipe_count now comes from the total returned by the service (all recipes),
+    #          not nunique() on the current page (which would undercount when paginated).
+    recipe_count = total
+    recipes = df_display.to_dict(orient='records')
+
+    # ADDED: total_pages for pagination controls in the template
+    total_pages = math.ceil(total / PER_PAGE) if total else 1
 
     return render_template("recipes.html",
         recipes=recipes,
         recipe_count=recipe_count,
+        page=page,
+        total_pages=total_pages,
+        total=total,
         back_link=True, back_link_url="/", back_link_label="Back to Home"
     )
 
@@ -1389,7 +1420,9 @@ def export_recipes_excel():
  
 
     """
-    df = get_all_recipes()  # Get all recipes with materials
+    # CHANGED: get_all_recipes now returns (df, total). page=None skips LIMIT/OFFSET
+    #          so the export still contains every recipe row, not just one page.
+    df, _ = get_all_recipes(page=None)
 
     if df.empty:
         return "No data to export", 400  # No recipes to export
@@ -1567,11 +1600,23 @@ def manage_recipes():
     This is a page to view all recipes with edit/delete options.
     simple GET, just viewing, but with buttons. 
     """
-    df = get_all_recipes_with_id()
-    recipes = df.to_dict(orient='records') if (df is not None and not df.empty) else [] # convert to HTML format like usual. 
-    return render_template("manage_recipes.html", # load html template for this page.
+    # ADDED: pagination for manage-recipes page
+    PER_PAGE = 50
+    page = max(1, int(request.args.get('page', 1)))
+
+    # CHANGED: get_all_recipes_with_id now returns (df, total) tuple
+    df, total = get_all_recipes_with_id(page=page, per_page=PER_PAGE)
+
+    recipes = df.to_dict(orient='records') if (df is not None and not df.empty) else []
+    # ADDED: total_pages for pagination controls in template
+    total_pages = math.ceil(total / PER_PAGE) if total else 1
+
+    return render_template("manage_recipes.html",
         recipes=recipes,
         count=len(recipes),
+        page=page,
+        total_pages=total_pages,
+        total=total,
         back_link=True,
         back_link_url="/",
         back_link_label="Back to Home"
@@ -1733,11 +1778,23 @@ def manage_lots():
     This is a page to view all lots with edit/delete options.
     simple GET, just viewing, but with buttons. 
     """
-    df = get_all_lots()
-    lots = df.to_dict(orient='records') if (df is not None and not df.empty) else [] # convert to HTML format like usual. 
-    return render_template("manage_lots.html", # load html template for this page.
+    # ADDED: pagination for manage-lots page
+    PER_PAGE = 50
+    page = max(1, int(request.args.get('page', 1)))
+
+    # CHANGED: get_all_lots now returns (df, total) tuple
+    df, total = get_all_lots(page=page, per_page=PER_PAGE)
+
+    lots = df.to_dict(orient='records') if (df is not None and not df.empty) else []
+    # ADDED: total_pages for pagination controls in template
+    total_pages = math.ceil(total / PER_PAGE) if total else 1
+
+    return render_template("manage_lots.html",
         lots=lots,
         count=len(lots),
+        page=page,
+        total_pages=total_pages,
+        total=total,
         back_link=True,
         back_link_url="/",
         back_link_label="Back to Home"

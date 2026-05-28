@@ -5,9 +5,12 @@ import json
 
 from auth import requires_auth
 from database import get_db_connection
-from services.materials import get_all_materials
+# REMOVED: get_all_materials — /api/materials and /api/material-unit no longer fetch the full table
+# REMOVED: get_all_recipes — /api/recipes no longer fetches the full table
+# ADDED: get_material_by_name, get_material_names, get_recipe_names — targeted lookups used below
+from services.materials import get_material_by_name, get_material_names
 from services.lots import get_all_lots_for_material, get_lots_for_material
-from services.recipes import get_all_recipes, get_recipe
+from services.recipes import get_recipe_names, get_recipe
 
 api_bp = Blueprint('api', __name__, url_prefix='/api')
 
@@ -28,23 +31,23 @@ def health_check():
 
 
 # autocomplete dropdown for material search (requires JS on frontend)
+# CHANGED: was get_all_materials() full-table fetch + client-side filter.
+#          Now accepts ?q= and filters in SQL; returns at most 50 results.
 @api_bp.route('/materials')
 @requires_auth
 def api_materials():
-    df = get_all_materials()
-    if df.empty:
-        return jsonify([])
-    return jsonify(df['name'].dropna().sort_values().tolist())
+    q = request.args.get('q', '').strip()
+    return jsonify(get_material_names(q))
 
 
 # autocomplete dropdown for recipe search when making a batch (requires JS on frontend)
+# CHANGED: was get_all_recipes() full-table fetch + client-side filter.
+#          Now accepts ?q= and filters in SQL; returns at most 50 results.
 @api_bp.route('/recipes')
 @requires_auth
 def api_recipes():
-    df = get_all_recipes()
-    if df.empty:
-        return jsonify([])
-    return jsonify(df['recipe_product_name'].dropna().drop_duplicates().sort_values().tolist())
+    q = request.args.get('q', '').strip()
+    return jsonify(get_recipe_names(q))
 
 
 # returns all lots for a given material (used to populate lot selection dropdowns)
@@ -58,19 +61,18 @@ def api_lots(material_id):
 
 
 # looks up a material's unit by name (used to auto-fill unit field on forms)
+# CHANGED: was get_all_materials() (full JOIN+GROUP BY+SUM table) + pandas string filter.
+#          Now calls get_material_by_name() which runs a single indexed SELECT with no JOIN.
 @api_bp.route('/material-unit')
 @requires_auth
 def api_material_unit():
     name = request.args.get('name', '').strip()
     if not name:
         return jsonify({'exists': False})
-    df = get_all_materials()
-    if df is None or df.empty:
+    row = get_material_by_name(name)
+    if row is None:
         return jsonify({'exists': False})
-    match = df[df['name'].str.lower() == name.lower()]
-    if match.empty:
-        return jsonify({'exists': False})
-    return jsonify({'exists': True, 'unit': match.iloc[0]['unit']})
+    return jsonify({'exists': True, 'unit': row[1]})
 
 
 

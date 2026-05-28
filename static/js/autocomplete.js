@@ -66,15 +66,25 @@ function attachAutocomplete(input, fetchFn) {
         });
     }
 
-    input.addEventListener('input', async () => {
-        const query = input.value.trim().toLowerCase();
+    // ADDED: debounce timer — fires the server request 250 ms after the user stops typing
+    //        rather than on every keystroke, reducing request volume without feeling slow.
+    let debounceTimer = null;
+
+    input.addEventListener('input', () => {
+        const query = input.value.trim();
         if (query.length === 0) {
             closeDropdown();
             return;
         }
-        const allNames = await fetchFn();
-        const matches = allNames.filter(n => n.toLowerCase().includes(query));
-        openDropdown(matches);
+
+        // ADDED: clear any pending request and schedule a new one after 250 ms
+        clearTimeout(debounceTimer);
+        debounceTimer = setTimeout(async () => {
+            // CHANGED: fetchFn now receives the current query string and returns only
+            //          matching results from the server (no client-side filtering needed).
+            const matches = await fetchFn(query);
+            openDropdown(matches);
+        }, 250);
     });
 
     input.addEventListener('keydown', (e) => {
@@ -105,20 +115,18 @@ function attachAutocomplete(input, fetchFn) {
     });
 }
 
-// --- Cached fetchers ---
+// --- Server-side search fetchers ---
+// REMOVED: _materialsCache / _recipesCache full-list caches — the server now filters by ?q=
+//          so there is no full list to cache. Each call returns only matching names (≤50).
+// ADDED: fetchMaterials(q) and fetchRecipes(q) — pass the current input to the server
+//        and return the filtered results directly. No client-side filtering needed.
 
-let _materialsCache = null;
-async function fetchMaterials() {
-    if (_materialsCache) return _materialsCache;
-    const res = await fetch('/api/materials', { credentials: 'include' });
-    _materialsCache = await res.json();
-    return _materialsCache;
+async function fetchMaterials(q = '') {
+    const res = await fetch('/api/materials?q=' + encodeURIComponent(q), { credentials: 'include' });
+    return res.json();
 }
 
-let _recipesCache = null;
-async function fetchRecipes() {
-    if (_recipesCache) return _recipesCache;
-    const res = await fetch('/api/recipes', { credentials: 'include' });
-    _recipesCache = await res.json();
-    return _recipesCache;
+async function fetchRecipes(q = '') {
+    const res = await fetch('/api/recipes?q=' + encodeURIComponent(q), { credentials: 'include' });
+    return res.json();
 }

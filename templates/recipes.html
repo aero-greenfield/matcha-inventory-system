@@ -46,4 +46,21 @@
 </div>
 {% endif %}
 
+{# ADDED: pagination controls — only shown when there is more than one page #}
+{% if total_pages > 1 %}
+<nav style="display:flex;align-items:center;gap:12px;margin-top:24px;font-size:14px;">
+    {% if page > 1 %}
+        <a href="?page={{ page - 1 }}" class="btn btn-secondary" style="padding:5px 14px;">&#8592; Prev</a>
+    {% else %}
+        <span class="btn btn-secondary" style="padding:5px 14px;opacity:0.4;cursor:default;">&#8592; Prev</span>
+    {% endif %}
+    <span style="color:var(--text-muted);">Page {{ page }} of {{ total_pages }} &mdash; {{ total }} recipe(s)</span>
+    {% if page < total_pages %}
+        <a href="?page={{ page + 1 }}" class="btn btn-secondary" style="padding:5px 14px;">Next &#8594;</a>
+    {% else %}
+        <span class="btn btn-secondary" style="padding:5px 14px;opacity:0.4;cursor:default;">Next &#8594;</span>
+    {% endif %}
+</nav>
+{% endif %}
+
 {% endblock %}
