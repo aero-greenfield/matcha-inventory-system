@@ -11,8 +11,7 @@ except ImportError:
 # IMPORTS
 # =======================
 
-# Flask core imports - these are the building blocks of our web app
-from unicodedata import category 
+
 
 
 from flask import Flask, json, request, redirect, url_for, jsonify, send_file, render_template
@@ -38,23 +37,22 @@ from flask_wtf.csrf import CSRFProtect # security necesity.
 from services.setup import create_database
 from services.audit import log_action, view_logs
 from services.materials import (
-    add_raw_material, get_all_materials, get_low_stock_materials,
-    get_material_by_id, get_raw_material, get_all_materials_with_id,
-    update_raw_material, increase_raw_material, decrease_raw_material,
-    delete_raw_material, get_mix_stock, get_material_id,
+    add_raw_material, get_all_materials, 
+    get_material_by_id,
+    update_raw_material,
+    delete_raw_material, get_material_id,
 )
 from services.lots import (
     get_all_lots,
     get_lot_by_id,
     receive_lot as inventory_receive_lot,
-    get_lots_for_material,
     update_lot,
     delete_lot,
     get_batches_for_lot,
 )
 from services.recipes import (
-    add_recipe, get_recipe, get_all_recipes, get_all_recipes_with_id,
-    get_recipe_by_id, change_recipe, update_recipe, delete_recipe, delete_recipe_by_id,
+    add_recipe, get_all_recipes, get_all_recipes_with_id,
+    get_recipe_by_id, update_recipe, delete_recipe_by_id,
     check_negative_stock,
 )
 from services.batches import (
@@ -69,7 +67,7 @@ from services.batches import (
 # - export_to_csv: Exports DataFrames to CSV files (not currently used)
 # - export_to_excel: NEW - Exports DataFrames to Excel files (.xlsx format)
 
-from helper_functions import (export_to_csv, export_to_excel,)
+from helper_functions import ( export_to_excel,)
 
 from auth import requires_auth
 from routes.api import api_bp
@@ -679,55 +677,6 @@ def edit_material(material_id):
         back_link_label="Back to Manage Materials"
 )
 
-
-@app.route('/edit-material/<int:material_id>/adjust-stock', methods=['POST']) # This is a route that is part of the edit material page, 
-# but is specifically for handling stock adjustments (POST request). it takes the material_id to know which material's stock to adjust, and it only accepts POST requests since it's processing a form submission.
-@requires_auth
-def adjust_stock(material_id):
-
-    """
-    a partner to edit material function, this function is specifically for handling stock adjustments (increasing or decreasing stock level).
-    ONLY uses POST since it's processing a form submission, and it takes material_id to know which material to adjust.
-
-    only adjusts stock level, not specific details of material. 
-    """
-    try:
-
-        amount = float(request.form.get('amount', 0)) # Get the amount to adjust (convert to number), this is from the form input in edit_material.html 
-
-        
-
-
-    except ValueError:
-        return render_template('error.html', # if not found, show error page.
-            title="Invalid Input",
-            message="Please enter a valid number for the stock adjustment.",
-            back_link=True, back_link_url=f"/edit-material/{material_id}", back_link_label="Back to Edit Material"
-        ), 400
-    
-    #input validation: > =0
-    if amount <= 0:
-        return render_template('error.html', # if not found, show error page.
-            title="Invalid Input",
-            message="Please enter a valid number more than 0.",
-            back_link=True, back_link_url=f"/edit-material/{material_id}", back_link_label="Back to Edit Material"
-        ), 400
-    
-    action = request.form.get('action') # Get the action (increase or decrease) from the form submission, this is from the submit button name in edit_material.html, where we have two buttons with name="action" and value="increase" or "decrease".
-
-    if action == 'increase':
-        result = increase_raw_material(material_id, amount) # Call function to increase stock
-    else:
-        result = decrease_raw_material(material_id, amount) # Call function to decrease stock (returns new stock level or None if failed)
-
-    if result is not None:
-        logging.info(f"Stock adjusted: material_id={material_id}, action={action}, amount={amount}, new_stock={result}")
-        log_action('stock_adjusted', f"material_id={material_id}, action={action}, amount={amount}, new_stock={result}")
-        return redirect(url_for('edit_material', material_id=material_id, msg=f'Stock updated to {result}')) # if successful, REDIRECT back to edit materil page.
-    else:
-        return redirect(url_for('edit_material', material_id=material_id, err='Stock update failed. Check there is enough stock to decrease.'))
-    
-# Note: Similar POST routes would be needed for updating details and deleting the material, following the same pattern of processing the form data and redirecting back to the edit page with a success or error message.
 
 
 

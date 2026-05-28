@@ -260,98 +260,8 @@ def get_raw_material(name):
         db.close()
 
 
-def get_all_materials_with_id(page=None, per_page=50):
-    # ADDED: page/per_page pagination parameters (same sentinel convention as get_all_materials).
-    # page=None → full table; returns (df, None)
-    # page=int  → paginated slice; returns (df, total_count)
-    #
-    # CHANGED: was pd.read_sql_query(query, db.conn) — converted to cursor approach so
-    #          LIMIT/OFFSET params go through the %s→? wrapper consistently.
 
-    db = get_db_connection()
-    cursor = db.cursor()
 
-    try:
-        columns = ['material_id', 'name', 'category', 'stock_level', 'unit', 'reorder_level', 'is_housemade']
-        base_query = """
-        SELECT material_id, name, category, stock_level, unit, reorder_level, is_housemade
-        FROM raw_materials
-        ORDER BY category, name
-        """
-
-        if page is None:
-            # ADDED: full table path — no LIMIT/OFFSET
-            db.execute(cursor, base_query)
-            result = cursor.fetchall()
-            return (pd.DataFrame(result, columns=columns), None)
-
-        # ADDED: count total materials for pagination metadata
-        db.execute(cursor, "SELECT COUNT(*) FROM raw_materials")
-        total = cursor.fetchone()[0]
-
-        # ADDED: LIMIT/OFFSET for requested page
-        db.execute(cursor, base_query + " LIMIT %s OFFSET %s", (per_page, (page - 1) * per_page))
-        result = cursor.fetchall()
-        return (pd.DataFrame(result, columns=columns), total)
-
-    except Exception as e:
-        logging.error(f"error getting all materials with id: {e}")
-        return (pd.DataFrame(), 0)
-
-    finally:
-        db.close()
-
-def decrease_raw_material(material_id, decrease_amount):
-    """Decreases amount of material given its material_id and amount to subtract"""
-
-    db = get_db_connection()
-    cursor = db.cursor()
-
-    try:
-        db.execute(cursor, """
-        SELECT material_id, stock_level, unit
-        FROM raw_materials
-        WHERE material_id = %s
-        """, (material_id,))
-        result = cursor.fetchone()
-
-        if not result:
-            print(f"Material with ID {material_id} not found in raw_materials")
-            return None
-
-        (material_id, current_stock, unit) = result
-
-        # Check if there's enough stock
-        if current_stock < decrease_amount:
-            print(f"Insufficient stock: Material with ID {material_id} has {current_stock} {unit}, but {decrease_amount} {unit} is needed")
-            return None
-
-        db.execute(cursor, """
-        UPDATE raw_materials
-        SET stock_level = stock_level - %s
-        WHERE material_id = %s
-        """, (decrease_amount, material_id))
-
-        db.commit()
-
-        # Get new stock level
-        db.execute(cursor, """
-        SELECT stock_level
-        FROM raw_materials
-        WHERE material_id = %s
-        """, (material_id,))
-
-        new_stock_level = cursor.fetchone()[0]
-        print(f"Successfully deducted {decrease_amount} {unit} from material with ID :{material_id}. New stock level: {new_stock_level} {unit}")
-        return new_stock_level
-
-    except Exception as e:
-        logging.error(f"Error: {e}")
-        db.rollback()
-        return None
-
-    finally:
-        db.close()
 
 def delete_raw_material(material_id):
 
@@ -428,22 +338,6 @@ def get_housemade_materials():
         db.close()
 
 
-def get_mix_stock(material_name):
-    """Returns current stock_level for a housemade material by name. Returns 0.0 if not found."""
-    db = get_db_connection()
-    cursor = db.cursor()
-    try:
-        db.execute(cursor, """
-            SELECT stock_level FROM raw_materials
-            WHERE LOWER(name) = LOWER(%s) AND is_housemade = TRUE
-        """, (material_name,))
-        row = cursor.fetchone()
-        return float(row[0]) if row else 0.0
-    except Exception as e:
-        logging.error(f"get_mix_stock: {e}")
-        return 0.0
-    finally:
-        db.close()
 
 
 def get_material_by_name(name):

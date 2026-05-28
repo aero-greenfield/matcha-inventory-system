@@ -65,28 +65,28 @@ def init_database():
     if DATABASE_URL:
 
    
-        cursor.execute(""" 
-        CREATE TABLE IF NOT EXISTS raw_materials( 
-            material_id SERIAL PRIMARY KEY, 
-            name TEXT NOT NULL, 
-            category TEXT,   
-            unit TEXT, 
-            reorder_level REAL, 
+        cursor.execute("""
+        CREATE TABLE IF NOT EXISTS raw_materials(
+            material_id SERIAL PRIMARY KEY,
+            name TEXT NOT NULL UNIQUE,
+            category TEXT,
+            unit TEXT,
+            reorder_level REAL,
             is_housemade BOOLEAN DEFAULT FALSE
-        ) 
+        )
         """)
 
     else:
 
-        cursor.execute(""" 
-        CREATE TABLE IF NOT EXISTS raw_materials( 
+        cursor.execute("""
+        CREATE TABLE IF NOT EXISTS raw_materials(
             material_id INTEGER PRIMARY KEY AUTOINCREMENT,
-            name TEXT NOT NULL, 
-            category TEXT,   
-            unit TEXT, 
-            reorder_level REAL, 
+            name TEXT NOT NULL UNIQUE,
+            category TEXT,
+            unit TEXT,
+            reorder_level REAL,
             is_housemade BOOLEAN DEFAULT FALSE
-        ) 
+        )
         """)
     
    # What changed from SQLite? 
@@ -195,39 +195,41 @@ def init_database():
     if DATABASE_URL:
     
 
-        cursor.execute(""" 
+        cursor.execute("""
         CREATE TABLE IF NOT EXISTS batches(
             batch_id SERIAL PRIMARY KEY,
-            batch_number TEXT NOT NULL DEFAULT '',
             product_name TEXT NOT NULL,
             quantity INTEGER,
             date_completed TEXT,
             status TEXT DEFAULT 'Ready',
             notes TEXT,
+            batch_number TEXT,
             date_shipped TEXT,
             expiration_date TEXT,
-            batch_type TEXT DEFAULT 'standard',
             planned_completion_date TEXT,
+            batch_type TEXT DEFAULT 'standard',
             planned_lot_selections TEXT,
-            promotion_failure_reason TEXT
+            promotion_failure_reason TEXT,
+            mix_lot_id INTEGER DEFAULT NULL REFERENCES raw_material_lots(lot_id)
         )
         """) 
     else:
-        cursor.execute(""" 
+        cursor.execute("""
         CREATE TABLE IF NOT EXISTS batches(
             batch_id INTEGER PRIMARY KEY AUTOINCREMENT,
-            batch_number TEXT NOT NULL DEFAULT '',
             product_name TEXT NOT NULL,
             quantity INTEGER,
             date_completed TEXT,
             status TEXT DEFAULT 'Ready',
             notes TEXT,
+            batch_number TEXT,
             date_shipped TEXT,
             expiration_date TEXT,
-            batch_type TEXT DEFAULT 'standard',
             planned_completion_date TEXT,
+            batch_type TEXT DEFAULT 'standard',
             planned_lot_selections TEXT,
-            promotion_failure_reason TEXT
+            promotion_failure_reason TEXT,
+            mix_lot_id INTEGER DEFAULT NULL REFERENCES raw_material_lots(lot_id)
         )
         """) 
     
@@ -283,7 +285,7 @@ def init_database():
 
         cursor.execute("""
         CREATE TABLE IF NOT EXISTS audit_log (
-            id SERIAL PRIMARY KEY,
+            log_id SERIAL PRIMARY KEY,
             action TEXT NOT NULL,
             details TEXT,
             timestamp TIMESTAMPTZ DEFAULT NOW()
@@ -292,7 +294,7 @@ def init_database():
     else:
         cursor.execute("""
         CREATE TABLE IF NOT EXISTS audit_log (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            log_id INTEGER PRIMARY KEY AUTOINCREMENT,
             action TEXT NOT NULL,
             details TEXT,
             timestamp TEXT DEFAULT (datetime('now'))
