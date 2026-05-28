@@ -217,12 +217,21 @@ def get_all_lots(material_id=None, page=None, per_page=50):
         if page is None:
             # ADDED: page=None → full table without LIMIT (no callers currently need this
             #        but kept consistent with other get_all_* functions)
-            db.execute(cursor, base_query, base_params if base_params else None)
+            # CHANGED: was passing None when base_params is empty — omit params arg instead
+            #          so SQLite doesn't receive None (not iterable in Python 3.12+).
+            if base_params:
+                db.execute(cursor, base_query, base_params)
+            else:
+                db.execute(cursor, base_query)
             result = cursor.fetchall()
             return (pd.DataFrame(result, columns=columns), None)
 
         # ADDED: total count for pagination metadata
-        db.execute(cursor, count_query, count_params if count_params else None)
+        # CHANGED: was passing None when count_params is empty — omit params arg instead.
+        if count_params:
+            db.execute(cursor, count_query, count_params)
+        else:
+            db.execute(cursor, count_query)
         total = cursor.fetchone()[0]
 
         # ADDED: LIMIT/OFFSET for the requested page

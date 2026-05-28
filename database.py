@@ -192,7 +192,13 @@ class DatabaseConnection:
         else:
             # SQLite: Convert %s to ?
             sqlite_query = query.replace('%s', '?')
-            cursor.execute(sqlite_query, params)
+            # CHANGED: only pass params when not None — cursor.execute(sql, None) raises
+            #          TypeError in Python 3.12+ sqlite3 because None is not iterable.
+            #          Omitting the argument uses the default empty tuple instead.
+            if params is None:
+                cursor.execute(sqlite_query)
+            else:
+                cursor.execute(sqlite_query, params)
 
 
     def get_last_insert_id(self, cursor):

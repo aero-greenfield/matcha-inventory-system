@@ -66,7 +66,10 @@ def get_all_materials(page=None, per_page=50):
     db = get_db_connection()
     cursor = db.cursor()
     try:
-        now = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+        # CHANGED: was strftime string — psycopg2 can't safely cast a datetime string to a
+        #          DATE column. Passing a Python datetime object lets the driver pick the
+        #          right type (datetime → timestamp, date → date) for both SQLite and PostgreSQL.
+        now = datetime.now()
         columns = ['material_id', 'name', 'category', 'stock_level', 'unit', 'reorder_level', 'is_housemade']
 
         # does not include expired lots in the stock quantity

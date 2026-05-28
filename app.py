@@ -822,21 +822,37 @@ def view_batches():
     
     """
 
-    data = get_batches()
-    all_ready = data.to_dict(orient='records') if not data.empty else []
-    ready_standard = [b for b in all_ready if b.get('batch_type') != 'mix']
-    ready_mix       = [b for b in all_ready if b.get('batch_type') == 'mix']
+    # ADDED: two independent page params — ready and planned sections paginate separately
+    PER_PAGE = 50
+    ready_page   = max(1, int(request.args.get('ready_page', 1)))
+    planned_page = max(1, int(request.args.get('planned_page', 1)))
 
-    planned_data = get_batches_planned()
-    all_planned = planned_data.to_dict(orient='records') if not planned_data.empty else []
+    # CHANGED: get_batches and get_batches_planned now return (df, total) tuples
+    data, ready_total         = get_batches(page=ready_page, per_page=PER_PAGE)
+    planned_data, planned_total = get_batches_planned(page=planned_page, per_page=PER_PAGE)
+
+    # PRESERVED: Python standard/mix split — unchanged, still runs on whatever slice the query returned
+    all_ready    = data.to_dict(orient='records') if not data.empty else []
+    ready_standard = [b for b in all_ready if b.get('batch_type') != 'mix']
+    ready_mix      = [b for b in all_ready if b.get('batch_type') == 'mix']
+
+    all_planned    = planned_data.to_dict(orient='records') if not planned_data.empty else []
     planned_standard = [b for b in all_planned if b.get('batch_type') != 'mix']
     planned_mix      = [b for b in all_planned if b.get('batch_type') == 'mix']
+
+    # ADDED: compute total pages for each section's pagination nav
+    ready_total_pages   = math.ceil(ready_total / PER_PAGE) if ready_total else 1
+    planned_total_pages = math.ceil(planned_total / PER_PAGE) if planned_total else 1
 
     return render_template("batches.html",
         ready_standard=ready_standard,
         ready_mix=ready_mix,
         planned_standard=planned_standard,
         planned_mix=planned_mix,
+        ready_page=ready_page,
+        ready_total_pages=ready_total_pages,
+        planned_page=planned_page,
+        planned_total_pages=planned_total_pages,
         back_link=True, back_link_url="/", back_link_label="Back to Home"
 )
 
@@ -892,7 +908,9 @@ def export_batches_excel():
     - Sharing batch info with logistics team
     - Record keeping of completed batches
     """
-    df = get_batches()  # Get all ready batches
+    # CHANGED: get_batches now returns (df, total). page=None skips LIMIT/OFFSET
+    #          so the export still contains all ready-batch rows, not just one page.
+    df, _ = get_batches(page=None)
 
     if df.empty:
         return "No data to export", 400  # No batches to export
@@ -912,11 +930,23 @@ def view_shipped_batches():
     gets all shipped batches and displays them in a table
     """
 
-    data = get_batches_shipped()
-    batches = data.to_dict(orient='records') if not data.empty else []
-    columns = list(data.columns) if not data.empty else []
+    # ADDED: pagination for shipped batches
+    PER_PAGE = 50
+    page = max(1, int(request.args.get('page', 1)))
+
+    # CHANGED: get_batches_shipped now returns (df, total) tuple
+    df, total = get_batches_shipped(page=page, per_page=PER_PAGE)
+
+    batches = df.to_dict(orient='records') if not df.empty else []
+    columns = list(df.columns) if not df.empty else []
+    # ADDED: total_pages for pagination controls in the template
+    total_pages = math.ceil(total / PER_PAGE) if total else 1
+
     return render_template("shipped_batches.html",
         batches=batches, columns=columns, count=len(batches),
+        page=page,
+        total_pages=total_pages,
+        total=total,
         back_link=True, back_link_url="/", back_link_label="Back to Home"
 )
 
@@ -929,7 +959,9 @@ def export_shipped_batches_excel():
  
  
     """
-    df = get_batches_shipped()  # Get all shipped batches
+    # CHANGED: get_batches_shipped now returns (df, total). page=None skips LIMIT/OFFSET
+    #          so the export still contains all shipped-batch rows, not just one page.
+    df, _ = get_batches_shipped(page=None)
 
     if df.empty:
         return "No data to export", 400  # No shipped batches to export
@@ -1130,11 +1162,23 @@ def manage_batches():
     This is a page to view all batches with edit/delete options.
     simple GET, just viewing, but with buttons. 
     """
-    df = get_all_batches_with_id()
-    batches = df.to_dict(orient='records') if (df is not None and not df.empty) else [] # convert to HTML format like usual. 
-    return render_template("manage_batches.html", # load html template for this page.
+    # ADDED: pagination for manage-batches page
+    PER_PAGE = 50
+    page = max(1, int(request.args.get('page', 1)))
+
+    # CHANGED: get_all_batches_with_id now returns (df, total) tuple
+    df, total = get_all_batches_with_id(page=page, per_page=PER_PAGE)
+
+    batches = df.to_dict(orient='records') if (df is not None and not df.empty) else []
+    # ADDED: total_pages for pagination controls in the template
+    total_pages = math.ceil(total / PER_PAGE) if total else 1
+
+    return render_template("manage_batches.html",
         batches=batches,
         count=len(batches),
+        page=page,
+        total_pages=total_pages,
+        total=total,
         back_link=True,
         back_link_url="/",
         back_link_label="Back to Home"

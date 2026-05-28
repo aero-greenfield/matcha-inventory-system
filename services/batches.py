@@ -241,41 +241,92 @@ def add_to_batches(product_name, quantity, notes=None, batch_number=None, deduct
         db.close()
 
 
-def get_batches():
+def get_batches(page=None, per_page=50):
     """Gets all batches ready to ship"""
     global _last_promote_time
     now = time.time()
+    # PRESERVED: time-gated side effect — promotes overdue planned batches at most once per 60 s
     if now - _last_promote_time > 60:
         promote_planned_batches()
         _last_promote_time = now
-    db = get_db_connection()
 
-    query = """
+    db = get_db_connection()
+    cursor = db.cursor()
+
+    # ADDED: converted from pd.read_sql_query(query, db.conn) so LIMIT/OFFSET parameters
+    #        can go through the db.execute %s→? wrapper.
+    columns = ['batch_id', 'batch_number', 'product_name', 'batch_type', 'quantity',
+               'date_completed', 'notes', 'expiration_date']
+    base_query = """
     SELECT batch_id, batch_number, product_name, batch_type, quantity, date_completed, notes, expiration_date
     FROM batches
     WHERE status = 'Ready'
     ORDER BY batch_id DESC
     """
 
-    result = pd.read_sql_query(query, db.conn)
-    db.close()
-    return result
+    try:
+        # ADDED: page=None → full table without LIMIT (used by export routes)
+        if page is None:
+            db.execute(cursor, base_query)
+            result = cursor.fetchall()
+            return (pd.DataFrame(result, columns=columns), None)
+
+        # ADDED: count query so the route can compute total_pages
+        db.execute(cursor, "SELECT COUNT(*) FROM batches WHERE status = 'Ready'")
+        total = cursor.fetchone()[0]
+
+        # ADDED: LIMIT/OFFSET for pagination
+        offset = (page - 1) * per_page
+        db.execute(cursor, base_query + " LIMIT %s OFFSET %s", (per_page, offset))
+        result = cursor.fetchall()
+        return (pd.DataFrame(result, columns=columns), total)
+
+    except Exception as e:
+        logging.error(f"Error getting batches: {e}")
+        return (pd.DataFrame(), 0)
+
+    finally:
+        db.close()
 
 
-def get_batches_shipped():
+def get_batches_shipped(page=None, per_page=50):
     """Gets all batches that have been shipped"""
     db = get_db_connection()
+    cursor = db.cursor()
 
-    query = """
+    # ADDED: converted from pd.read_sql_query to cursor approach for LIMIT/OFFSET support
+    columns = ['batch_id', 'batch_number', 'product_name', 'quantity',
+               'date_completed', 'date_shipped', 'notes', 'expiration_date']
+    base_query = """
     SELECT batch_id, batch_number, product_name, quantity, date_completed, date_shipped, notes, expiration_date
     FROM batches
     WHERE status = 'Shipped'
     ORDER BY date_shipped DESC
     """
 
-    result = pd.read_sql_query(query, db.conn)
-    db.close()
-    return result
+    try:
+        # ADDED: page=None → full table without LIMIT (used by export routes)
+        if page is None:
+            db.execute(cursor, base_query)
+            result = cursor.fetchall()
+            return (pd.DataFrame(result, columns=columns), None)
+
+        # ADDED: count query so the route can compute total_pages
+        db.execute(cursor, "SELECT COUNT(*) FROM batches WHERE status = 'Shipped'")
+        total = cursor.fetchone()[0]
+
+        # ADDED: LIMIT/OFFSET for pagination
+        offset = (page - 1) * per_page
+        db.execute(cursor, base_query + " LIMIT %s OFFSET %s", (per_page, offset))
+        result = cursor.fetchall()
+        return (pd.DataFrame(result, columns=columns), total)
+
+    except Exception as e:
+        logging.error(f"Error getting shipped batches: {e}")
+        return (pd.DataFrame(), 0)
+
+    finally:
+        db.close()
 
 def mark_as_shipped(batch_id):
     """Marks a batch as shipped"""
@@ -447,31 +498,46 @@ def delete_batch(batch_id, materials_to_reallocate=None, reallocate=False):
     finally:
         db.close()
 
-def get_all_batches_with_id():
+def get_all_batches_with_id(page=None, per_page=50):
     """
     Get all batches including shipped ones, using batch_id
 
     used for manage page
     """
+    # PRESERVED: unconditional promote_planned_batches() call — pagination does not affect this
     promote_planned_batches()
     db = get_db_connection()
+    cursor = db.cursor()
+
+    # ADDED: converted from pd.read_sql_query to cursor approach for LIMIT/OFFSET support
+    columns = ['batch_id', 'batch_number', 'product_name', 'quantity', 'date_completed',
+               'status', 'notes', 'date_shipped', 'expiration_date', 'planned_completion_date', 'batch_type']
+    base_query = """
+    SELECT batch_id, batch_number, product_name, quantity, date_completed, status, notes, date_shipped, expiration_date, planned_completion_date, batch_type
+    FROM batches
+    ORDER BY date_completed DESC
+    """
 
     try:
-        query = """
+        # ADDED: page=None → full table without LIMIT (used by export routes)
+        if page is None:
+            db.execute(cursor, base_query)
+            result = cursor.fetchall()
+            return (pd.DataFrame(result, columns=columns), None)
 
-        SELECT batch_id, batch_number, product_name, quantity, date_completed, status, notes, date_shipped, expiration_date, planned_completion_date, batch_type
-        FROM batches
-        ORDER BY date_completed DESC
-        """
+        # ADDED: count query so the route can compute total_pages
+        db.execute(cursor, "SELECT COUNT(*) FROM batches")
+        total = cursor.fetchone()[0]
 
-        result = pd.read_sql_query(query, db.conn)
-
-        return result
+        # ADDED: LIMIT/OFFSET for pagination
+        offset = (page - 1) * per_page
+        db.execute(cursor, base_query + " LIMIT %s OFFSET %s", (per_page, offset))
+        result = cursor.fetchall()
+        return (pd.DataFrame(result, columns=columns), total)
 
     except Exception as e:
-        logging.error(f"error getting all materials with id: {e}")
-
-        return None
+        logging.error(f"error getting all batches with id: {e}")
+        return (pd.DataFrame(), 0)
 
     finally:
         db.close()
@@ -842,18 +908,45 @@ def promote_planned_batches():
         db.close()
 
 
-def get_batches_planned():
+def get_batches_planned(page=None, per_page=50):
     """Gets all Planned batches ordered by planned_completion_date ascending."""
     db = get_db_connection()
-    query = """
+    cursor = db.cursor()
+
+    # ADDED: converted from pd.read_sql_query to cursor approach for LIMIT/OFFSET support
+    columns = ['batch_id', 'batch_number', 'product_name', 'batch_type', 'quantity',
+               'planned_completion_date', 'notes', 'expiration_date', 'promotion_failure_reason']
+    base_query = """
     SELECT batch_id, batch_number, product_name, batch_type, quantity, planned_completion_date, notes, expiration_date, promotion_failure_reason
     FROM batches
     WHERE status = 'Planned'
     ORDER BY batch_id DESC
     """
-    result = pd.read_sql_query(query, db.conn)
-    db.close()
-    return result
+
+    try:
+        # ADDED: page=None → full table without LIMIT (no planned-batch export route today,
+        #        but sentinel keeps the signature consistent with the other three functions)
+        if page is None:
+            db.execute(cursor, base_query)
+            result = cursor.fetchall()
+            return (pd.DataFrame(result, columns=columns), None)
+
+        # ADDED: count query so the route can compute total_pages
+        db.execute(cursor, "SELECT COUNT(*) FROM batches WHERE status = 'Planned'")
+        total = cursor.fetchone()[0]
+
+        # ADDED: LIMIT/OFFSET for pagination
+        offset = (page - 1) * per_page
+        db.execute(cursor, base_query + " LIMIT %s OFFSET %s", (per_page, offset))
+        result = cursor.fetchall()
+        return (pd.DataFrame(result, columns=columns), total)
+
+    except Exception as e:
+        logging.error(f"Error getting planned batches: {e}")
+        return (pd.DataFrame(), 0)
+
+    finally:
+        db.close()
 
 
 def get_batch_materials(batch_id):
