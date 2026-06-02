@@ -12,12 +12,7 @@
     <a href="/receive-lot" class="btn btn-primary">+ Receive Lot</a>
 </div>
 
-{% if request.args.get('msg') %}
-<div class="alert alert-success">{{ request.args.get('msg') }}</div>
-{% endif %}
-{% if request.args.get('err') %}
-<div class="alert alert-error">{{ request.args.get('err') }}</div>
-{% endif %}
+{# REMOVED: was request.args.get('msg'/'err') URL-param messages — now handled by flash() in base.html #}
 
 {% if lots %}
 <div class="table-container">

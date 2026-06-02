@@ -12,8 +12,7 @@
     <a href="/manage-lots" class="btn btn-secondary">&#8592; Back</a>
 </div>
 
-{% if request.args.get('msg') %}<div class="alert alert-success">{{ request.args.get('msg') }}</div>{% endif %}
-{% if request.args.get('err') %}<div class="alert alert-error">{{ request.args.get('err') }}</div>{% endif %}
+{# REMOVED: was request.args.get('msg'/'err') URL-param messages — now handled by flash() in base.html #}
 
 <div class="section-card">
     <h2>Edit Details</h2>

@@ -14,7 +14,7 @@ except ImportError:
 
 
 
-from flask import Flask, json, request, redirect, url_for, jsonify, send_file, render_template
+from flask import Flask, json, request, redirect, url_for, jsonify, send_file, render_template, flash  # ADDED: flash for session-backed messages
 
 # - Flask: The main application class
 # - request: obejct that give you access to income http request data. 
@@ -37,10 +37,11 @@ from flask_wtf.csrf import CSRFProtect # security necesity.
 from services.setup import create_database
 from services.audit import log_action, view_logs
 from services.materials import (
-    add_raw_material, get_all_materials, 
+    add_raw_material, get_all_materials,
     get_material_by_id,
     update_raw_material,
     delete_raw_material, get_material_id,
+    get_low_stock_materials,  # ADDED: was missing — /low-stock route raised NameError without this
 )
 from services.lots import (
     get_all_lots,
@@ -97,6 +98,13 @@ secret = os.environ.get('SECRET_KEY')
 if not secret:
     raise RuntimeError("SECRET_KEY environment variable must be set")
 app.config['SECRET_KEY'] = secret
+
+# ADDED: harden session cookie — HTTPONLY blocks JS access, Lax prevents cross-site leakage.
+# SESSION_COOKIE_SECURE is omitted here; enable it at the deployment level when HTTPS is enforced
+# (setting it to True over plain HTTP would break sessions entirely).
+app.config['SESSION_COOKIE_HTTPONLY'] = True
+app.config['SESSION_COOKIE_SAMESITE'] = 'Lax'
+
 csrf = CSRFProtect(app)
 app.register_blueprint(api_bp)
 
@@ -144,17 +152,23 @@ except:
 
 
 # ========================
-# RATE LIMITING (Currently Disabled)
+# RATE LIMITING
 # ========================
-# Rate limiting prevents abuse by limiting how many requests one IP can make
-# Example: Limit to 200 requests per day, 50 per hour
-# Currently commented out, but you can enable it if needed
+# ADDED: prevents brute-force attacks against the HTTP Basic Auth endpoint.
+# Limits are applied per source IP. flask-limiter added to requirements.txt.
+from flask_limiter import Limiter
+from flask_limiter.util import get_remote_address
 
-#limiter = Limiter(
-#    app=app,
-#    default_limits=["200 per day", "50 per hour"]
-#)
+limiter = Limiter(
+    app=app,
+    key_func=get_remote_address,
+    default_limits=["200 per day", "50 per hour"]
+)
 # ========================
+
+# ADDED: upper bound for ?page= query param.
+# Without this, ?page=99999999 generates a massive OFFSET query that stalls the database.
+MAX_PAGE = 10_000
 
 
 
@@ -249,7 +263,7 @@ def view_inventory():
     
     # ADDED: read page number from URL (?page=N); default to page 1
     PER_PAGE = 50
-    page = max(1, int(request.args.get('page', 1)))
+    page = min(max(1, int(request.args.get('page', 1))), MAX_PAGE)  # CHANGED: capped at MAX_PAGE to prevent large-OFFSET DoS
 
     # CHANGED: was get_all_materials() returning a plain df.
     #          Now returns (df, total) tuple; page= triggers LIMIT/OFFSET in the query.
@@ -615,7 +629,7 @@ def manage_materials():
     """
     # ADDED: pagination for manage-materials page
     PER_PAGE = 50
-    page = max(1, int(request.args.get('page', 1)))
+    page = min(max(1, int(request.args.get('page', 1))), MAX_PAGE)  # CHANGED: capped at MAX_PAGE to prevent large-OFFSET DoS
 
     # CHANGED: get_all_materials now returns (df, total) tuple
     df, total = get_all_materials(page=page, per_page=PER_PAGE)
@@ -718,9 +732,12 @@ def update_material_details(material_id):
     if result:
         logging.info(f"Material details updated: material_id={material_id}, name={name}, category={category}, unit={unit}")
         log_action('material_updated', f"material_id={material_id}, name={name}, category={category}")
-        return redirect(url_for('edit_material', material_id=material_id, msg='Details updated successfully'))
+        # CHANGED: was url_for(..., msg=...) — moved to flash() so messages are session-backed
+        flash('Details updated successfully', 'success')
+        return redirect(url_for('edit_material', material_id=material_id))
     else:
-        return redirect(url_for('edit_material', material_id=material_id, err='Failed to update details'))
+        flash('Failed to update details', 'error')
+        return redirect(url_for('edit_material', material_id=material_id))
 # Note: The update_raw_material function would need to be implemented in the database module to handle updating the material details based on the provided parameters.
 
 @app.route('/edit-material/<int:material_id>/delete', methods=['POST']) 
@@ -739,7 +756,9 @@ def delete_material(material_id):
     if result.get("affected_batches"):
         count = len(result["affected_batches"])
         warning = f"Material deleted. Note: it was used in {count} batch(es) — those records no longer show this ingredient."
-        return redirect(url_for('manage_materials', warning=warning))
+        # CHANGED: was url_for(..., warning=...) — moved to flash()
+        flash(warning, 'warning')
+        return redirect(url_for('manage_materials'))
     return redirect(url_for('manage_materials'))
 
 
@@ -774,7 +793,7 @@ def view_batches():
     # ADDED: two independent page params — ready and planned sections paginate separately
     PER_PAGE = 50
     ready_page   = max(1, int(request.args.get('ready_page', 1)))
-    planned_page = max(1, int(request.args.get('planned_page', 1)))
+    planned_page = min(max(1, int(request.args.get('planned_page', 1))), MAX_PAGE)  # CHANGED: capped at MAX_PAGE to prevent large-OFFSET DoS
 
     # CHANGED: get_batches and get_batches_planned now return (df, total) tuples
     data, ready_total         = get_batches(page=ready_page, per_page=PER_PAGE)
@@ -881,7 +900,7 @@ def view_shipped_batches():
 
     # ADDED: pagination for shipped batches
     PER_PAGE = 50
-    page = max(1, int(request.args.get('page', 1)))
+    page = min(max(1, int(request.args.get('page', 1))), MAX_PAGE)  # CHANGED: capped at MAX_PAGE to prevent large-OFFSET DoS
 
     # CHANGED: get_batches_shipped now returns (df, total) tuple
     df, total = get_batches_shipped(page=page, per_page=PER_PAGE)
@@ -1071,9 +1090,12 @@ def create_batch():
                 ), 500
 
         except ValueError as e:
+            # CHANGED: was str(e) — raw ValueError messages can leak internal schema/logic details.
+            # Log the real error server-side and show a safe generic message to the user.
+            logging.warning(f"create_batch ValueError: {e}")
             return render_template('error.html',
                 title="Error",
-                message=str(e),
+                message="Invalid input. Please check your selections and try again.",
                 back_link=True, back_link_url="/create-batch", back_link_label="Go back to Create Batch"
             ), 400
 
@@ -1113,7 +1135,7 @@ def manage_batches():
     """
     # ADDED: pagination for manage-batches page
     PER_PAGE = 50
-    page = max(1, int(request.args.get('page', 1)))
+    page = min(max(1, int(request.args.get('page', 1))), MAX_PAGE)  # CHANGED: capped at MAX_PAGE to prevent large-OFFSET DoS
 
     # CHANGED: get_all_batches_with_id now returns (df, total) tuple
     df, total = get_all_batches_with_id(page=page, per_page=PER_PAGE)
@@ -1256,7 +1278,9 @@ def update_batch_details(batch_id):
                 pass
 
         if new_quantities and not check_batch_materials_stock(batch_id, new_quantities, lot_selections or None):
-            return redirect(url_for('edit_batch', batch_id=batch_id, err='Could not update — insufficient stock for new material quantities'))
+            # CHANGED: was url_for(..., err=...) — moved to flash()
+            flash('Could not update — insufficient stock for new material quantities', 'error')
+            return redirect(url_for('edit_batch', batch_id=batch_id))
 
     result = update_batch(batch_id, product_name=product_name, quantity=quantity, notes=notes, expiration_date=expiration_date, planned_completion_date=planned_completion_date)
 
@@ -1268,13 +1292,18 @@ def update_batch_details(batch_id):
             adj_result = adjust_batch_material(batch_id, new_quantities, lot_selections or None)
             if adj_result:
                 log_action('batch_materials_adjusted', f"batch_id={batch_id}, adjustments={new_quantities}")
-                return redirect(url_for('edit_batch', batch_id=batch_id, msg='Batch details and material deductions updated successfully'))
+                # CHANGED: was url_for(..., msg=...) — moved to flash()
+                flash('Batch details and material deductions updated successfully', 'success')
+                return redirect(url_for('edit_batch', batch_id=batch_id))
             else:
-                return redirect(url_for('edit_batch', batch_id=batch_id, err='Batch details saved but failed to adjust material deductions — insufficient stock or material not found'))
+                flash('Batch details saved but failed to adjust material deductions — insufficient stock or material not found', 'error')
+                return redirect(url_for('edit_batch', batch_id=batch_id))
 
-        return redirect(url_for('edit_batch', batch_id=batch_id, msg='Batch details updated successfully'))
+        flash('Batch details updated successfully', 'success')
+        return redirect(url_for('edit_batch', batch_id=batch_id))
     else:
-        return redirect(url_for('edit_batch', batch_id=batch_id, err='Failed to update batch details'))
+        flash('Failed to update batch details', 'error')
+        return redirect(url_for('edit_batch', batch_id=batch_id))
 
 
 @app.route('/edit-batch/<int:batch_id>/change-status', methods=['POST']) 
@@ -1292,23 +1321,29 @@ def change_batch_status(batch_id):
     if new_status == 'Planned': 
         planned_completion_date = request.form.get('planned_completion_date', '').strip() or None #get planned date of completion
         if not planned_completion_date:
-            return redirect(url_for('edit_batch', batch_id=batch_id, err='A planned completion date is required when setting status to Planned')) # there must be a planned date of competion
+            # CHANGED: was url_for(..., err=...) — moved to flash()
+            flash('A planned completion date is required when setting status to Planned', 'error')
+            return redirect(url_for('edit_batch', batch_id=batch_id))
         try:
-            pcd = datetime.strptime(planned_completion_date, '%Y-%m-%d') #validate planned date of competion
-            if pcd.date() < datetime.now().date(): #cant be in the past
-                return redirect(url_for('edit_batch', batch_id=batch_id, err='Planned completion date cannot be in the past'))
+            pcd = datetime.strptime(planned_completion_date, '%Y-%m-%d')
+            if pcd.date() < datetime.now().date():
+                flash('Planned completion date cannot be in the past', 'error')
+                return redirect(url_for('edit_batch', batch_id=batch_id))
         except ValueError:
-            return redirect(url_for('edit_batch', batch_id=batch_id, err='Invalid planned completion date format'))
+            flash('Invalid planned completion date format', 'error')
+            return redirect(url_for('edit_batch', batch_id=batch_id))
         update_batch(batch_id, planned_completion_date=planned_completion_date)
 
     result = update_batch_status(batch_id, new_status)
     if result:
         logging.info(f"Batch status changed: batch_id={batch_id}, new_status={new_status}")
         log_action('batch_status_changed', f"batch_id={batch_id}, new_status={new_status}")
-        return redirect(url_for('edit_batch', batch_id=batch_id, msg=f'Batch status updated to {new_status}'))
-
+        # CHANGED: was url_for(..., msg=...) — moved to flash()
+        flash(f'Batch status updated to {new_status}', 'success')
+        return redirect(url_for('edit_batch', batch_id=batch_id))
     else:
-        return redirect(url_for('edit_batch', batch_id=batch_id, err='Failed to update batch status'))
+        flash('Failed to update batch status', 'error')
+        return redirect(url_for('edit_batch', batch_id=batch_id))
     
 
 @app.route('/edit-batch/<int:batch_id>/delete', methods=['POST'])
@@ -1365,7 +1400,7 @@ def view_recipes():
 
     # ADDED: read page number from URL (?page=N); default to page 1
     PER_PAGE = 50
-    page = max(1, int(request.args.get('page', 1)))
+    page = min(max(1, int(request.args.get('page', 1))), MAX_PAGE)  # CHANGED: capped at MAX_PAGE to prevent large-OFFSET DoS
 
     # CHANGED: get_all_recipes now returns (df, total). Pagination is at the recipe level
     #          (never splits a recipe across pages). total = total number of distinct recipes.
@@ -1595,7 +1630,7 @@ def manage_recipes():
     """
     # ADDED: pagination for manage-recipes page
     PER_PAGE = 50
-    page = max(1, int(request.args.get('page', 1)))
+    page = min(max(1, int(request.args.get('page', 1))), MAX_PAGE)  # CHANGED: capped at MAX_PAGE to prevent large-OFFSET DoS
 
     # CHANGED: get_all_recipes_with_id now returns (df, total) tuple
     df, total = get_all_recipes_with_id(page=page, per_page=PER_PAGE)
@@ -1732,9 +1767,12 @@ def update_recipe_route(recipe_id):
     if result:
         logging.info(f"Recipe updated: recipe_id={recipe_id}, product_name={product_name}")
         log_action('recipe_updated', f"recipe_id={recipe_id}, product_name={product_name}")
-        return redirect(url_for('edit_recipe', recipe_id=recipe_id, msg='Recipe details updated successfully'))
+        # CHANGED: was url_for(..., msg=...) — moved to flash()
+        flash('Recipe details updated successfully', 'success')
+        return redirect(url_for('edit_recipe', recipe_id=recipe_id))
     else:
-        return redirect(url_for('edit_recipe', recipe_id=recipe_id, err='Failed to update recipe details'))
+        flash('Failed to update recipe details', 'error')
+        return redirect(url_for('edit_recipe', recipe_id=recipe_id))
 
 
 
@@ -1773,7 +1811,7 @@ def manage_lots():
     """
     # ADDED: pagination for manage-lots page
     PER_PAGE = 50
-    page = max(1, int(request.args.get('page', 1)))
+    page = min(max(1, int(request.args.get('page', 1))), MAX_PAGE)  # CHANGED: capped at MAX_PAGE to prevent large-OFFSET DoS
 
     # CHANGED: get_all_lots now returns (df, total) tuple
     df, total = get_all_lots(page=page, per_page=PER_PAGE)
@@ -1919,10 +1957,12 @@ def update_lot_route(lot_id):
         if result:
             logging.info(f"Lot updated: lot_id={lot_id}, lot_number={lot_number}, quantity={quantity}")
             log_action('lot_updated', f"lot_id={lot_id}, lot_number={lot_number}, quantity={quantity}")
-            return redirect(url_for('edit_lot', lot_id=lot_id, msg='Lot details updated successfully'))
-        
+            # CHANGED: was url_for(..., msg=...) — moved to flash()
+            flash('Lot details updated successfully', 'success')
+            return redirect(url_for('edit_lot', lot_id=lot_id))
         else:
-            return redirect(url_for('edit_lot', lot_id=lot_id, err='Failed to update lot details'))
+            flash('Failed to update lot details', 'error')
+            return redirect(url_for('edit_lot', lot_id=lot_id))
 
 
     
@@ -1961,9 +2001,12 @@ def delete_lot_route(lot_id):
 
     if result:
         log_action('lot_deleted', f"lot_id={lot_id}, lot_number={lot_number}")
-        return redirect(url_for('manage_lots', msg='Lot deleted successfully'))
+        # CHANGED: was url_for(..., msg=...) — moved to flash()
+        flash('Lot deleted successfully', 'success')
+        return redirect(url_for('manage_lots'))
     else:
-        return redirect(url_for('edit_lot', lot_id=lot_id, err='Failed to delete lot'))
+        flash('Failed to delete lot', 'error')
+        return redirect(url_for('edit_lot', lot_id=lot_id))
 
 
 # ========================

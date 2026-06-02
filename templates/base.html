@@ -136,6 +136,13 @@
 
     <!-- Main content -->
     <main class="main-content">
+        {# ADDED: render session-backed flash messages (replaces ?msg=/?err=/?warning= URL params).
+           Categories map to existing CSS classes: success, error, warning. #}
+        {% with messages = get_flashed_messages(with_categories=true) %}
+          {% for category, message in messages %}
+            <div class="alert alert-{{ category }}">{{ message }}</div>
+          {% endfor %}
+        {% endwith %}
         {% block content %}{% endblock %}
     </main>
 

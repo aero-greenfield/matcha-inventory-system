@@ -5,7 +5,7 @@ import pandas as pd
 from datetime import datetime
 import logging
 
-_MATERIAL_UPDATABLE_COLS = frozenset({"name", "category", "stock_level", "unit", "reorder_level"})
+_MATERIAL_UPDATABLE_COLS = frozenset({"name", "category", "unit", "reorder_level"})
 
 
 def add_raw_material(name, category, unit, reorder_level, is_housemade=False):
@@ -37,22 +37,6 @@ def add_raw_material(name, category, unit, reorder_level, is_housemade=False):
         db.close()
 
 
-def get_low_stock_materials():
-    "Return raw materials below if low on stock"
-
-    db = get_db_connection()
-    cursor = db.cursor()
-
-    query = """
-
-    SELECT name, category, stock_level, reorder_level, unit
-    FROM raw_materials
-    WHERE stock_level <= reorder_level
-    ORDER BY (stock_level / NULLIF(reorder_level, 0))
-    """
-    result = pd.read_sql_query(query, db.conn)
-    db.close()
-    return result
 
 
 def get_all_materials(page=None, per_page=50):
@@ -103,6 +87,36 @@ def get_all_materials(page=None, per_page=50):
         logging.error(f"Error getting all materials, (get_all_materials function) e: {e}")
         return (pd.DataFrame(), 0)
 
+    finally:
+        db.close()
+
+
+# ADDED: returns all materials where current non-expired stock is below their reorder level.
+# Called by /low-stock and /export/low-stock-excel in app.py.
+# Was missing — those routes raised NameError on every visit.
+def get_low_stock_materials():
+    db = get_db_connection()
+    cursor = db.cursor()
+    try:
+        now = datetime.now()
+        columns = ['material_id', 'name', 'category', 'stock_level', 'unit', 'reorder_level']
+        db.execute(cursor, """
+            SELECT rm.material_id, rm.name, rm.category,
+                   SUM(CASE WHEN rm_lot.quantity > 0 AND (rm_lot.expiration_date IS NULL OR rm_lot.expiration_date > %s)
+                       THEN rm_lot.quantity ELSE 0 END) AS stock_level,
+                   rm.unit, rm.reorder_level
+            FROM raw_materials rm
+            LEFT JOIN raw_material_lots rm_lot ON rm.material_id = rm_lot.material_id
+            GROUP BY rm.material_id
+            HAVING SUM(CASE WHEN rm_lot.quantity > 0 AND (rm_lot.expiration_date IS NULL OR rm_lot.expiration_date > %s)
+                        THEN rm_lot.quantity ELSE 0 END) < rm.reorder_level
+            ORDER BY category, name
+        """, (now, now))
+        result = cursor.fetchall()
+        return pd.DataFrame(result, columns=columns)
+    except Exception as e:
+        logging.error(f"get_low_stock_materials: {e}")
+        return pd.DataFrame()
     finally:
         db.close()
 
@@ -181,58 +195,6 @@ def update_raw_material(material_id, name=None, category=None, stock_level=None,
         db.close()
 
 
-def increase_raw_material(material_id, increase_amount):
-
-    """ increases amount of material given its material_id and amount to add"""
-
-    db = get_db_connection()
-    cursor = db.cursor()
-
-    try:
-
-        db.execute(cursor, """
-        SELECT material_id, stock_level, unit
-        FROM raw_materials
-        WHERE material_id = %s
-        """, (material_id,))
-        result = cursor.fetchone()
-        # gets the result from the query in form of a tuple
-
-        if not result:
-            print(f"Material with ID {material_id} not found in raw_materials")
-            return None
-        # if the query doesnt work, tells user
-
-        (material_id, current_stock, unit) = result # breaks tuple down to three new variables
-
-        db.execute(cursor, """
-        UPDATE raw_materials
-        SET stock_level = stock_level + %s
-        WHERE material_id = %s
-
-        """, (increase_amount, material_id,) )
-        db.commit()
-
-        #get new stock level
-        db.execute(cursor, """
-        SELECT stock_level
-        FROM raw_materials
-        WHERE material_id = %s
-
-         """, (material_id,))
-
-        new_stock_level = cursor.fetchone()[0] # fetchone() returns a tuple, so get the first and only value in tuple instead of tuple
-        db.close()
-        print(f"Succesfully added, material with id:{material_id} is now at {new_stock_level}")
-        return new_stock_level
-
-    except Exception as e:
-        logging.error(f"Error: {e}")
-        db.rollback()
-        return None
-
-    finally:
-        db.close()
 
 
 def get_raw_material(name):
@@ -313,29 +275,7 @@ def delete_raw_material(material_id):
         db.close()
 
 
-def get_housemade_materials():
-    """
-    returns all materials in RM that are is_housemade == True
-    """
-    try:
-        db = get_db_connection()
-        query = """
-        SELECT name, stock_level, unit
-        FROM raw_materials
-        WHERE is_housemade = TRUE
-        ORDER BY name
 
-        """
-        result = pd.read_sql_query(query, db.conn)
-        db.close()
-        return result
-
-    except Exception as e:
-        logging.error(f"Could not get housemade_materials df: {e}")
-        return pd.DataFrame()
-
-    finally:
-        db.close()
 
 
 

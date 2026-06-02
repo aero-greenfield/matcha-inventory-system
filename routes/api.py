@@ -54,6 +54,12 @@ def api_recipes():
 @api_bp.route('/lots/<material_id>')
 @requires_auth
 def api_lots(material_id):
+    # ADDED: coerce to int — a non-integer segment (e.g. "abc") would cause an unhandled
+    #        exception inside the service layer instead of a clean 400 response.
+    try:
+        material_id = int(material_id)
+    except (ValueError, TypeError):
+        return jsonify({'error': 'Invalid material_id'}), 400
     df = get_all_lots_for_material(material_id=material_id)
     if df is None or df.empty:
         return jsonify([])
@@ -76,10 +82,15 @@ def api_material_unit():
 
 
 
-#will return all AVAILABLE lots for batch creation drop down. 
+#will return all AVAILABLE lots for batch creation drop down.
 @api_bp.route('/available-lots/<material_id>')
 @requires_auth
 def api_available_lots(material_id):
+    # ADDED: same int coercion as api_lots — prevents unhandled exceptions on non-integer input
+    try:
+        material_id = int(material_id)
+    except (ValueError, TypeError):
+        return jsonify({'error': 'Invalid material_id'}), 400
     df = get_lots_for_material(material_id=material_id)
     if df is None or df.empty:
         return jsonify([])
