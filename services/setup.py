@@ -121,7 +121,29 @@ def create_database():
 
 
 
+    # Indexes
+    cursor.execute("CREATE INDEX IF NOT EXISTS idx_rml_material_id  ON raw_material_lots(material_id)")
+    cursor.execute("CREATE INDEX IF NOT EXISTS idx_rm_name_lower     ON raw_materials(LOWER(name))")
+    cursor.execute("CREATE INDEX IF NOT EXISTS idx_recipe_mat_recipe ON recipe_materials(recipe_id)")
+    cursor.execute("CREATE INDEX IF NOT EXISTS idx_bm_lot_id         ON batch_materials(lot_id)")
+    cursor.execute("CREATE INDEX IF NOT EXISTS idx_bm_material_id    ON batch_materials(material_id)")
+
     # Save all table creations to the database
     conn.commit()
     conn.close()
     print(" Database created")
+    upgrade_schema()
+
+
+def upgrade_schema():
+    """Adds indexes to an existing SQLite database. Safe to run on a fresh DB."""
+    import sqlite3
+    conn = sqlite3.connect('data/inventory.db')
+    cursor = conn.cursor()
+    cursor.execute("CREATE INDEX IF NOT EXISTS idx_rml_material_id  ON raw_material_lots(material_id)")
+    cursor.execute("CREATE INDEX IF NOT EXISTS idx_rm_name_lower     ON raw_materials(LOWER(name))")
+    cursor.execute("CREATE INDEX IF NOT EXISTS idx_recipe_mat_recipe ON recipe_materials(recipe_id)")
+    cursor.execute("CREATE INDEX IF NOT EXISTS idx_bm_lot_id         ON batch_materials(lot_id)")
+    cursor.execute("CREATE INDEX IF NOT EXISTS idx_bm_material_id    ON batch_materials(material_id)")
+    conn.commit()
+    conn.close()

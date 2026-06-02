@@ -302,14 +302,29 @@ def init_database():
         """)
    
     print("  ✅ audit_log table created")
-   # ======================================== 
-   # Save all changes 
-   # ======================================== 
+   # ========================================
+   # Save all changes
+   # ========================================
     conn.commit()
     conn.close()
 
     print("\n🎉 Database initialized successfully!")
     print("📊 All tables created and ready to use")
+    upgrade_schema()
+
+
+def upgrade_schema():
+    """Adds indexes to an existing database. Safe to run on a fresh DB."""
+    conn = get_connection()
+    cursor = conn.cursor()
+    cursor.execute("CREATE INDEX IF NOT EXISTS idx_rml_material_id  ON raw_material_lots(material_id)")
+    cursor.execute("CREATE INDEX IF NOT EXISTS idx_rm_name_lower     ON raw_materials(LOWER(name))")
+    cursor.execute("CREATE INDEX IF NOT EXISTS idx_recipe_mat_recipe ON recipe_materials(recipe_id)")
+    cursor.execute("CREATE INDEX IF NOT EXISTS idx_bm_lot_id         ON batch_materials(lot_id)")
+    cursor.execute("CREATE INDEX IF NOT EXISTS idx_bm_material_id    ON batch_materials(material_id)")
+    conn.commit()
+    conn.close()
+    print("  ✅ Indexes applied")
  
  
 # ============================================================ 
