@@ -61,18 +61,51 @@
     <a href="/export/shipped-batches-excel" class="btn btn-secondary">&#8595; Export Excel</a>
 </div>
 
+{# ── Status tab bar — Shipped is active ───────── #}
+<div class="tab-bar">
+    <a href="/batches" class="tab">Ready</a>
+    <a href="/batches?tab=planned" class="tab">Planned</a>
+    <span class="tab active">Shipped</span>
+</div>
+
 {% if batches %}
 <div class="table-container">
     <table class="data-table">
-        <thead><tr>{% for col in columns %}<th>{{ col }}</th>{% endfor %}<th></th></tr></thead>
+        <thead>
+            <tr>
+                <th>Batch #</th>
+                <th>Product</th>
+                <th>Type</th>
+                <th>Qty</th>
+                <th>Completed</th>
+                <th>Shipped</th>
+                <th>Notes</th>
+                <th>Expiration</th>
+                <th></th>
+            </tr>
+        </thead>
         <tbody>
             {% for row in batches %}
             <tr>
-                {% for col in columns %}<td>{{ row[col] }}</td>{% endfor %}
+                <td>{{ row['batch_number'] }}</td>
+                <td><strong>{{ row['product_name'] }}</strong></td>
+                <td>
+                    {% set btype = row.get('batch_type', '') %}
+                    {% if btype and btype != 'nan' %}
+                    <span class="badge badge-{{ btype }}">{{ btype }}</span>
+                    {% else %}
+                    —
+                    {% endif %}
+                </td>
+                <td>{{ row['quantity'] }}</td>
+                <td>{{ row['date_completed'] if row['date_completed'] and row['date_completed'] != 'nan' else '—' }}</td>
+                <td>{{ row['date_shipped'] if row['date_shipped'] and row['date_shipped'] != 'nan' else '—' }}</td>
+                <td>{{ row['notes'] if row['notes'] and row['notes'] != 'nan' else '—' }}</td>
+                <td>{{ row['expiration_date'] if row['expiration_date'] and row['expiration_date'] != 'nan' else '—' }}</td>
                 <td><button class="materials-toggle" data-batch-id="{{ row['batch_id'] }}">&#9654; Materials</button></td>
             </tr>
             <tr class="materials-row" id="materials-{{ row['batch_id'] }}" style="display:none;">
-                <td colspan="{{ columns|length + 1 }}">
+                <td colspan="9">
                     <div class="materials-detail">Loading...</div>
                 </td>
             </tr>
@@ -86,7 +119,6 @@
 </div>
 {% endif %}
 
-{# ADDED: pagination controls — only shown when there is more than one page #}
 {% if total_pages > 1 %}
 <nav style="display:flex;align-items:center;gap:12px;margin-top:24px;font-size:14px;">
     {% if page > 1 %}

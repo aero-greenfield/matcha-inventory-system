@@ -194,11 +194,20 @@ MAX_PAGE = 10_000
 @app.route('/')  # using app name: 'app', it uses '/' to route as main page. (landing page)
 @requires_auth   # User must login to see this page
 def index():
-    """
-    The index is the home page of app, provides links to other pages in dashboard.
-    """
-    
-    return render_template("index.html") #return the html file for the home page. 
+    df_materials, _ = get_all_materials(page=None)
+    df_low = get_low_stock_materials()
+    _, batch_count = get_batches(page=None)
+    _, recipe_count = get_all_recipes(page=None)
+    df_logs = view_logs()
+
+    return render_template("index.html",
+        total_materials=len(df_materials),
+        low_stock_count=len(df_low),
+        low_stock_items=df_low.to_dict(orient='records'),
+        batch_count=batch_count,
+        recipe_count=recipe_count,
+        recent_logs=df_logs.head(5).to_dict(orient='records'),
+    )
 
 
 

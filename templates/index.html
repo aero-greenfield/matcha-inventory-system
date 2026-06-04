@@ -5,46 +5,6 @@
 {% block extra_styles %}
 <style>
 /* ── How to Use section ─────────────────────────── */
-.htu-section { margin-top: 24px; }
-
-.htu-toggle {
-    display: flex;
-    align-items: baseline;
-    gap: 8px;
-    cursor: pointer;
-    user-select: none;
-    margin-bottom: 14px;
-}
-
-.htu-toggle-title {
-    font-size: 12px;
-    font-weight: 600;
-    text-transform: uppercase;
-    letter-spacing: .06em;
-    color: var(--text-muted);
-}
-
-.htu-toggle-sub {
-    font-size: 12px;
-    font-weight: 400;
-    color: var(--text-muted);
-    text-transform: none;
-    letter-spacing: normal;
-}
-
-.htu-arrow {
-    font-size: 9px;
-    color: var(--text-muted);
-    transition: transform 0.2s;
-    display: inline-block;
-}
-
-.htu-arrow.open { transform: rotate(90deg); }
-
-.htu-body { display: none; }
-.htu-body.open { display: block; }
-
-/* ── Workflow strip ─────────────────────────────── */
 .htu-workflow {
     display: flex;
     align-items: stretch;
@@ -85,7 +45,6 @@
     line-height: 1.5;
 }
 
-/* ── Task cards grid ────────────────────────────── */
 .htu-cards {
     display: grid;
     grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
@@ -122,7 +81,6 @@
 .htu-card li a { color: var(--accent); text-decoration: none; }
 .htu-card li a:hover { text-decoration: underline; }
 
-/* ── Tips strip ─────────────────────────────────── */
 .htu-tips {
     background: rgba(42,176,142,0.06);
     border: 1px solid var(--border);
@@ -154,6 +112,88 @@
     color: var(--text);
     line-height: 1.5;
 }
+
+/* Low-stock compact table */
+.reorder-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 13px;
+}
+
+.reorder-table th {
+    font-size: 11px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    color: var(--text-muted);
+    padding: 0 8px 8px 0;
+    text-align: left;
+    border-bottom: 1px solid var(--border);
+}
+
+.reorder-table td {
+    padding: 8px 8px 8px 0;
+    border-bottom: 1px solid var(--border);
+    vertical-align: middle;
+}
+
+.reorder-table tbody tr:last-child td { border-bottom: none; }
+
+.all-clear {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 13px;
+    color: var(--badge-in-stock-text);
+    background: var(--badge-in-stock-bg);
+    border-radius: 8px;
+    padding: 12px 14px;
+}
+
+/* <details> summary styling */
+details.htu-section { margin-top: 24px; }
+
+details.htu-section summary {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    cursor: pointer;
+    user-select: none;
+    list-style: none;
+    margin-bottom: 0;
+    padding: 6px 0;
+}
+
+details.htu-section summary::-webkit-details-marker { display: none; }
+
+details.htu-section summary .htu-arrow {
+    font-size: 9px;
+    color: var(--text-muted);
+    transition: transform 0.2s;
+    display: inline-block;
+}
+
+details.htu-section[open] summary .htu-arrow { transform: rotate(90deg); }
+
+.htu-toggle-title {
+    font-size: 12px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: .06em;
+    color: var(--text-muted);
+}
+
+.htu-toggle-sub {
+    font-size: 12px;
+    font-weight: 400;
+    color: var(--text-muted);
+    text-transform: none;
+    letter-spacing: normal;
+}
+
+details.htu-section .htu-body {
+    margin-top: 14px;
+}
 </style>
 {% endblock %}
 
@@ -166,6 +206,7 @@
     </div>
 </div>
 
+{# ── KPI strip ─────────────────────────────────── #}
 <div class="stats-grid">
     <div class="stat-card">
         <div class="stat-label">Total Materials</div>
@@ -173,7 +214,9 @@
     </div>
     <div class="stat-card">
         <div class="stat-label">Low Stock Alerts</div>
-        <div class="stat-value" style="color:var(--accent);">{{ low_stock_count if low_stock_count is defined else '—' }}</div>
+        <div class="stat-value {% if low_stock_count is defined and low_stock_count > 0 %}stat-value--warning{% endif %}">
+            {{ low_stock_count if low_stock_count is defined else '—' }}
+        </div>
     </div>
     <div class="stat-card">
         <div class="stat-label">Active Batches</div>
@@ -185,64 +228,89 @@
     </div>
 </div>
 
-<div class="table-container" style="padding:20px 24px 24px;">
-    <p style="font-size:12px;font-weight:600;text-transform:uppercase;letter-spacing:.06em;color:var(--text-muted);margin-bottom:14px;">Quick Links</p>
-    <div class="dash-grid">
-        <a href="/inventory" class="dash-link">
-            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/></svg>
-            Raw Materials
-        </a>
-        <a href="/low-stock" class="dash-link">
-            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg>
-            Low Stock Alerts
-        </a>
-        <a href="/add-material" class="dash-link">
-            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="16"/><line x1="8" y1="12" x2="16" y2="12"/></svg>
-            Add Material
-        </a>
-        <a href="/manage-materials" class="dash-link">
-            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="8" y1="6" x2="21" y2="6"/><line x1="8" y1="12" x2="21" y2="12"/><line x1="8" y1="18" x2="21" y2="18"/><line x1="3" y1="6" x2="3.01" y2="6"/><line x1="3" y1="12" x2="3.01" y2="12"/><line x1="3" y1="18" x2="3.01" y2="18"/></svg>
-            Manage Materials
-        </a>
-        <a href="/batches" class="dash-link">
-            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 3h18v4H3zM3 10h18v4H3zM3 17h18v4H3z"/></svg>
-            Batches
-        </a>
-        <a href="/create-batch" class="dash-link">
-            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="16"/><line x1="8" y1="12" x2="16" y2="12"/></svg>
-            New Batch
-        </a>
-        <a href="/shipped-batches" class="dash-link">
-            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="1" y="3" width="15" height="13"/><polygon points="16 8 20 8 23 11 23 16 16 16 16 8"/><circle cx="5.5" cy="18.5" r="2.5"/><circle cx="18.5" cy="18.5" r="2.5"/></svg>
-            Shipped Batches
-        </a>
-        <a href="/recipes" class="dash-link">
-            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
-            All Recipes
-        </a>
-        <a href="/add-recipe" class="dash-link">
-            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="16"/><line x1="8" y1="12" x2="16" y2="12"/></svg>
-            Add Recipe
-        </a>
-        <a href="/audit-log" class="dash-link">
-            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/></svg>
-            Audit Log
-        </a>
+{# ── Two-panel row: Needs Reordering + Recent Activity ─── #}
+<div class="dash-panels">
+
+    {# Left — low-stock list #}
+    <div class="dash-panel">
+        <div class="dash-panel-title">Needs Reordering</div>
+        {% if low_stock_items is defined and low_stock_items %}
+        <table class="reorder-table">
+            <thead>
+                <tr>
+                    <th>Material</th>
+                    <th>On Hand</th>
+                    <th>Reorder At</th>
+                    <th>Status</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for item in low_stock_items %}
+                {% set status = 'out' if (item.stock_level is not none and item.stock_level <= 0) else 'low' %}
+                <tr>
+                    <td>{{ item.name }}</td>
+                    <td>{{ item.stock_level }} {{ item.unit }}</td>
+                    <td>{{ item.reorder_level }} {{ item.unit }}</td>
+                    <td><span class="badge badge-{{ status }}">{{ 'Out' if status == 'out' else 'Low' }}</span></td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+        {% elif low_stock_items is defined %}
+        <div class="all-clear">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="20 6 9 17 4 12"/></svg>
+            All materials in stock
+        </div>
+        {% else %}
+        <p style="color:var(--text-muted);font-size:13px;">—</p>
+        {% endif %}
     </div>
+
+    {# Right — recent activity #}
+    <div class="dash-panel">
+        <div class="dash-panel-title">Recent Activity</div>
+        {% if recent_logs is defined and recent_logs %}
+        <ul class="activity-list">
+            {% for entry in recent_logs %}
+            <li class="activity-item">
+                <span class="activity-action">{{ entry.action }}</span>
+                <span class="activity-time" data-ts="{{ entry.timestamp }}">{{ entry.timestamp }}</span>
+            </li>
+            {% endfor %}
+        </ul>
+        {% else %}
+        <p style="color:var(--text-muted);font-size:13px;">No recent activity.</p>
+        {% endif %}
+    </div>
+
 </div>
 
-<!-- How to Use section -->
-<div class="htu-section">
+{# ── Action row ──────────────────────────────────── #}
+<div class="action-row">
+    <a href="/create-batch" class="btn btn-primary">
+        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+        New Batch
+    </a>
+    <a href="/receive-lot" class="btn btn-secondary">
+        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
+        Receive Lot
+    </a>
+    <a href="/export/batches-excel" class="btn btn-secondary">
+        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+        Export Batches
+    </a>
+</div>
 
-    <div class="htu-toggle" id="htuToggle">
-        <span class="htu-arrow" id="htuArrow">▶</span>
+{# ── How to use (collapsed by default) ────────── #}
+<details class="htu-section">
+    <summary>
+        <span class="htu-arrow">▶</span>
         <span class="htu-toggle-title">How to Use This System</span>
         <span class="htu-toggle-sub">— A quick reference guide for navigating the system.</span>
-    </div>
+    </summary>
 
-    <div class="htu-body" id="htuBody">
+    <div class="htu-body">
 
-        <!-- Part 1: How it works — workflow strip -->
         <div class="htu-workflow">
             <div class="htu-step">
                 <div class="htu-step-num">Step 1</div>
@@ -276,7 +344,6 @@
             </div>
         </div>
 
-        <!-- Part 2: How to do common tasks — cards -->
         <div class="htu-cards">
 
             <div class="htu-card">
@@ -340,7 +407,6 @@
 
         </div>
 
-        <!-- Part 3: Tips row -->
         <div class="htu-tips">
             <div class="htu-tips-label">Good to know &amp; in case of emergency:</div>
             <div class="htu-tips-pills">
@@ -354,32 +420,23 @@
         </div>
 
     </div>
-</div>
+</details>
 
 <script>
 (function () {
-    var toggle = document.getElementById('htuToggle');
-    var body   = document.getElementById('htuBody');
-    var arrow  = document.getElementById('htuArrow');
-    var stored = localStorage.getItem('howToOpen');
-    var isOpen = stored === null ? true : stored === 'true';
-
-    function setState(open) {
-        isOpen = open;
-        if (open) {
-            body.classList.add('open');
-            arrow.classList.add('open');
-        } else {
-            body.classList.remove('open');
-            arrow.classList.remove('open');
-        }
-        localStorage.setItem('howToOpen', open ? 'true' : 'false');
-    }
-
-    setState(isOpen);
-
-    toggle.addEventListener('click', function () {
-        setState(!isOpen);
+    // Render relative timestamps: "2 h ago", "just now", etc.
+    document.querySelectorAll('.activity-time[data-ts]').forEach(function (el) {
+        var raw = el.getAttribute('data-ts');
+        if (!raw) return;
+        var d = new Date(raw);
+        if (isNaN(d)) return;
+        var diff = Math.floor((Date.now() - d) / 1000);
+        var label;
+        if (diff < 60)        label = 'just now';
+        else if (diff < 3600) label = Math.floor(diff / 60) + ' min ago';
+        else if (diff < 86400) label = Math.floor(diff / 3600) + ' h ago';
+        else                  label = Math.floor(diff / 86400) + ' d ago';
+        el.textContent = label;
     });
 }());
 </script>

@@ -628,3 +628,133 @@ h1 {
     background: var(--content-bg);
     color: var(--accent);
 }
+
+/* ================================================
+   Batch type badges — shared by batches + shipped
+   ================================================ */
+
+.badge-standard { background: #d1fae5; color: #065f46; }
+.badge-mix      { background: #dbeafe; color: #1e40af; }
+.badge-finished { background: #ede9fe; color: #5b21b6; }
+
+/* ================================================
+   Tab bar — status tabs on batches page
+   ================================================ */
+
+.tab-bar {
+    display: flex;
+    gap: 0;
+    border-bottom: 2px solid var(--border);
+    margin-bottom: 24px;
+}
+
+.tab {
+    display: inline-block;
+    padding: 9px 18px;
+    font-size: 13.5px;
+    font-weight: 500;
+    color: var(--text-muted);
+    text-decoration: none;
+    border-bottom: 2px solid transparent;
+    margin-bottom: -2px;
+    cursor: pointer;
+    transition: color 0.12s, border-color 0.12s;
+    background: none;
+    border-top: none;
+    border-left: none;
+    border-right: none;
+    font-family: var(--font);
+}
+
+.tab:hover { color: var(--text); }
+
+.tab.active {
+    color: var(--accent);
+    border-bottom-color: var(--accent);
+    font-weight: 600;
+}
+
+/* ================================================
+   Group divider row inside data tables
+   ================================================ */
+
+.group-divider td {
+    background: var(--content-bg);
+    font-size: 11px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    color: var(--text-muted);
+    padding: 7px 16px;
+    border-bottom: 1px solid var(--border);
+}
+
+/* ================================================
+   Dashboard action row
+   ================================================ */
+
+.action-row {
+    display: flex;
+    gap: 10px;
+    margin-bottom: 28px;
+}
+
+/* ================================================
+   Dashboard two-panel layout
+   ================================================ */
+
+.dash-panels {
+    display: grid;
+    grid-template-columns: 3fr 2fr;
+    gap: 16px;
+    margin-bottom: 28px;
+}
+
+.dash-panel {
+    background: var(--card-bg);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 20px 22px;
+}
+
+.dash-panel-title {
+    font-size: 12px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    color: var(--text-muted);
+    margin-bottom: 14px;
+}
+
+/* KPI warning value */
+.stat-value--warning {
+    color: var(--badge-out-text) !important;
+}
+
+/* Activity feed list */
+.activity-list {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+}
+
+.activity-item {
+    display: flex;
+    justify-content: space-between;
+    align-items: baseline;
+    gap: 12px;
+    padding: 8px 0;
+    border-bottom: 1px solid var(--border);
+    font-size: 13px;
+}
+
+.activity-item:last-child { border-bottom: none; }
+
+.activity-action { color: var(--text); flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+.activity-time {
+    font-size: 12px;
+    color: var(--text-muted);
+    white-space: nowrap;
+    flex-shrink: 0;
+}
