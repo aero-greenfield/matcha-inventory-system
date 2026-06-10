@@ -58,6 +58,9 @@
                 <th>Stock Level</th>
                 <th>Unit</th>
                 <th>Reorder Level</th>
+                {# ADDED: organic feature — material edible/organic state. #}
+                <th>Edible</th>
+                <th>Organic</th>
                 <th>Status</th>
                 <th>Lots</th>
             </tr>
@@ -70,6 +73,13 @@
                 <td>{{ row.stock_level }}</td>
                 <td>{{ row.unit }}</td>
                 <td>{{ row.reorder_level }}</td>
+                {# ADDED: organic feature — Edible state; Organic shows a dash for non-edible
+                   (organic is N/A), the Organic badge when organic, blank otherwise. #}
+                <td>{% if row.is_edible %}Edible{% else %}<span style="color:var(--text-muted);">Not edible</span>{% endif %}</td>
+                <td>
+                    {% if not row.is_edible %}—
+                    {% elif row.is_organic %}<span class="badge badge-organic">Organic</span>{% endif %}
+                </td>
                 <td>
                     {% if row.stock_level == 0 %}
                         <span class="badge badge-out">Out of Stock</span>
@@ -84,7 +94,7 @@
                 </td>
             </tr>
             <tr class="lot-detail-row" id="lot-detail-{{ row.material_id }}" style="display:none;">
-                <td colspan="7">
+                <td colspan="9">
                     <div class="lot-panel">
                         <div class="lot-panel-controls">
                             <span class="lot-panel-label">Lots for {{ row.name }}</span>
@@ -115,6 +125,9 @@
                 <th>Stock Level</th>
                 <th>Unit</th>
                 <th>Reorder Level</th>
+                {# ADDED: organic feature — material edible/organic state. #}
+                <th>Edible</th>
+                <th>Organic</th>
                 <th>Status</th>
                 <th>Lots</th>
             </tr>
@@ -127,6 +140,13 @@
                 <td>{{ row.stock_level }}</td>
                 <td>{{ row.unit }}</td>
                 <td>{{ row.reorder_level }}</td>
+                {# ADDED: organic feature — Edible state; Organic shows a dash for non-edible
+                   (organic is N/A), the Organic badge when organic, blank otherwise. #}
+                <td>{% if row.is_edible %}Edible{% else %}<span style="color:var(--text-muted);">Not edible</span>{% endif %}</td>
+                <td>
+                    {% if not row.is_edible %}—
+                    {% elif row.is_organic %}<span class="badge badge-organic">Organic</span>{% endif %}
+                </td>
                 <td>
                     {% if row.stock_level == 0 %}
                         <span class="badge badge-out">Out of Stock</span>
@@ -141,7 +161,7 @@
                 </td>
             </tr>
             <tr class="lot-detail-row" id="lot-detail-{{ row.material_id }}" style="display:none;">
-                <td colspan="7">
+                <td colspan="9">
                     <div class="lot-panel">
                         <div class="lot-panel-controls">
                             <span class="lot-panel-label">Lots for {{ row.name }}</span>

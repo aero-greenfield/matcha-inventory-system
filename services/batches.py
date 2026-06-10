@@ -531,10 +531,20 @@ def get_all_batches_with_id(page=None, per_page=50):
     cursor = db.cursor()
 
     # ADDED: converted from pd.read_sql_query to cursor approach for LIMIT/OFFSET support
+    # CHANGED: organic feature — added derived is_organic flag (same correlated subquery as
+    #          get_batches/get_batches_shipped). Planned batches have no batch_materials yet, so
+    #          this yields 0 for them; the manage-batches template shows a dash for Planned rows.
     columns = ['batch_id', 'batch_number', 'product_name', 'quantity', 'date_completed',
-               'status', 'notes', 'date_shipped', 'expiration_date', 'planned_completion_date', 'batch_type']
+               'status', 'notes', 'date_shipped', 'expiration_date', 'planned_completion_date', 'batch_type', 'is_organic']
     base_query = """
-    SELECT batch_id, batch_number, product_name, quantity, date_completed, status, notes, date_shipped, expiration_date, planned_completion_date, batch_type
+    SELECT batch_id, batch_number, product_name, quantity, date_completed, status, notes, date_shipped, expiration_date, planned_completion_date, batch_type,
+           (SELECT CASE
+                     WHEN COUNT(CASE WHEN rm.is_edible THEN 1 END) > 0
+                      AND COUNT(CASE WHEN rm.is_edible AND NOT rm.is_organic THEN 1 END) = 0
+                   THEN 1 ELSE 0 END
+            FROM batch_materials bm
+            JOIN raw_materials rm ON bm.material_id = rm.material_id
+            WHERE bm.batch_id = batches.batch_id) AS is_organic
     FROM batches
     ORDER BY date_completed DESC
     """
