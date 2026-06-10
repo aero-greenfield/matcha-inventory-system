@@ -96,6 +96,8 @@
                     {% else %}
                     —
                     {% endif %}
+                    {# ADDED: organic feature — derived label, shown only when all edible materials are organic. #}
+                    {% if row['is_organic'] %}<span class="badge badge-organic">Organic</span>{% endif %}
                 </td>
                 <td>{{ row['quantity'] }}</td>
                 <td>{{ row['date_completed'] if row['date_completed'] and row['date_completed'] != 'nan' else '—' }}</td>

@@ -24,6 +24,9 @@
                 <th>Stock</th>
                 <th>Unit</th>
                 <th>Reorder Level</th>
+                {# ADDED: organic feature — inline-toggleable Edible/Organic columns. #}
+                <th>Edible</th>
+                <th>Organic</th>
                 <th></th>
             </tr>
         </thead>
@@ -35,6 +38,20 @@
                 <td>{{ row.stock_level }}</td>
                 <td>{{ row.unit or '' }}</td>
                 <td>{{ row.reorder_level or '' }}</td>
+                {# ADDED: organic feature — each badge is a one-click POST that flips the flag,
+                   preserving the current page. #}
+                <td>
+                    <form method="post" action="/material/{{ row.material_id | int }}/toggle/is_edible?page={{ page }}" style="margin:0;">
+                        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                        <button type="submit" class="badge {{ 'badge-in-stock' if row.is_edible else 'badge-out' }}" style="border:none;cursor:pointer;">{{ 'Yes' if row.is_edible else 'No' }}</button>
+                    </form>
+                </td>
+                <td>
+                    <form method="post" action="/material/{{ row.material_id | int }}/toggle/is_organic?page={{ page }}" style="margin:0;">
+                        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                        <button type="submit" class="badge {{ 'badge-organic' if row.is_organic else 'badge-out' }}" style="border:none;cursor:pointer;">{{ 'Organic' if row.is_organic else 'No' }}</button>
+                    </form>
+                </td>
                 <td><a href="/edit-material/{{ row.material_id | int }}" class="btn btn-secondary" style="padding:5px 12px;font-size:12px;">Edit</a></td>
             </tr>
             {% endfor %}

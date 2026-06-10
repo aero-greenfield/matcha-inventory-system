@@ -72,7 +72,11 @@ def init_database():
             category TEXT,
             unit TEXT,
             reorder_level REAL,
-            is_housemade BOOLEAN DEFAULT FALSE
+            is_housemade BOOLEAN DEFAULT FALSE,
+            -- ADDED: organic feature — is_edible flags whether a material counts toward a
+            --        batch's organic determination; is_organic flags the material itself.
+            is_edible BOOLEAN DEFAULT TRUE,
+            is_organic BOOLEAN DEFAULT FALSE
         )
         """)
 
@@ -85,7 +89,11 @@ def init_database():
             category TEXT,
             unit TEXT,
             reorder_level REAL,
-            is_housemade BOOLEAN DEFAULT FALSE
+            is_housemade BOOLEAN DEFAULT FALSE,
+            -- ADDED: organic feature — is_edible flags whether a material counts toward a
+            --        batch's organic determination; is_organic flags the material itself.
+            is_edible BOOLEAN DEFAULT TRUE,
+            is_organic BOOLEAN DEFAULT FALSE
         )
         """)
     

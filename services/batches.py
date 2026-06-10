@@ -255,10 +255,23 @@ def get_batches(page=None, per_page=50):
 
     # ADDED: converted from pd.read_sql_query(query, db.conn) so LIMIT/OFFSET parameters
     #        can go through the db.execute %s→? wrapper.
+    # CHANGED: organic feature — added derived is_organic flag (see subquery below).
     columns = ['batch_id', 'batch_number', 'product_name', 'batch_type', 'quantity',
-               'date_completed', 'notes', 'expiration_date']
+               'date_completed', 'notes', 'expiration_date', 'is_organic']
+    # ADDED: organic feature — is_organic is a read-only derived property, NOT stored.
+    #        A batch is organic when it used at least one edible material and every edible
+    #        material it used is organic (non-edible materials are ignored). Computed via a
+    #        correlated subquery so the flat SELECT/ORDER BY structure is untouched (no GROUP BY,
+    #        no N+1). CASE WHEN <bool col> works for both SQLite 0/1 ints and Postgres booleans.
     base_query = """
-    SELECT batch_id, batch_number, product_name, batch_type, quantity, date_completed, notes, expiration_date
+    SELECT batch_id, batch_number, product_name, batch_type, quantity, date_completed, notes, expiration_date,
+           (SELECT CASE
+                     WHEN COUNT(CASE WHEN rm.is_edible THEN 1 END) > 0
+                      AND COUNT(CASE WHEN rm.is_edible AND NOT rm.is_organic THEN 1 END) = 0
+                   THEN 1 ELSE 0 END
+            FROM batch_materials bm
+            JOIN raw_materials rm ON bm.material_id = rm.material_id
+            WHERE bm.batch_id = batches.batch_id) AS is_organic
     FROM batches
     WHERE status = 'Ready'
     ORDER BY batch_id DESC
@@ -295,10 +308,18 @@ def get_batches_shipped(page=None, per_page=50):
     cursor = db.cursor()
 
     # ADDED: converted from pd.read_sql_query to cursor approach for LIMIT/OFFSET support
+    # CHANGED: organic feature — added derived is_organic flag (same correlated subquery as get_batches).
     columns = ['batch_id', 'batch_number', 'product_name', 'quantity',
-               'date_completed', 'date_shipped', 'notes', 'expiration_date']
+               'date_completed', 'date_shipped', 'notes', 'expiration_date', 'is_organic']
     base_query = """
-    SELECT batch_id, batch_number, product_name, quantity, date_completed, date_shipped, notes, expiration_date
+    SELECT batch_id, batch_number, product_name, quantity, date_completed, date_shipped, notes, expiration_date,
+           (SELECT CASE
+                     WHEN COUNT(CASE WHEN rm.is_edible THEN 1 END) > 0
+                      AND COUNT(CASE WHEN rm.is_edible AND NOT rm.is_organic THEN 1 END) = 0
+                   THEN 1 ELSE 0 END
+            FROM batch_materials bm
+            JOIN raw_materials rm ON bm.material_id = rm.material_id
+            WHERE bm.batch_id = batches.batch_id) AS is_organic
     FROM batches
     WHERE status = 'Shipped'
     ORDER BY date_shipped DESC

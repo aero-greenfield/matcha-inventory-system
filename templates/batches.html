@@ -110,7 +110,9 @@
                 <tr>
                     <td>{{ row['batch_number'] }}</td>
                     <td><strong>{{ row['product_name'] }}</strong></td>
-                    <td><span class="badge badge-{{ row['batch_type'] or 'standard' }}">{{ row['batch_type'] or 'standard' }}</span></td>
+                    <td><span class="badge badge-{{ row['batch_type'] or 'standard' }}">{{ row['batch_type'] or 'standard' }}</span>
+                        {# ADDED: organic feature — derived label, shown only when all edible materials are organic. #}
+                        {% if row['is_organic'] %}<span class="badge badge-organic">Organic</span>{% endif %}</td>
                     <td>{{ row['quantity'] }}</td>
                     <td>{{ row['date_completed'] or '—' }}</td>
                     <td>
@@ -135,7 +137,9 @@
                 <tr>
                     <td>{{ row['batch_number'] }}</td>
                     <td><strong>{{ row['product_name'] }}</strong></td>
-                    <td><span class="badge badge-mix">component</span></td>
+                    <td><span class="badge badge-mix">component</span>
+                        {# ADDED: organic feature — derived label, shown only when all edible materials are organic. #}
+                        {% if row['is_organic'] %}<span class="badge badge-organic">Organic</span>{% endif %}</td>
                     <td>{{ row['quantity'] }}</td>
                     <td>{{ row['date_completed'] or '—' }}</td>
                     <td>

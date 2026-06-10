@@ -5,10 +5,13 @@ import pandas as pd
 from datetime import datetime
 import logging
 
-_MATERIAL_UPDATABLE_COLS = frozenset({"name", "category", "unit", "reorder_level"})
+# CHANGED: organic feature — added is_edible/is_organic to the updatable allowlist so
+#          update_raw_material (and the inline toggle route) can change them.
+_MATERIAL_UPDATABLE_COLS = frozenset({"name", "category", "unit", "reorder_level", "is_edible", "is_organic"})
 
 
-def add_raw_material(name, category, unit, reorder_level, is_housemade=False):
+# CHANGED: organic feature — added is_edible/is_organic params (default edible, non-organic).
+def add_raw_material(name, category, unit, reorder_level, is_housemade=False, is_edible=True, is_organic=False):
     # adds material to raw_materials
 
     db = get_db_connection()
@@ -19,11 +22,12 @@ def add_raw_material(name, category, unit, reorder_level, is_housemade=False):
         if cursor.fetchone():
             return "duplicate"
 
+        # CHANGED: organic feature — insert the two new boolean columns.
         db.execute(cursor, """
-            INSERT INTO raw_materials (name, category, unit, reorder_level, is_housemade)
-            VALUES (%s,%s,%s,%s,%s)
+            INSERT INTO raw_materials (name, category, unit, reorder_level, is_housemade, is_edible, is_organic)
+            VALUES (%s,%s,%s,%s,%s,%s,%s)
 
-                        """, (name, category, unit, reorder_level, is_housemade))
+                        """, (name, category, unit, reorder_level, is_housemade, is_edible, is_organic))
 
         db.commit()
         logging.info(f"added new material: {name}")
@@ -54,14 +58,16 @@ def get_all_materials(page=None, per_page=50):
         #          DATE column. Passing a Python datetime object lets the driver pick the
         #          right type (datetime → timestamp, date → date) for both SQLite and PostgreSQL.
         now = datetime.now()
-        columns = ['material_id', 'name', 'category', 'stock_level', 'unit', 'reorder_level', 'is_housemade']
+        # CHANGED: organic feature — surface is_edible/is_organic so the manage-materials
+        #          page can display and inline-toggle them.
+        columns = ['material_id', 'name', 'category', 'stock_level', 'unit', 'reorder_level', 'is_housemade', 'is_edible', 'is_organic']
 
         # does not include expired lots in the stock quantity
         base_query = """
         SELECT rm.material_id, rm.name, rm.category,
                SUM(CASE WHEN rm_lot.quantity > 0 AND (rm_lot.expiration_date IS NULL OR rm_lot.expiration_date > %s)
                    THEN rm_lot.quantity ELSE 0 END) as stock_level,
-               rm.unit, rm.reorder_level, rm.is_housemade
+               rm.unit, rm.reorder_level, rm.is_housemade, rm.is_edible, rm.is_organic
         FROM raw_materials rm
         LEFT JOIN raw_material_lots rm_lot ON rm.material_id = rm_lot.material_id
         GROUP BY rm.material_id
@@ -127,8 +133,9 @@ def get_material_by_id(material_id):
     cursor = db.cursor()
 
     try:
+        # CHANGED: organic feature — return is_edible/is_organic for the edit form.
         db.execute(cursor, """
-        SELECT material_id, name, category, unit, reorder_level
+        SELECT material_id, name, category, unit, reorder_level, is_edible, is_organic
         FROM raw_materials
         WHERE material_id = %s
                        """,(material_id,))
@@ -143,7 +150,9 @@ def get_material_by_id(material_id):
         db.close()
 
 
-def update_raw_material(material_id, name=None, category=None, stock_level=None, unit=None, reorder_level=None):
+# CHANGED: organic feature — added is_edible/is_organic params so the edit form and the
+#          inline toggle route can update them (None = leave unchanged, as with other fields).
+def update_raw_material(material_id, name=None, category=None, stock_level=None, unit=None, reorder_level=None, is_edible=None, is_organic=None):
     """changes raw material info given id and which parameters are not None (ONLY CHANGES details, not stock level)"""
 
     db = get_db_connection()
@@ -152,7 +161,8 @@ def update_raw_material(material_id, name=None, category=None, stock_level=None,
     field = {} # dictionary to hold fields to update, only the ones that are not None
 
     #iterate through params, if not None, add to field dict to update
-    for key, value in [("name", name), ("category", category), ("stock_level", stock_level), ("unit", unit), ("reorder_level", reorder_level)]:
+    # CHANGED: organic feature — include is_edible/is_organic in the field-collection loop.
+    for key, value in [("name", name), ("category", category), ("stock_level", stock_level), ("unit", unit), ("reorder_level", reorder_level), ("is_edible", is_edible), ("is_organic", is_organic)]:
         if value is not None:
             field[key] = value
 

@@ -21,10 +21,23 @@ def create_database():
                    category TEXT,
                    unit TEXT,
                    reorder_level REAL,
-                   is_housemade BOOLEAN DEFAULT FALSE
+                   is_housemade BOOLEAN DEFAULT FALSE,
+                   is_edible BOOLEAN DEFAULT TRUE,
+                   is_organic BOOLEAN DEFAULT FALSE
 
                    )
                    """)
+
+    # ADDED: organic feature — additive migration for pre-existing local SQLite DBs.
+    #        The CREATE TABLE above only fires for brand-new DBs (IF NOT EXISTS), so existing
+    #        installs need the new columns backfilled. SQLite has no ADD COLUMN IF NOT EXISTS,
+    #        so we check PRAGMA table_info first and only ALTER when the column is missing.
+    cursor.execute("PRAGMA table_info(raw_materials)")
+    _rm_cols = {row[1] for row in cursor.fetchall()}
+    if "is_edible" not in _rm_cols:
+        cursor.execute("ALTER TABLE raw_materials ADD COLUMN is_edible BOOLEAN DEFAULT TRUE")
+    if "is_organic" not in _rm_cols:
+        cursor.execute("ALTER TABLE raw_materials ADD COLUMN is_organic BOOLEAN DEFAULT FALSE")
 
     #raw material lots.
 

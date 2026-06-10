@@ -332,6 +332,13 @@ body {
     color: var(--badge-out-text);
 }
 
+/* ADDED: organic feature — derived "Organic" batch label and organic-material toggle.
+   Green-on-light-green, matching the .badge-standard palette. */
+.badge-organic {
+    background: #d1fae5;
+    color: #065f46;
+}
+
 /* ================================================
    Forms
    ================================================ */

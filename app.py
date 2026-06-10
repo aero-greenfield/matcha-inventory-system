@@ -512,12 +512,19 @@ def add_material_route():
             ), 400
 
 
+        # ADDED: organic feature — read the edible/organic checkboxes (value="1" when checked,
+        #        absent when unchecked). is_edible defaults checked in the form.
+        is_edible = request.form.get('is_edible') == '1'
+        is_organic = request.form.get('is_organic') == '1'
+
         #function call.
         result = add_raw_material(
                 name=name,
                 category=category,
                 unit=unit,
                 reorder_level=reorder_level,
+                is_edible=is_edible,      # ADDED: organic feature
+                is_organic=is_organic,    # ADDED: organic feature
             )
 
         from_receive_lot = request.form.get('from_receive_lot', '')
@@ -687,13 +694,15 @@ def edit_material(material_id):
 
 
     
-    mat_id, name, category,  unit, reorder_level = material # unpack material details for display in edit form.
+    # CHANGED: organic feature — get_material_by_id now also returns is_edible/is_organic.
+    mat_id, name, category,  unit, reorder_level, is_edible, is_organic = material # unpack material details for display in edit form.
 
     msg = request.args.get('msg', '')
     err = request.args.get('err', '')
     return render_template("edit_material.html",
         mat_id=mat_id, name=name, category=category,
         unit=unit, reorder_level=reorder_level,
+        is_edible=is_edible, is_organic=is_organic,  # ADDED: organic feature
         msg=msg, err=err,
         back_link=True,
         back_link_url="/manage-materials",
@@ -720,7 +729,12 @@ def update_material_details(material_id):
         unit = unit.strip() if unit else None #validate
         reorder_level_str = request.form.get('reorder_level')
         reorder_level = float(reorder_level_str) if reorder_level_str else None
-    
+
+        # ADDED: organic feature — checkboxes absent from a POST mean unchecked, so pass
+        #        explicit True/False (not None) to persist an unchecked box.
+        is_edible = request.form.get('is_edible') == '1'
+        is_organic = request.form.get('is_organic') == '1'
+
     except ValueError:
         return render_template('error.html',
             title="Invalid Input",
@@ -736,7 +750,8 @@ def update_material_details(material_id):
         ), 400
 
     result = update_raw_material(material_id, name=name, category=category, unit=unit,
-                                 reorder_level=reorder_level)
+                                 reorder_level=reorder_level,
+                                 is_edible=is_edible, is_organic=is_organic)  # ADDED: organic feature
 
     if result:
         logging.info(f"Material details updated: material_id={material_id}, name={name}, category={category}, unit={unit}")
@@ -771,6 +786,36 @@ def delete_material(material_id):
     return redirect(url_for('manage_materials'))
 
 
+# ADDED: organic feature — inline toggle for is_edible/is_organic straight from the
+#        manage-materials table (no full edit-form round trip). Flips a single boolean flag.
+@app.route('/material/<int:material_id>/toggle/<field>', methods=['POST'])
+@requires_auth
+def toggle_material_flag(material_id, field):
+    # Allowlist guards which columns this route may touch (defense in depth alongside
+    # update_raw_material's _MATERIAL_UPDATABLE_COLS check).
+    if field not in ('is_edible', 'is_organic'):
+        return render_template('error.html',
+            title="Invalid Request",
+            message="Unknown material flag.",
+            back_link=True, back_link_url="/manage-materials", back_link_label="Back to Manage Materials"
+        ), 400
+
+    material = get_material_by_id(material_id)
+    if not material:
+        return render_template('error.html',
+            title="Material Not Found",
+            message="The material you requested could not be found.",
+            back_link=True, back_link_url="/manage-materials", back_link_label="Back to Manage Materials"
+        ), 404
+
+    # get_material_by_id returns (mat_id, name, category, unit, reorder_level, is_edible, is_organic)
+    current = bool(material[5] if field == 'is_edible' else material[6])
+    update_raw_material(material_id, **{field: not current})
+    log_action('material_flag_toggled', f"material_id={material_id}, {field}={not current}")
+
+    # Preserve the manage-materials pagination position the user clicked from.
+    page = request.args.get('page', 1)
+    return redirect(url_for('manage_materials', page=page))
 
 
 
