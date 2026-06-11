@@ -504,10 +504,10 @@ def add_material_route():
                 back_link=True, back_link_url="/add-material", back_link_label="Go back"
             ), 400
 
-        if reorder_level <= 0:
+        if reorder_level < 0:
             return render_template('error.html',
                 title="Invalid Input",
-                message="Reorder Level must be more than 0",
+                message="Reorder Level must be a positive number.",
                 back_link=True, back_link_url="/add-material", back_link_label="Go back"
             ), 400
 
