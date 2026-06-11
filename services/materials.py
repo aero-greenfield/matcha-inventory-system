@@ -59,13 +59,18 @@ def get_all_materials(page=None, per_page=50):
         now = datetime.now().date().isoformat()  # TEXT column — pass ISO string so PostgreSQL doesn't see TEXT > timestamp
         # CHANGED: organic feature — surface is_edible/is_organic so the manage-materials
         #          page can display and inline-toggle them.
-        columns = ['material_id', 'name', 'category', 'stock_level', 'unit', 'reorder_level', 'is_housemade', 'is_edible', 'is_organic']
+        # ADDED: cost-of-material feature — total_cost column added to columns list.
+        columns = ['material_id', 'name', 'category', 'stock_level', 'total_cost', 'unit', 'reorder_level', 'is_housemade', 'is_edible', 'is_organic']
 
         # does not include expired lots in the stock quantity
+        # ADDED: cost-of-material feature — total_cost aggregates quantity * cost_per_unit for active, non-expired lots.
+        #        COALESCE on cost_per_unit treats lots with no cost as $0 so the sum stays numeric.
         base_query = """
         SELECT rm.material_id, rm.name, rm.category,
                SUM(CASE WHEN rm_lot.quantity > 0 AND (rm_lot.expiration_date IS NULL OR rm_lot.expiration_date > %s)
                    THEN rm_lot.quantity ELSE 0 END) as stock_level,
+               COALESCE(SUM(CASE WHEN rm_lot.quantity > 0 AND (rm_lot.expiration_date IS NULL OR rm_lot.expiration_date > %s)
+                   THEN rm_lot.quantity * COALESCE(rm_lot.cost_per_unit, 0) ELSE 0 END), 0) as total_cost,
                rm.unit, rm.reorder_level, rm.is_housemade, rm.is_edible, rm.is_organic
         FROM raw_materials rm
         LEFT JOIN raw_material_lots rm_lot ON rm.material_id = rm_lot.material_id
@@ -75,7 +80,8 @@ def get_all_materials(page=None, per_page=50):
 
         if page is None:
             # ADDED: page=None → return full table without LIMIT (exports, create-batch)
-            db.execute(cursor, base_query, (now,))
+            # CHANGED: cost-of-material feature — pass now twice (stock_level and total_cost both use the date filter).
+            db.execute(cursor, base_query, (now, now))
             result = cursor.fetchall()
             return (pd.DataFrame(result, columns=columns), None)
 
@@ -84,7 +90,8 @@ def get_all_materials(page=None, per_page=50):
         total = cursor.fetchone()[0]
 
         # ADDED: append LIMIT/OFFSET for the requested page
-        db.execute(cursor, base_query + " LIMIT %s OFFSET %s", (now, per_page, (page - 1) * per_page))
+        # CHANGED: cost-of-material feature — pass now twice before LIMIT/OFFSET params.
+        db.execute(cursor, base_query + " LIMIT %s OFFSET %s", (now, now, per_page, (page - 1) * per_page))
         result = cursor.fetchall()
         return (pd.DataFrame(result, columns=columns), total)
 

@@ -98,6 +98,8 @@
                     <th>Type</th>
                     <th>Qty</th>
                     <th>Completed</th>
+                    {# ADDED: cost-of-material feature — total material cost for this batch. #}
+                    <th>Cost</th>
                     <th>Actions</th>
                 </tr>
             </thead>
@@ -105,7 +107,8 @@
 
                 {# ── Standard & Finished group ── #}
                 {% if ready_standard %}
-                <tr class="group-divider"><td colspan="6">Standard &amp; Finished</td></tr>
+                {# CHANGED: cost-of-material feature — colspan 6→7 to match added Cost column. #}
+                <tr class="group-divider"><td colspan="7">Standard &amp; Finished</td></tr>
                 {% for row in ready_standard %}
                 <tr>
                     <td>{{ row['batch_number'] }}</td>
@@ -115,6 +118,8 @@
                         {% if row['is_organic'] %}<span class="badge badge-organic">Organic</span>{% endif %}</td>
                     <td>{{ row['quantity'] }}</td>
                     <td>{{ row['date_completed'] or '—' }}</td>
+                    {# ADDED: cost-of-material feature — show total batch cost or dash if no cost data. #}
+                    <td>{% if row['batch_cost'] %}${{ '%.2f'|format(row['batch_cost']) }}{% else %}—{% endif %}</td>
                     <td>
                         <form method="POST" action="/batches/{{ row['batch_id'] }}/mark-shipped"
                               onsubmit="return confirm('Mark this batch as shipped?')" style="display:inline;" autocomplete="off">
@@ -125,14 +130,16 @@
                     </td>
                 </tr>
                 <tr class="materials-row" id="materials-{{ row['batch_id'] }}" style="display:none;">
-                    <td colspan="6"><div class="materials-detail">Loading...</div></td>
+                    {# CHANGED: cost-of-material feature — colspan 6→7. #}
+                    <td colspan="7"><div class="materials-detail">Loading...</div></td>
                 </tr>
                 {% endfor %}
                 {% endif %}
 
                 {# ── Component group ── #}
                 {% if ready_mix %}
-                <tr class="group-divider"><td colspan="6">Component</td></tr>
+                {# CHANGED: cost-of-material feature — colspan 6→7 to match added Cost column. #}
+                <tr class="group-divider"><td colspan="7">Component</td></tr>
                 {% for row in ready_mix %}
                 <tr>
                     <td>{{ row['batch_number'] }}</td>
@@ -142,12 +149,15 @@
                         {% if row['is_organic'] %}<span class="badge badge-organic">Organic</span>{% endif %}</td>
                     <td>{{ row['quantity'] }}</td>
                     <td>{{ row['date_completed'] or '—' }}</td>
+                    {# ADDED: cost-of-material feature — show total batch cost or dash if no cost data. #}
+                    <td>{% if row['batch_cost'] %}${{ '%.2f'|format(row['batch_cost']) }}{% else %}—{% endif %}</td>
                     <td>
                         <button class="materials-toggle" data-batch-id="{{ row['batch_id'] }}">&#9654; Materials</button>
                     </td>
                 </tr>
                 <tr class="materials-row" id="materials-{{ row['batch_id'] }}" style="display:none;">
-                    <td colspan="6"><div class="materials-detail">Loading...</div></td>
+                    {# CHANGED: cost-of-material feature — colspan 6→7. #}
+                    <td colspan="7"><div class="materials-detail">Loading...</div></td>
                 </tr>
                 {% endfor %}
                 {% endif %}
@@ -320,9 +330,11 @@ document.querySelectorAll('.materials-toggle').forEach(function(btn) {
           if (materials.length === 0) {
             detail.innerHTML = '<em>No materials recorded for this batch.</em>';
           } else {
-            var html = '<table class="materials-inner-table"><thead><tr><th>Material</th><th>Lot #</th><th>Quantity Used</th><th>Unit</th></tr></thead><tbody>';
+            // ADDED: cost-of-material feature — Cost/Unit column in the materials expansion panel.
+            var html = '<table class="materials-inner-table"><thead><tr><th>Material</th><th>Lot #</th><th>Quantity Used</th><th>Unit</th><th>Cost/Unit</th></tr></thead><tbody>';
             materials.forEach(function(m) {
-              html += '<tr><td>' + m.material_name + '</td><td>' + m.lot_number + '</td><td>' + m.quantity_used + '</td><td>' + m.unit + '</td></tr>';
+              var cpu = (m.cost_per_unit != null && m.cost_per_unit > 0) ? '$' + parseFloat(m.cost_per_unit).toFixed(2) : '—';
+              html += '<tr><td>' + m.material_name + '</td><td>' + m.lot_number + '</td><td>' + m.quantity_used + '</td><td>' + m.unit + '</td><td>' + cpu + '</td></tr>';
             });
             html += '</tbody></table>';
             detail.innerHTML = html;

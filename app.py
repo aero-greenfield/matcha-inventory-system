@@ -910,8 +910,10 @@ def batch_materials(batch_id):
     
     """
     rows = get_batch_materials(batch_id)
+    # ADDED: cost-of-material feature — expose cost_per_unit (r[6]) so batches.html can
+    #        display it in the materials expansion panel per line item.
     materials = [
-        {'material_name': r[0], 'quantity_used': r[1], 'unit': r[2], 'batch_material_lot_id': r[3], 'lot_number': r[4], 'material_id': r[5]}
+        {'material_name': r[0], 'quantity_used': r[1], 'unit': r[2], 'batch_material_lot_id': r[3], 'lot_number': r[4], 'material_id': r[5], 'cost_per_unit': r[6]}
         for r in rows
     ]
     return jsonify(materials)

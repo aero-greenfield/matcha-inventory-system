@@ -256,13 +256,17 @@ def get_batches(page=None, per_page=50):
     # ADDED: converted from pd.read_sql_query(query, db.conn) so LIMIT/OFFSET parameters
     #        can go through the db.execute %s→? wrapper.
     # CHANGED: organic feature — added derived is_organic flag (see subquery below).
+    # ADDED: cost-of-material feature — batch_cost column added to columns list.
     columns = ['batch_id', 'batch_number', 'product_name', 'batch_type', 'quantity',
-               'date_completed', 'notes', 'expiration_date', 'is_organic']
+               'date_completed', 'notes', 'expiration_date', 'is_organic', 'batch_cost']
     # ADDED: organic feature — is_organic is a read-only derived property, NOT stored.
     #        A batch is organic when it used at least one edible material and every edible
     #        material it used is organic (non-edible materials are ignored). Computed via a
     #        correlated subquery so the flat SELECT/ORDER BY structure is untouched (no GROUP BY,
     #        no N+1). CASE WHEN <bool col> works for both SQLite 0/1 ints and Postgres booleans.
+    # ADDED: cost-of-material feature — batch_cost sums quantity_used * cost_per_unit from batch_materials.
+    #        Uses the same correlated subquery pattern as is_organic. COALESCE handles lots that
+    #        had no cost_per_unit set at deduction time.
     base_query = """
     SELECT batch_id, batch_number, product_name, batch_type, quantity, date_completed, notes, expiration_date,
            (SELECT CASE
@@ -271,7 +275,10 @@ def get_batches(page=None, per_page=50):
                    THEN 1 ELSE 0 END
             FROM batch_materials bm
             JOIN raw_materials rm ON bm.material_id = rm.material_id
-            WHERE bm.batch_id = batches.batch_id) AS is_organic
+            WHERE bm.batch_id = batches.batch_id) AS is_organic,
+           (SELECT COALESCE(SUM(bm2.quantity_used * COALESCE(bm2.cost_per_unit, 0)), 0) -- cost-of-material feature
+            FROM batch_materials bm2
+            WHERE bm2.batch_id = batches.batch_id) AS batch_cost
     FROM batches
     WHERE status = 'Ready'
     ORDER BY batch_id DESC
@@ -992,8 +999,10 @@ def get_batch_materials(batch_id):
 
     try:
 
+        # ADDED: cost-of-material feature — include cost_per_unit (r[6]) so the API route can
+        #        expose it to the batch materials expansion panel in batches.html.
         query="""
-        SELECT rm.name AS material_name, bm.quantity_used, rm.unit, bm.lot_id, rml.lot_number, bm.material_id
+        SELECT rm.name AS material_name, bm.quantity_used, rm.unit, bm.lot_id, rml.lot_number, bm.material_id, bm.cost_per_unit
         FROM batch_materials bm
         JOIN raw_materials rm ON bm.material_id = rm.material_id
         JOIN raw_material_lots rml ON bm.lot_id = rml.lot_id

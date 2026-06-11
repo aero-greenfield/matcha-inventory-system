@@ -58,6 +58,8 @@
                 <th>Stock Level</th>
                 <th>Unit</th>
                 <th>Reorder Level</th>
+                {# ADDED: cost-of-material feature — total cost of active stock across all lots. #}
+                <th>Total Cost</th>
                 {# ADDED: organic feature — material edible/organic state. #}
                 <th>Edible</th>
                 <th>Organic</th>
@@ -73,6 +75,8 @@
                 <td>{{ row.stock_level }}</td>
                 <td>{{ row.unit }}</td>
                 <td>{{ row.reorder_level }}</td>
+                {# ADDED: cost-of-material feature — show total cost or dash if no cost data entered. #}
+                <td>{% if row.total_cost %}${{ '%.2f'|format(row.total_cost) }}{% else %}—{% endif %}</td>
                 {# ADDED: organic feature — Edible state; Organic shows a dash for non-edible
                    (organic is N/A), the Organic badge when organic, blank otherwise. #}
                 <td>{% if row.is_edible %}Edible{% else %}<span style="color:var(--text-muted);">Not edible</span>{% endif %}</td>
@@ -94,7 +98,8 @@
                 </td>
             </tr>
             <tr class="lot-detail-row" id="lot-detail-{{ row.material_id }}" style="display:none;">
-                <td colspan="9">
+                {# CHANGED: cost-of-material feature — colspan 9→10 to match added Total Cost column. #}
+                <td colspan="10">
                     <div class="lot-panel">
                         <div class="lot-panel-controls">
                             <span class="lot-panel-label">Lots for {{ row.name }}</span>
@@ -125,6 +130,8 @@
                 <th>Stock Level</th>
                 <th>Unit</th>
                 <th>Reorder Level</th>
+                {# ADDED: cost-of-material feature — total cost of active stock across all lots. #}
+                <th>Total Cost</th>
                 {# ADDED: organic feature — material edible/organic state. #}
                 <th>Edible</th>
                 <th>Organic</th>
@@ -140,6 +147,8 @@
                 <td>{{ row.stock_level }}</td>
                 <td>{{ row.unit }}</td>
                 <td>{{ row.reorder_level }}</td>
+                {# ADDED: cost-of-material feature — show total cost or dash if no cost data entered. #}
+                <td>{% if row.total_cost %}${{ '%.2f'|format(row.total_cost) }}{% else %}—{% endif %}</td>
                 {# ADDED: organic feature — Edible state; Organic shows a dash for non-edible
                    (organic is N/A), the Organic badge when organic, blank otherwise. #}
                 <td>{% if row.is_edible %}Edible{% else %}<span style="color:var(--text-muted);">Not edible</span>{% endif %}</td>
@@ -161,7 +170,8 @@
                 </td>
             </tr>
             <tr class="lot-detail-row" id="lot-detail-{{ row.material_id }}" style="display:none;">
-                <td colspan="9">
+                {# CHANGED: cost-of-material feature — colspan 9→10 to match added Total Cost column. #}
+                <td colspan="10">
                     <div class="lot-panel">
                         <div class="lot-panel-controls">
                             <span class="lot-panel-label">Lots for {{ row.name }}</span>
