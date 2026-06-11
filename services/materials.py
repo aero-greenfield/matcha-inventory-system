@@ -5,6 +5,8 @@ import pandas as pd
 from datetime import datetime
 import logging
 
+
+
 # CHANGED: organic feature — added is_edible/is_organic to the updatable allowlist so
 #          update_raw_material (and the inline toggle route) can change them.
 _MATERIAL_UPDATABLE_COLS = frozenset({"name", "category", "unit", "reorder_level", "is_edible", "is_organic"})
@@ -54,10 +56,7 @@ def get_all_materials(page=None, per_page=50):
     db = get_db_connection()
     cursor = db.cursor()
     try:
-        # CHANGED: was strftime string — psycopg2 can't safely cast a datetime string to a
-        #          DATE column. Passing a Python datetime object lets the driver pick the
-        #          right type (datetime → timestamp, date → date) for both SQLite and PostgreSQL.
-        now = datetime.now()
+        now = datetime.now().date().isoformat()  # TEXT column — pass ISO string so PostgreSQL doesn't see TEXT > timestamp
         # CHANGED: organic feature — surface is_edible/is_organic so the manage-materials
         #          page can display and inline-toggle them.
         columns = ['material_id', 'name', 'category', 'stock_level', 'unit', 'reorder_level', 'is_housemade', 'is_edible', 'is_organic']
@@ -104,7 +103,7 @@ def get_low_stock_materials():
     db = get_db_connection()
     cursor = db.cursor()
     try:
-        now = datetime.now()
+        now = datetime.now().date().isoformat()
         columns = ['material_id', 'name', 'category', 'stock_level', 'unit', 'reorder_level']
         db.execute(cursor, """
             SELECT rm.material_id, rm.name, rm.category,
