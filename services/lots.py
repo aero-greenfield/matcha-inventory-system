@@ -351,6 +351,11 @@ def update_lot(lot_id, lot_number=None, quantity=None, received_date=None, expir
 
         if cursor.rowcount == 0:
             raise ValueError(f"lot ID {lot_id} not found — nothing updated")
+
+        if 'cost_per_unit' in field:
+            db.execute(cursor, "UPDATE batch_materials SET cost_per_unit = %s WHERE lot_id = %s", (field['cost_per_unit'], lot_id))
+            logging.info(f"Cascaded cost_per_unit update to batch_materials for lot_id={lot_id}")
+
         db.commit()
         logging.info(f"Updated lot with id:{lot_id}")
 
