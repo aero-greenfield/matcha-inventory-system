@@ -25,8 +25,11 @@ def requires_auth(f):
     @wraps(f)
     def decorated(*args, **kwargs):
         auth = request.authorization
-        if not auth or not check_auth(auth.username, auth.password):
-            logging.warning(f"Failed auth attempt for user: {auth.username if auth else 'no credentials'}")
+        if not auth:
+            logging.debug("Unauthenticated request (no credentials) — returning 401")
+            return authenticate()
+        if not check_auth(auth.username, auth.password):
+            logging.warning(f"Failed auth attempt for user: {auth.username}")
             return authenticate()
         return f(*args, **kwargs)
     return decorated
