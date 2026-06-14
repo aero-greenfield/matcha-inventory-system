@@ -1,0 +1,56 @@
+{% extends "base.html" %}
+
+{% block title %}Manage Shipments{% endblock %}
+
+{% block content %}
+
+<div class="page-header">
+    <div>
+        <h1>Manage Shipments</h1>
+        <p class="page-subtitle">Edit or delete shipments</p>
+    </div>
+    <a href="/shipments" class="btn btn-secondary">View Shipments</a>
+</div>
+
+{% if shipments %}
+<div class="table-container">
+    <table class="data-table">
+        <thead>
+            <tr>
+                <th>Shipment #</th>
+                <th>Date</th>
+                <th>Destination</th>
+                <th>Notes</th>
+                <th># Batches</th>
+                <th></th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for row in shipments %}
+            <tr>
+                <td><a href="/shipments/{{ row['shipment_id'] }}" style="color:var(--accent);">{{ row['shipment_number'] }}</a></td>
+                <td>{{ row['date_shipped'] or '—' }}</td>
+                <td>{{ row['destination'] if row['destination'] and row['destination'] != 'nan' else '—' }}</td>
+                <td>{{ row['notes'] if row['notes'] and row['notes'] != 'nan' else '—' }}</td>
+                <td>{{ row['batch_count'] }}</td>
+                <td style="white-space:nowrap;">
+                    <a href="/edit-shipment/{{ row['shipment_id'] }}" class="btn btn-secondary" style="padding:5px 12px;font-size:12px;">Edit</a>
+                    <form method="POST" action="/shipments/{{ row['shipment_id'] }}/delete"
+                          onsubmit="return confirm('Delete shipment {{ row['shipment_number'] }}? Batches will be returned to Ready.')"
+                          style="display:inline;" autocomplete="off">
+                        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                        <button type="submit" class="btn btn-secondary" style="padding:5px 12px;font-size:12px;color:#dc2626;border-color:#dc2626;">Delete</button>
+                    </form>
+                </td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+</div>
+{% else %}
+<div class="table-container" style="padding:40px 24px;text-align:center;color:var(--text-muted);">
+    <p>No shipments found.</p>
+</div>
+{% endif %}
+
+{% endblock %}

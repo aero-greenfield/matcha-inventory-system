@@ -1,0 +1,50 @@
+{% extends "base.html" %}
+
+{% block title %}Edit Shipment{% endblock %}
+
+{% block content %}
+
+<div class="page-header">
+    <div>
+        <h1>Edit Shipment</h1>
+        <p class="page-subtitle">{{ shipment['shipment_number'] }} &mdash; {{ shipment['date_shipped'] }}</p>
+    </div>
+</div>
+
+<div class="table-container" style="padding:24px;max-width:520px;">
+    <form method="POST" action="/edit-shipment/{{ shipment['shipment_id'] }}/update" autocomplete="off">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+
+        <div style="margin-bottom:16px;">
+            <label style="display:block;font-size:13px;font-weight:600;color:var(--text-muted);margin-bottom:6px;">Shipment #</label>
+            <p style="margin:0;font-size:14px;color:var(--text-muted);">{{ shipment['shipment_number'] }}</p>
+        </div>
+
+        <div style="margin-bottom:16px;">
+            <label style="display:block;font-size:13px;font-weight:600;color:var(--text-muted);margin-bottom:6px;">Date Shipped</label>
+            <p style="margin:0;font-size:14px;color:var(--text-muted);">{{ shipment['date_shipped'] }}</p>
+        </div>
+
+        <div style="margin-bottom:16px;">
+            <label for="destination" style="display:block;font-size:13px;font-weight:600;margin-bottom:6px;">Destination</label>
+            <input type="text" id="destination" name="destination"
+                   value="{{ shipment['destination'] if shipment['destination'] else '' }}"
+                   placeholder="e.g. Store A, Wholesale, etc."
+                   style="width:100%;padding:8px 12px;border:1px solid var(--border);border-radius:6px;font-size:14px;box-sizing:border-box;">
+        </div>
+
+        <div style="margin-bottom:24px;">
+            <label for="notes" style="display:block;font-size:13px;font-weight:600;margin-bottom:6px;">Notes</label>
+            <textarea id="notes" name="notes" rows="3"
+                      placeholder="Optional notes"
+                      style="width:100%;padding:8px 12px;border:1px solid var(--border);border-radius:6px;font-size:14px;box-sizing:border-box;resize:vertical;">{{ shipment['notes'] if shipment['notes'] else '' }}</textarea>
+        </div>
+
+        <div style="display:flex;gap:10px;">
+            <button type="submit" class="btn btn-primary">Save Changes</button>
+            <a href="/manage-shipments" class="btn btn-secondary">Cancel</a>
+        </div>
+    </form>
+</div>
+
+{% endblock %}

@@ -62,6 +62,10 @@ from services.batches import (
     update_batch, update_batch_status, get_batch_materials,
     adjust_batch_material, check_batch_materials_stock,
 )
+from services.shipments import (
+    create_shipment, get_all_shipments, get_shipment_by_id,
+    update_shipment, delete_shipment,
+)
 
 
 # Import helper functions for exporting data
@@ -2063,6 +2067,151 @@ def delete_lot_route(lot_id):
     else:
         flash('Failed to delete lot', 'error')
         return redirect(url_for('edit_lot', lot_id=lot_id))
+
+
+# ========================
+# SHIPMENTS ROUTES
+# ========================
+
+@app.route('/shipments')
+@requires_auth
+def shipments_list():
+    page = request.args.get('page', 1, type=int)
+    per_page = 50
+    df, total = get_all_shipments(page=page, per_page=per_page)
+    total_pages = math.ceil(total / per_page) if total else 1
+    shipments = df.to_dict('records') if not df.empty else []
+    return render_template('shipments.html',
+        shipments=shipments,
+        page=page,
+        total_pages=total_pages,
+        total=total or 0,
+    )
+
+
+@app.route('/shipments/<int:shipment_id>')
+@requires_auth
+def shipment_detail(shipment_id):
+    data = get_shipment_by_id(shipment_id)
+    if not data:
+        return render_template('error.html',
+            title="Shipment Not Found",
+            message=f"Shipment {shipment_id} does not exist.",
+            back_link=True, back_link_url="/shipments", back_link_label="Back to Shipments"
+        ), 404
+    return render_template('shipment_detail.html',
+        shipment=data['shipment'],
+        batches=data['batches'],
+    )
+
+
+@app.route('/shipments/create', methods=['POST'])
+@requires_auth
+def create_shipment_route():
+    import pandas as pd
+    raw_ids = request.form.getlist('batch_ids')
+    if not raw_ids:
+        return render_template('error.html',
+            title="No Batches Selected",
+            message="Please select at least one batch to create a shipment.",
+            back_link=True, back_link_url="/batches", back_link_label="Back to Batches"
+        ), 400
+    try:
+        batch_ids = [int(bid) for bid in raw_ids]
+    except ValueError:
+        return render_template('error.html',
+            title="Invalid Input",
+            message="One or more batch IDs were invalid.",
+            back_link=True, back_link_url="/batches", back_link_label="Back to Batches"
+        ), 400
+
+    destination = request.form.get('destination', '').strip() or None
+    notes = request.form.get('notes', '').strip() or None
+
+    try:
+        shipment_id = create_shipment(batch_ids, destination=destination, notes=notes)
+    except ValueError as e:
+        return render_template('error.html',
+            title="Cannot Create Shipment",
+            message=str(e),
+            back_link=True, back_link_url="/batches", back_link_label="Back to Batches"
+        ), 400
+
+    if shipment_id is None:
+        return render_template('error.html',
+            title="Error",
+            message="Failed to create shipment. Check logs for details.",
+            back_link=True, back_link_url="/batches", back_link_label="Back to Batches"
+        ), 500
+
+    return redirect(url_for('shipment_detail', shipment_id=shipment_id))
+
+
+@app.route('/manage-shipments')
+@requires_auth
+def manage_shipments():
+    df, _ = get_all_shipments(page=None)
+    shipments = df.to_dict('records') if not df.empty else []
+    return render_template('manage_shipments.html', shipments=shipments)
+
+
+@app.route('/edit-shipment/<int:shipment_id>')
+@requires_auth
+def edit_shipment(shipment_id):
+    data = get_shipment_by_id(shipment_id)
+    if not data:
+        return render_template('error.html',
+            title="Shipment Not Found",
+            message=f"Shipment {shipment_id} does not exist.",
+            back_link=True, back_link_url="/manage-shipments", back_link_label="Back to Manage Shipments"
+        ), 404
+    return render_template('edit_shipment.html', shipment=data['shipment'])
+
+
+@app.route('/edit-shipment/<int:shipment_id>/update', methods=['POST'])
+@requires_auth
+def update_shipment_route(shipment_id):
+    destination = request.form.get('destination', '').strip() or None
+    notes = request.form.get('notes', '').strip() or None
+    try:
+        update_shipment(shipment_id, destination=destination, notes=notes)
+    except ValueError as e:
+        return render_template('error.html',
+            title="Shipment Not Found",
+            message=str(e),
+            back_link=True, back_link_url="/manage-shipments", back_link_label="Back to Manage Shipments"
+        ), 404
+    flash('Shipment updated successfully', 'success')
+    return redirect(url_for('manage_shipments'))
+
+
+@app.route('/shipments/<int:shipment_id>/delete', methods=['POST'])
+@requires_auth
+def delete_shipment_route(shipment_id):
+    try:
+        delete_shipment(shipment_id)
+    except ValueError as e:
+        return render_template('error.html',
+            title="Shipment Not Found",
+            message=str(e),
+            back_link=True, back_link_url="/manage-shipments", back_link_label="Back to Manage Shipments"
+        ), 404
+    flash('Shipment deleted — batches returned to Ready', 'success')
+    return redirect(url_for('manage_shipments'))
+
+
+@app.route('/export/shipment-manifest/<int:shipment_id>')
+@requires_auth
+def export_shipment_manifest(shipment_id):
+    import pandas as pd
+    data = get_shipment_by_id(shipment_id)
+    if not data:
+        return "Shipment not found", 404
+    if not data['batches']:
+        return "No batches in this shipment to export", 400
+    df = pd.DataFrame(data['batches'])
+    filepath = export_to_excel(df, f"shipment-{shipment_id}")
+    return send_file(filepath, as_attachment=True, download_name=os.path.basename(filepath))
 
 
 # ========================

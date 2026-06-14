@@ -39,6 +39,12 @@ def create_database():
     if "is_organic" not in _rm_cols:
         cursor.execute("ALTER TABLE raw_materials ADD COLUMN is_organic BOOLEAN DEFAULT FALSE")
 
+    # Shipments migration — add shipment_id FK to existing batches tables.
+    cursor.execute("PRAGMA table_info(batches)")
+    _b_cols = {row[1] for row in cursor.fetchall()}
+    if "shipment_id" not in _b_cols:
+        cursor.execute("ALTER TABLE batches ADD COLUMN shipment_id INTEGER DEFAULT NULL REFERENCES shipments(shipment_id)")
+
     #raw material lots.
 
     cursor.execute("""
@@ -82,6 +88,17 @@ def create_database():
                    )
                    """)
 
+    # Shipments (must come before batches FK reference)
+    cursor.execute("""
+    CREATE TABLE IF NOT EXISTS shipments(
+                    shipment_id     INTEGER PRIMARY KEY AUTOINCREMENT,
+                    shipment_number TEXT NOT NULL UNIQUE,
+                    date_shipped    TEXT NOT NULL,
+                    destination     TEXT,
+                    notes           TEXT
+                   )
+                   """)
+
     # Ready to ship
     cursor.execute("""
     CREATE TABLE IF NOT EXISTS batches(
@@ -98,7 +115,8 @@ def create_database():
                     batch_type TEXT DEFAULT 'standard',
                     planned_lot_selections TEXT,
                     promotion_failure_reason TEXT,
-                    mix_lot_id INTEGER DEFAULT NULL REFERENCES raw_material_lots(lot_id)
+                    mix_lot_id INTEGER DEFAULT NULL REFERENCES raw_material_lots(lot_id),
+                    shipment_id INTEGER DEFAULT NULL REFERENCES shipments(shipment_id)
 
 
 
@@ -149,7 +167,7 @@ def create_database():
 
 
 def upgrade_schema():
-    """Adds indexes to an existing SQLite database. Safe to run on a fresh DB."""
+    """Adds indexes and missing columns to an existing SQLite database. Safe to run on a fresh DB."""
     import sqlite3
     conn = sqlite3.connect('data/inventory.db')
     cursor = conn.cursor()
@@ -158,5 +176,12 @@ def upgrade_schema():
     cursor.execute("CREATE INDEX IF NOT EXISTS idx_recipe_mat_recipe ON recipe_materials(recipe_id)")
     cursor.execute("CREATE INDEX IF NOT EXISTS idx_bm_lot_id         ON batch_materials(lot_id)")
     cursor.execute("CREATE INDEX IF NOT EXISTS idx_bm_material_id    ON batch_materials(material_id)")
+    try:
+        cursor.execute("ALTER TABLE batches ADD COLUMN shipment_id INTEGER DEFAULT NULL REFERENCES shipments(shipment_id)")
+        conn.commit()
+    except Exception:
+        conn.rollback()  # column already exists
+    cursor.execute("CREATE INDEX IF NOT EXISTS idx_shipments_date        ON shipments(date_shipped)")
+    cursor.execute("CREATE INDEX IF NOT EXISTS idx_batches_shipment_id   ON batches(shipment_id)")
     conn.commit()
     conn.close()

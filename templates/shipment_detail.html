@@ -1,0 +1,70 @@
+{% extends "base.html" %}
+
+{% block title %}{{ shipment['shipment_number'] }}{% endblock %}
+
+{% block content %}
+
+<div class="page-header">
+    <div>
+        <h1>{{ shipment['shipment_number'] }}</h1>
+        <p class="page-subtitle">Shipment detail</p>
+    </div>
+    <div style="display:flex;gap:10px;">
+        <a href="/export/shipment-manifest/{{ shipment['shipment_id'] }}" class="btn btn-secondary">&#8595; Export Manifest</a>
+        <a href="/edit-shipment/{{ shipment['shipment_id'] }}" class="btn btn-primary">Edit</a>
+    </div>
+</div>
+
+<div class="table-container" style="padding:20px 24px;margin-bottom:24px;">
+    <table style="border-collapse:collapse;width:auto;font-size:14px;">
+        <tr>
+            <td style="padding:6px 24px 6px 0;color:var(--text-muted);font-weight:600;white-space:nowrap;">Shipment #</td>
+            <td style="padding:6px 0;">{{ shipment['shipment_number'] }}</td>
+        </tr>
+        <tr>
+            <td style="padding:6px 24px 6px 0;color:var(--text-muted);font-weight:600;">Date Shipped</td>
+            <td style="padding:6px 0;">{{ shipment['date_shipped'] or '—' }}</td>
+        </tr>
+        <tr>
+            <td style="padding:6px 24px 6px 0;color:var(--text-muted);font-weight:600;">Destination</td>
+            <td style="padding:6px 0;">{{ shipment['destination'] if shipment['destination'] else '—' }}</td>
+        </tr>
+        <tr>
+            <td style="padding:6px 24px 6px 0;color:var(--text-muted);font-weight:600;">Notes</td>
+            <td style="padding:6px 0;">{{ shipment['notes'] if shipment['notes'] else '—' }}</td>
+        </tr>
+    </table>
+</div>
+
+{% if batches %}
+<div class="table-container">
+    <table class="data-table">
+        <thead>
+            <tr>
+                <th>Batch #</th>
+                <th>Product</th>
+                <th>Qty</th>
+                <th>Completed</th>
+                <th>Expiration</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for row in batches %}
+            <tr>
+                <td>{{ row['batch_number'] or '—' }}</td>
+                <td><strong>{{ row['product_name'] }}</strong></td>
+                <td>{{ row['quantity'] }}</td>
+                <td>{{ row['date_completed'] if row['date_completed'] and row['date_completed'] != 'None' else '—' }}</td>
+                <td>{{ row['expiration_date'] if row['expiration_date'] and row['expiration_date'] != 'None' else '—' }}</td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+</div>
+{% else %}
+<div class="table-container" style="padding:40px 24px;text-align:center;color:var(--text-muted);">
+    <p>No batches in this shipment.</p>
+</div>
+{% endif %}
+
+{% endblock %}

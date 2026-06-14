@@ -201,7 +201,7 @@ def init_database():
    # TABLE 4: batches 
    # ======================================== 
     if DATABASE_URL:
-    
+
 
         cursor.execute("""
         CREATE TABLE IF NOT EXISTS batches(
@@ -218,9 +218,10 @@ def init_database():
             batch_type TEXT DEFAULT 'standard',
             planned_lot_selections TEXT,
             promotion_failure_reason TEXT,
-            mix_lot_id INTEGER DEFAULT NULL REFERENCES raw_material_lots(lot_id)
+            mix_lot_id INTEGER DEFAULT NULL REFERENCES raw_material_lots(lot_id),
+            shipment_id INTEGER DEFAULT NULL REFERENCES shipments(shipment_id)
         )
-        """) 
+        """)
     else:
         cursor.execute("""
         CREATE TABLE IF NOT EXISTS batches(
@@ -237,16 +238,44 @@ def init_database():
             batch_type TEXT DEFAULT 'standard',
             planned_lot_selections TEXT,
             promotion_failure_reason TEXT,
-            mix_lot_id INTEGER DEFAULT NULL REFERENCES raw_material_lots(lot_id)
+            mix_lot_id INTEGER DEFAULT NULL REFERENCES raw_material_lots(lot_id),
+            shipment_id INTEGER DEFAULT NULL REFERENCES shipments(shipment_id)
         )
-        """) 
-    
+        """)
+
     print("  ✅ batches table created")
     
-   # ======================================== 
-   # TABLE 5: batch_materials 
-   # ======================================== 
-   
+   # ========================================
+   # TABLE 5: shipments
+   # ========================================
+
+    if DATABASE_URL:
+        cursor.execute("""
+        CREATE TABLE IF NOT EXISTS shipments(
+            shipment_id     SERIAL PRIMARY KEY,
+            shipment_number TEXT NOT NULL UNIQUE,
+            date_shipped    TEXT NOT NULL,
+            destination     TEXT,
+            notes           TEXT
+        )
+        """)
+    else:
+        cursor.execute("""
+        CREATE TABLE IF NOT EXISTS shipments(
+            shipment_id     INTEGER PRIMARY KEY AUTOINCREMENT,
+            shipment_number TEXT NOT NULL UNIQUE,
+            date_shipped    TEXT NOT NULL,
+            destination     TEXT,
+            notes           TEXT
+        )
+        """)
+
+    print("  ✅ shipments table created")
+
+   # ========================================
+   # TABLE 6: batch_materials
+   # ========================================
+
     if DATABASE_URL:
 
         cursor.execute(""" 
@@ -322,7 +351,7 @@ def init_database():
 
 
 def upgrade_schema():
-    """Adds indexes to an existing database. Safe to run on a fresh DB."""
+    """Adds indexes and missing columns to an existing database. Safe to run on a fresh DB."""
     conn = get_connection()
     cursor = conn.cursor()
     cursor.execute("CREATE INDEX IF NOT EXISTS idx_rml_material_id  ON raw_material_lots(material_id)")
@@ -330,6 +359,13 @@ def upgrade_schema():
     cursor.execute("CREATE INDEX IF NOT EXISTS idx_recipe_mat_recipe ON recipe_materials(recipe_id)")
     cursor.execute("CREATE INDEX IF NOT EXISTS idx_bm_lot_id         ON batch_materials(lot_id)")
     cursor.execute("CREATE INDEX IF NOT EXISTS idx_bm_material_id    ON batch_materials(material_id)")
+    try:
+        cursor.execute("ALTER TABLE batches ADD COLUMN shipment_id INTEGER DEFAULT NULL REFERENCES shipments(shipment_id)")
+        conn.commit()
+    except Exception:
+        conn.rollback()  # column already exists
+    cursor.execute("CREATE INDEX IF NOT EXISTS idx_shipments_date        ON shipments(date_shipped)")
+    cursor.execute("CREATE INDEX IF NOT EXISTS idx_batches_shipment_id   ON batches(shipment_id)")
     conn.commit()
     conn.close()
     print("  ✅ Indexes applied")

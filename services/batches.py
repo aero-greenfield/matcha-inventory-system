@@ -316,20 +316,26 @@ def get_batches_shipped(page=None, per_page=50):
 
     # ADDED: converted from pd.read_sql_query to cursor approach for LIMIT/OFFSET support
     # CHANGED: organic feature — added derived is_organic flag (same correlated subquery as get_batches).
+    # CHANGED: shipments feature — LEFT JOIN shipments to surface shipment_id and shipment_number.
     columns = ['batch_id', 'batch_number', 'product_name', 'quantity',
-               'date_completed', 'date_shipped', 'notes', 'expiration_date', 'is_organic']
+               'date_completed', 'date_shipped', 'notes', 'expiration_date', 'is_organic',
+               'shipment_id', 'shipment_number']
     base_query = """
-    SELECT batch_id, batch_number, product_name, quantity, date_completed, date_shipped, notes, expiration_date,
+    SELECT b.batch_id, b.batch_number, b.product_name, b.quantity,
+           b.date_completed, b.date_shipped, b.notes, b.expiration_date,
            (SELECT CASE
                      WHEN COUNT(CASE WHEN rm.is_edible THEN 1 END) > 0
                       AND COUNT(CASE WHEN rm.is_edible AND NOT rm.is_organic THEN 1 END) = 0
                    THEN 1 ELSE 0 END
             FROM batch_materials bm
             JOIN raw_materials rm ON bm.material_id = rm.material_id
-            WHERE bm.batch_id = batches.batch_id) AS is_organic
-    FROM batches
-    WHERE status = 'Shipped'
-    ORDER BY date_shipped DESC
+            WHERE bm.batch_id = b.batch_id) AS is_organic,
+           b.shipment_id,
+           s.shipment_number
+    FROM batches b
+    LEFT JOIN shipments s ON b.shipment_id = s.shipment_id
+    WHERE b.status = 'Shipped'
+    ORDER BY b.date_shipped DESC
     """
 
     try:

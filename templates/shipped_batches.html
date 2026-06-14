@@ -79,6 +79,7 @@
                 <th>Qty</th>
                 <th>Completed</th>
                 <th>Shipped</th>
+                <th>Shipment #</th>
                 <th>Notes</th>
                 <th>Expiration</th>
                 <th></th>
@@ -102,12 +103,19 @@
                 <td>{{ row['quantity'] }}</td>
                 <td>{{ row['date_completed'] if row['date_completed'] and row['date_completed'] != 'nan' else '—' }}</td>
                 <td>{{ row['date_shipped'] if row['date_shipped'] and row['date_shipped'] != 'nan' else '—' }}</td>
+                <td>
+                    {% if row['shipment_id'] and row['shipment_id'] != 'nan' %}
+                        <a href="/shipments/{{ row['shipment_id'] | int }}" style="color:var(--accent);">{{ row['shipment_number'] }}</a>
+                    {% else %}
+                        —
+                    {% endif %}
+                </td>
                 <td>{{ row['notes'] if row['notes'] and row['notes'] != 'nan' else '—' }}</td>
                 <td>{{ row['expiration_date'] if row['expiration_date'] and row['expiration_date'] != 'nan' else '—' }}</td>
                 <td><button class="materials-toggle" data-batch-id="{{ row['batch_id'] }}">&#9654; Materials</button></td>
             </tr>
             <tr class="materials-row" id="materials-{{ row['batch_id'] }}" style="display:none;">
-                <td colspan="9">
+                <td colspan="10">
                     <div class="materials-detail">Loading...</div>
                 </td>
             </tr>

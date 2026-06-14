@@ -1,0 +1,62 @@
+{% extends "base.html" %}
+
+{% block title %}Shipments{% endblock %}
+
+{% block content %}
+
+<div class="page-header">
+    <div>
+        <h1>Shipments</h1>
+        <p class="page-subtitle">{{ total }} shipment(s) total</p>
+    </div>
+    <a href="/manage-shipments" class="btn btn-secondary">Manage Shipments</a>
+</div>
+
+{% if shipments %}
+<div class="table-container">
+    <table class="data-table">
+        <thead>
+            <tr>
+                <th>Shipment #</th>
+                <th>Date Shipped</th>
+                <th>Destination</th>
+                <th>Notes</th>
+                <th># Batches</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for row in shipments %}
+            <tr>
+                <td><a href="/shipments/{{ row['shipment_id'] }}" style="color:var(--accent);">{{ row['shipment_number'] }}</a></td>
+                <td>{{ row['date_shipped'] or '—' }}</td>
+                <td>{{ row['destination'] if row['destination'] and row['destination'] != 'nan' else '—' }}</td>
+                <td>{{ row['notes'] if row['notes'] and row['notes'] != 'nan' else '—' }}</td>
+                <td>{{ row['batch_count'] }}</td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+</div>
+{% else %}
+<div class="table-container" style="padding:40px 24px;text-align:center;color:var(--text-muted);">
+    <p>No shipments yet. Select Ready batches on the <a href="/batches" style="color:var(--accent);">Batches</a> page to create one.</p>
+</div>
+{% endif %}
+
+{% if total_pages > 1 %}
+<nav style="display:flex;align-items:center;gap:12px;margin-top:24px;font-size:14px;">
+    {% if page > 1 %}
+        <a href="?page={{ page - 1 }}" class="btn btn-secondary" style="padding:5px 14px;">&#8592; Prev</a>
+    {% else %}
+        <span class="btn btn-secondary" style="padding:5px 14px;opacity:0.4;cursor:default;">&#8592; Prev</span>
+    {% endif %}
+    <span style="color:var(--text-muted);">Page {{ page }} of {{ total_pages }} &mdash; {{ total }} shipment(s)</span>
+    {% if page < total_pages %}
+        <a href="?page={{ page + 1 }}" class="btn btn-secondary" style="padding:5px 14px;">Next &#8594;</a>
+    {% else %}
+        <span class="btn btn-secondary" style="padding:5px 14px;opacity:0.4;cursor:default;">Next &#8594;</span>
+    {% endif %}
+</nav>
+{% endif %}
+
+{% endblock %}
