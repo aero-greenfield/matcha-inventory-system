@@ -57,32 +57,6 @@
 .tab-panel { display: none; }
 .tab-panel.active { display: block; }
 
-/* Shipment selection bar */
-#shipment-bar {
-    display: none;
-    align-items: center;
-    gap: 10px;
-    padding: 12px 16px;
-    background: var(--content-bg);
-    border: 1px solid var(--border);
-    border-radius: 8px;
-    margin-bottom: 16px;
-    flex-wrap: wrap;
-}
-#shipment-bar input[type="text"] {
-    padding: 6px 10px;
-    border: 1px solid var(--border);
-    border-radius: 6px;
-    font-size: 13px;
-    min-width: 160px;
-}
-#shipment-bar .bar-label {
-    font-size: 13px;
-    font-weight: 600;
-    color: var(--text);
-    white-space: nowrap;
-}
-.batch-select { cursor: pointer; }
 </style>
 {% endblock %}
 
@@ -116,26 +90,10 @@
 <div id="panel-ready" class="tab-panel active">
 
     {% if ready_standard or ready_mix %}
-
-    {# Shipment bar — shown by JS when ≥1 checkbox is checked #}
-    {# ADDED: shipments feature — outer form groups checkboxes + shipment submit.
-       Per-row Ship buttons are separate <form> elements so they don't nest inside this one. #}
-    <form id="shipment-form" method="POST" action="/shipments/create" autocomplete="off">
-        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-
-        <div id="shipment-bar">
-            <span class="bar-label">Create Shipment:</span>
-            <input type="text" name="destination" placeholder="Destination (optional)">
-            <input type="text" name="notes" placeholder="Notes (optional)">
-            <button type="submit" class="btn btn-primary" style="padding:6px 14px;font-size:13px;">&#128230; Ship Selected</button>
-            <span id="shipment-bar-count" style="font-size:12px;color:var(--text-muted);"></span>
-        </div>
-
     <div class="table-container">
         <table class="data-table">
             <thead>
                 <tr>
-                    <th style="width:32px;"><input type="checkbox" id="select-all" title="Select all"></th>
                     <th>Batch #</th>
                     <th>Product</th>
                     <th>Type</th>
@@ -150,11 +108,10 @@
 
                 {# ── Standard & Finished group ── #}
                 {% if ready_standard %}
-                {# CHANGED: cost-of-material feature — colspan 6→7 to match added Cost column. Shipments: +1 for checkbox col → 9. #}
-                <tr class="group-divider"><td colspan="9">Standard &amp; Finished</td></tr>
+                {# CHANGED: cost-of-material feature — colspan 6→7 to match added Cost column. #}
+                <tr class="group-divider"><td colspan="7">Standard &amp; Finished</td></tr>
                 {% for row in ready_standard %}
                 <tr>
-                    <td><input type="checkbox" class="batch-select" name="batch_ids" value="{{ row['batch_id'] }}"></td>
                     <td>{{ row['batch_number'] }}</td>
                     <td><strong>{{ row['product_name'] }}</strong></td>
                     <td><span class="badge badge-{{ row['batch_type'] or 'standard' }}">{{ row['batch_type'] or 'standard' }}</span>
@@ -165,29 +122,22 @@
                     {# ADDED: cost-of-material feature — show total batch cost or dash if no cost data. #}
                     <td>{% if row['batch_cost'] %}${{ '%.2f'|format(row['batch_cost']) }}{% else %}—{% endif %}</td>
                     <td>
-                        {# Separate mini-form per row — cannot nest inside #shipment-form #}
-                        <form method="POST" action="/batches/{{ row['batch_id'] }}/mark-shipped"
-                              onsubmit="return confirm('Mark this batch as shipped?')" style="display:inline;" autocomplete="off">
-                            <button type="submit" class="btn btn-primary" style="padding:5px 12px;font-size:12px;">Ship</button>
-                            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-                        </form>
                         <button class="materials-toggle" data-batch-id="{{ row['batch_id'] }}">&#9654; Materials</button>
                     </td>
                 </tr>
                 <tr class="materials-row" id="materials-{{ row['batch_id'] }}" style="display:none;">
-                    {# CHANGED: cost-of-material feature — colspan 6→7. Shipments: +1 for checkbox col → 9. #}
-                    <td colspan="9"><div class="materials-detail">Loading...</div></td>
+                    {# CHANGED: cost-of-material feature — colspan 6→7. #}
+                    <td colspan="7"><div class="materials-detail">Loading...</div></td>
                 </tr>
                 {% endfor %}
                 {% endif %}
 
                 {# ── Component group ── #}
                 {% if ready_mix %}
-                {# CHANGED: cost-of-material feature — colspan 6→7 to match added Cost column. Shipments: +1 for checkbox col → 9. #}
-                <tr class="group-divider"><td colspan="9">Component</td></tr>
+                {# CHANGED: cost-of-material feature — colspan 6→7 to match added Cost column. #}
+                <tr class="group-divider"><td colspan="7">Component</td></tr>
                 {% for row in ready_mix %}
                 <tr>
-                    <td><input type="checkbox" class="batch-select" name="batch_ids" value="{{ row['batch_id'] }}"></td>
                     <td>{{ row['batch_number'] }}</td>
                     <td><strong>{{ row['product_name'] }}</strong></td>
                     <td><span class="badge badge-mix">component</span>
@@ -202,8 +152,8 @@
                     </td>
                 </tr>
                 <tr class="materials-row" id="materials-{{ row['batch_id'] }}" style="display:none;">
-                    {# CHANGED: cost-of-material feature — colspan 6→7. Shipments: +1 for checkbox col → 9. #}
-                    <td colspan="9"><div class="materials-detail">Loading...</div></td>
+                    {# CHANGED: cost-of-material feature — colspan 6→7. #}
+                    <td colspan="7"><div class="materials-detail">Loading...</div></td>
                 </tr>
                 {% endfor %}
                 {% endif %}
@@ -211,9 +161,6 @@
             </tbody>
         </table>
     </div>
-
-    </form>{# end #shipment-form #}
-
     {% else %}
     <div class="table-container" style="padding:40px 24px;text-align:center;color:var(--text-muted);">
         No ready batches. <a href="/create-batch" style="color:var(--accent);">Create one</a>
@@ -352,41 +299,6 @@ function switchTab(name) {
     document.getElementById('panel-' + name).classList.add('active');
     document.getElementById('tab-' + name).classList.add('active');
 }
-
-// Shipment bar — show when ≥1 checkbox checked
-(function() {
-    var bar = document.getElementById('shipment-bar');
-    var countLabel = document.getElementById('shipment-bar-count');
-    var selectAll = document.getElementById('select-all');
-
-    function updateBar() {
-        var checked = document.querySelectorAll('.batch-select:checked').length;
-        if (checked > 0) {
-            bar.style.display = 'flex';
-            countLabel.textContent = checked + ' batch(es) selected';
-        } else {
-            bar.style.display = 'none';
-        }
-        if (selectAll) {
-            var total = document.querySelectorAll('.batch-select').length;
-            selectAll.checked = (checked === total && total > 0);
-            selectAll.indeterminate = (checked > 0 && checked < total);
-        }
-    }
-
-    document.querySelectorAll('.batch-select').forEach(function(cb) {
-        cb.addEventListener('change', updateBar);
-    });
-
-    if (selectAll) {
-        selectAll.addEventListener('change', function() {
-            document.querySelectorAll('.batch-select').forEach(function(cb) {
-                cb.checked = selectAll.checked;
-            });
-            updateBar();
-        });
-    }
-}());
 
 // Honor ?tab= param from URL (e.g. coming from shipped page)
 (function() {

@@ -2089,6 +2089,14 @@ def shipments_list():
     )
 
 
+@app.route('/shipments/new')
+@requires_auth
+def new_shipment_page():
+    df, _ = get_batches(page=None)
+    batches = df.to_dict('records') if not df.empty else []
+    return render_template('create_shipment.html', batches=batches)
+
+
 @app.route('/shipments/<int:shipment_id>')
 @requires_auth
 def shipment_detail(shipment_id):

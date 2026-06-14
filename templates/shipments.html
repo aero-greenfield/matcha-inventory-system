@@ -9,7 +9,10 @@
         <h1>Shipments</h1>
         <p class="page-subtitle">{{ total }} shipment(s) total</p>
     </div>
-    <a href="/manage-shipments" class="btn btn-secondary">Manage Shipments</a>
+    <div style="display:flex;gap:10px;">
+        <a href="/manage-shipments" class="btn btn-secondary">Manage Shipments</a>
+        <a href="/shipments/new" class="btn btn-primary">+ Create Shipment</a>
+    </div>
 </div>
 
 {% if shipments %}

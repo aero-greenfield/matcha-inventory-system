@@ -1,0 +1,117 @@
+{% extends "base.html" %}
+
+{% block title %}Create Shipment{% endblock %}
+
+{% block extra_styles %}
+<style>
+.batch-select { cursor: pointer; }
+#submit-shipment:disabled { opacity: 0.4; cursor: not-allowed; }
+</style>
+{% endblock %}
+
+{% block content %}
+
+<div class="page-header">
+    <div>
+        <h1>Create Shipment</h1>
+        <p class="page-subtitle">Select Ready batches to group into a single shipment</p>
+    </div>
+    <a href="/shipments" class="btn btn-secondary">Cancel</a>
+</div>
+
+{% if batches %}
+<form method="POST" action="/shipments/create" autocomplete="off">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+
+    <div class="table-container" style="padding:20px 24px;margin-bottom:20px;">
+        <div style="display:flex;gap:16px;flex-wrap:wrap;">
+            <div style="flex:1;min-width:200px;">
+                <label for="destination" style="display:block;font-size:13px;font-weight:600;margin-bottom:6px;">Destination</label>
+                <input type="text" id="destination" name="destination" placeholder="e.g. Store A, Wholesale..."
+                       style="width:100%;padding:8px 12px;border:1px solid var(--border);border-radius:6px;font-size:14px;box-sizing:border-box;">
+            </div>
+            <div style="flex:1;min-width:200px;">
+                <label for="notes" style="display:block;font-size:13px;font-weight:600;margin-bottom:6px;">Notes</label>
+                <input type="text" id="notes" name="notes" placeholder="Optional notes"
+                       style="width:100%;padding:8px 12px;border:1px solid var(--border);border-radius:6px;font-size:14px;box-sizing:border-box;">
+            </div>
+        </div>
+    </div>
+
+    <div class="table-container">
+        <table class="data-table">
+            <thead>
+                <tr>
+                    <th style="width:36px;"><input type="checkbox" id="select-all" title="Select all"></th>
+                    <th>Batch #</th>
+                    <th>Product</th>
+                    <th>Type</th>
+                    <th>Qty</th>
+                    <th>Completed</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for row in batches %}
+                <tr>
+                    <td><input type="checkbox" class="batch-select" name="batch_ids" value="{{ row['batch_id'] }}"></td>
+                    <td>{{ row['batch_number'] or '—' }}</td>
+                    <td><strong>{{ row['product_name'] }}</strong></td>
+                    <td>
+                        <span class="badge badge-{{ row['batch_type'] or 'standard' }}">{{ row['batch_type'] or 'standard' }}</span>
+                        {% if row['is_organic'] %}<span class="badge badge-organic">Organic</span>{% endif %}
+                    </td>
+                    <td>{{ row['quantity'] }}</td>
+                    <td>{{ row['date_completed'] or '—' }}</td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+
+    <div style="margin-top:20px;display:flex;align-items:center;gap:16px;">
+        <button type="submit" id="submit-shipment" class="btn btn-primary" disabled>&#128230; Create Shipment</button>
+        <span id="selection-count" style="font-size:13px;color:var(--text-muted);"></span>
+    </div>
+
+</form>
+{% else %}
+<div class="table-container" style="padding:40px 24px;text-align:center;color:var(--text-muted);">
+    <p>No Ready batches available. <a href="/batches" style="color:var(--accent);">Go to Batches</a> to check production status.</p>
+</div>
+{% endif %}
+
+<script>
+(function() {
+    var submitBtn = document.getElementById('submit-shipment');
+    var countLabel = document.getElementById('selection-count');
+    var selectAll = document.getElementById('select-all');
+
+    function updateState() {
+        var checked = document.querySelectorAll('.batch-select:checked').length;
+        var total = document.querySelectorAll('.batch-select').length;
+
+        if (submitBtn) submitBtn.disabled = (checked === 0);
+        if (countLabel) countLabel.textContent = checked > 0 ? checked + ' batch(es) selected' : '';
+
+        if (selectAll) {
+            selectAll.checked = (checked === total && total > 0);
+            selectAll.indeterminate = (checked > 0 && checked < total);
+        }
+    }
+
+    document.querySelectorAll('.batch-select').forEach(function(cb) {
+        cb.addEventListener('change', updateState);
+    });
+
+    if (selectAll) {
+        selectAll.addEventListener('change', function() {
+            document.querySelectorAll('.batch-select').forEach(function(cb) {
+                cb.checked = selectAll.checked;
+            });
+            updateState();
+        });
+    }
+}());
+</script>
+
+{% endblock %}
