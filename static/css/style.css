@@ -148,6 +148,12 @@ textarea:focus-visible,
 
 .brand-icon {
     flex-shrink: 0;
+    width: 34px;
+    height: 34px;
+    object-fit: contain;
+    /* logo-mark.png is black sprig art on a transparent background;
+       invert turns the art white so it reads on the dark sidebar. */
+    filter: invert(1);
 }
 
 .brand-text {
