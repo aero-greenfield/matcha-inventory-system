@@ -255,8 +255,12 @@ def delete_raw_material(material_id):
         """, (material_id,))
         affected_batches = [row[0] for row in cursor.fetchall()]
 
+        # Delete in FK-dependency order: batch_materials references both
+        # raw_material_lots (lot_id) and raw_materials (material_id), so it must
+        # go first. recipe_materials and raw_material_lots reference raw_materials,
+        # so they come before raw_materials itself.
         db.execute(cursor, """
-        DELETE FROM raw_material_lots
+        DELETE FROM batch_materials
         WHERE material_id = %s
         """, (material_id,))
 
@@ -266,7 +270,7 @@ def delete_raw_material(material_id):
         """, (material_id,))
 
         db.execute(cursor, """
-        DELETE FROM batch_materials
+        DELETE FROM raw_material_lots
         WHERE material_id = %s
         """, (material_id,))
 
