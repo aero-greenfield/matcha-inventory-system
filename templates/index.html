@@ -314,45 +314,66 @@ details.htu-section .htu-body {
         <div class="htu-workflow">
             <div class="htu-step">
                 <div class="htu-step-num">Step 1</div>
-                <div class="htu-step-title">Materials Stock</div>
-                <div class="htu-step-desc">Raw Materials shows everything currently on hand, including quantities and units. The materials needed to make a recipe must exist here first.</div>
+                <div class="htu-step-title">Define Materials</div>
+                <div class="htu-step-desc">First, set up each raw material you use — its name, category, unit, and reorder level. This just describes the material; it doesn't add any stock yet.</div>
             </div>
             <div class="htu-step">
                 <div class="htu-step-num">Step 2</div>
-                <div class="htu-step-title">Recipes</div>
-                <div class="htu-step-desc">All Recipes shows every recipe you have created. New ones are built from existing Raw Materials. A recipe must exist before you can create a batch that uses it.</div>
+                <div class="htu-step-title">Receive Lots</div>
+                <div class="htu-step-desc">Stock comes in by receiving lots. Each lot records a quantity, lot number, and dates. A material's on-hand total is the sum of its lots, shown on Raw Materials.</div>
             </div>
             <div class="htu-step">
                 <div class="htu-step-num">Step 3</div>
-                <div class="htu-step-title">Batches</div>
-                <div class="htu-step-desc">When a batch is made, log it with Create New Batch. Pick the recipe, and it tracks what was used, then saves the batch as "Ready".</div>
+                <div class="htu-step-title">Build Recipes</div>
+                <div class="htu-step-desc">A recipe lists the materials and amounts needed to make one unit of a product. A recipe must exist before you can create a batch of it.</div>
             </div>
             <div class="htu-step">
                 <div class="htu-step-num">Step 4</div>
-                <div class="htu-step-title">Ship It Out</div>
-                <div class="htu-step-desc">When an order ships, mark the batch as Shipped from the Batches page. It moves to the shipped log automatically.</div>
+                <div class="htu-step-title">Create Batches</div>
+                <div class="htu-step-desc">To produce a product, create a batch from its recipe. You pick which lots to draw from, and that stock is deducted. The batch becomes Ready (or Planned if you set a future completion date).</div>
             </div>
             <div class="htu-step">
                 <div class="htu-step-num">Step 5</div>
-                <div class="htu-step-title">Manage</div>
-                <div class="htu-step-desc">To edit any details about Raw Materials, Batches, or Recipes, use each section's dedicated Manage page.</div>
+                <div class="htu-step-title">Ship Batches</div>
+                <div class="htu-step-desc">Group one or more Ready batches into a Shipment. Creating the shipment marks those batches as Shipped and moves them to the Shipped list.</div>
             </div>
             <div class="htu-step">
                 <div class="htu-step-num">Step 6</div>
-                <div class="htu-step-title">Export</div>
-                <div class="htu-step-desc">Most list pages have an Export to Excel button at the top right. Click it to download a spreadsheet to your computer.</div>
+                <div class="htu-step-title">Manage &amp; Export</div>
+                <div class="htu-step-desc">Each section has a Manage page to edit or delete records. Most list pages also have an Export Excel button at the top right to download a spreadsheet.</div>
             </div>
         </div>
 
         <div class="htu-cards">
 
             <div class="htu-card">
-                <div class="htu-card-title">Adding a new material</div>
+                <div class="htu-card-title">Defining a new material</div>
                 <ol>
                     <li>Go to <a href="/add-material">Add Material</a>.</li>
-                    <li>Fill in the name, stock amount, and unit (kg, g, bags, etc.).</li>
-                    <li>Set a <strong>Reorder Level</strong> — the quantity at which the system flags it as low stock.</li>
-                    <li>Supplier and cost are optional but useful for records.</li>
+                    <li>Enter the name, category, and unit (kg, g, bags, etc.).</li>
+                    <li>Set a <strong>Reorder Level</strong> — the on-hand amount at which it's flagged as low stock.</li>
+                    <li>Tick <strong>Edible</strong> / <strong>Organic</strong> if they apply (these drive the Organic batch label).</li>
+                    <li>This only defines the material — add actual stock by receiving a lot.</li>
+                </ol>
+            </div>
+
+            <div class="htu-card">
+                <div class="htu-card-title">Receiving stock (a lot)</div>
+                <ol>
+                    <li>Go to <a href="/receive-lot">Receive Lot</a>.</li>
+                    <li>Enter the material name (it must already be defined), lot number, and quantity.</li>
+                    <li>Add the received date, plus expiry, location, supplier, and cost if you have them.</li>
+                    <li>The quantity is added to that material's on-hand total. View and edit lots under <a href="/manage-lots">Manage Lots</a>.</li>
+                </ol>
+            </div>
+
+            <div class="htu-card">
+                <div class="htu-card-title">Creating a recipe</div>
+                <ol>
+                    <li>Go to <a href="/add-recipe">Add Recipe</a>.</li>
+                    <li>Enter the product name and optional notes.</li>
+                    <li>Add each material the product needs and the quantity per unit.</li>
+                    <li>Save it — the recipe is now available when creating batches.</li>
                 </ol>
             </div>
 
@@ -360,26 +381,27 @@ details.htu-section .htu-body {
                 <div class="htu-card-title">Creating a batch</div>
                 <ol>
                     <li>Go to <a href="/create-batch">New Batch</a>.</li>
-                    <li>Choose a recipe from your list of recipes.</li>
-                    <li>Enter the quantity and date, then submit.</li>
-                    <li>The batch is saved with status <strong>Ready</strong>.</li>
+                    <li>Type the product name (it pulls from your recipes) and the quantity.</li>
+                    <li>Choose which lot(s) to draw each material from — that stock is deducted.</li>
+                    <li>Leave Planned Completion Date blank for a <strong>Ready</strong> batch, or set a future date to create a <strong>Planned</strong> one.</li>
+                    <li>Batch Type is usually <strong>Standard</strong>; use Component/Finished only for housemade sub-batches.</li>
                 </ol>
             </div>
 
             <div class="htu-card">
-                <div class="htu-card-title">Shipping a batch</div>
+                <div class="htu-card-title">Shipping batches</div>
                 <ol>
-                    <li>Go to <a href="/batches">Batches</a>.</li>
-                    <li>Find the batch and click <strong>Ship</strong>.</li>
-                    <li>It moves to Shipped Batches and leaves the ready list.</li>
-                    <li>You can also change status in <a href="/manage-batches">Manage Batches</a>.</li>
+                    <li>Go to <a href="/shipments">Shipments</a> and click <strong>Create Shipment</strong>.</li>
+                    <li>Add a destination/notes, then tick the Ready batches to include.</li>
+                    <li>Click Create Shipment — those batches are marked <strong>Shipped</strong>.</li>
+                    <li>Shipped batches appear under <a href="/shipped-batches">Shipped</a>; manage shipments at <a href="/manage-shipments">Manage Shipments</a>.</li>
                 </ol>
             </div>
 
             <div class="htu-card">
                 <div class="htu-card-title">Editing or deleting a record</div>
                 <ol>
-                    <li>Go to <a href="/manage-materials">Manage Materials</a>, <a href="/manage-batches">Manage Batches</a>, or <a href="/manage-recipes">Manage Recipes</a>.</li>
+                    <li>Use the Manage page for that section: <a href="/manage-materials">Materials</a>, <a href="/manage-lots">Lots</a>, <a href="/manage-batches">Batches</a>, <a href="/manage-recipes">Recipes</a>, or <a href="/manage-shipments">Shipments</a>.</li>
                     <li>Click <strong>Edit</strong> to update details.</li>
                     <li>Click <strong>Delete</strong> to remove it permanently.</li>
                     <li>Deletes can't be undone — double-check before confirming.</li>
@@ -389,10 +411,10 @@ details.htu-section .htu-body {
             <div class="htu-card">
                 <div class="htu-card-title">Responding to low stock</div>
                 <ol>
-                    <li>Go to <a href="/low-stock">Low Stock Alerts</a>.</li>
-                    <li>Everything listed is below its reorder threshold.</li>
+                    <li>Go to <a href="/low-stock">Low Stock</a>.</li>
+                    <li>Everything listed is at or below its reorder level.</li>
                     <li>Export the list to Excel if you need to share it.</li>
-                    <li>Once restocked, update the quantity in <a href="/manage-materials">Manage Materials</a>.</li>
+                    <li>To restock, <a href="/receive-lot">receive a new lot</a> for that material.</li>
                 </ol>
             </div>
 
@@ -400,8 +422,9 @@ details.htu-section .htu-body {
                 <div class="htu-card-title">Exporting to Excel</div>
                 <ol>
                     <li>Go to any of: <a href="/inventory">Raw Materials</a>, <a href="/low-stock">Low Stock</a>, <a href="/batches">Batches</a>, <a href="/shipped-batches">Shipped</a>, or <a href="/recipes">All Recipes</a>.</li>
-                    <li>Click the <strong>Export to Excel</strong> button at the top right.</li>
+                    <li>Click the <strong>Export Excel</strong> button at the top right.</li>
                     <li>A spreadsheet downloads to your computer automatically.</li>
+                    <li>Individual shipments also have an <strong>Export Manifest</strong> button on their detail page.</li>
                 </ol>
             </div>
 
@@ -413,7 +436,9 @@ details.htu-section .htu-body {
                 <span class="htu-pill">The data is safe and backed up nightly — a full copy of all company data is stored every night in case of emergency</span>
                 <span class="htu-pill">The Audit Log records every change made — useful if something looks off</span>
                 <span class="htu-pill">Reorder Level is just a threshold you set — the system doesn't automatically order anything</span>
+                <span class="htu-pill">Stock only enters by receiving a lot, and a material's on-hand total is the sum of its lots</span>
                 <span class="htu-pill">Recipes need to exist before you can create a batch that uses them</span>
+                <span class="htu-pill">Batches flow Planned → Ready → Shipped; shipping happens by adding Ready batches to a Shipment</span>
                 <span class="htu-pill">If the page looks wrong, try refreshing before assuming it's a bug</span>
                 <span class="htu-pill">In case of emergency — if data is altered beyond manual fixing, contact the admin to restore the database from a nightly backup</span>
             </div>
