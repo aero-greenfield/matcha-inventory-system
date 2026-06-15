@@ -52,7 +52,15 @@
                         <button type="submit" class="badge {{ 'badge-organic' if row.is_organic else 'badge-out' }}" style="border:none;cursor:pointer;">{{ 'Organic' if row.is_organic else 'No' }}</button>
                     </form>
                 </td>
-                <td><a href="/edit-material/{{ row.material_id | int }}" class="btn btn-secondary" style="padding:5px 12px;font-size:12px;">Edit</a></td>
+                <td style="white-space:nowrap;">
+                    <a href="/edit-material/{{ row.material_id | int }}" class="btn btn-secondary" style="padding:5px 12px;font-size:12px;">Edit</a>
+                    <form method="POST" action="/edit-material/{{ row.material_id | int }}/delete"
+                          onsubmit="return confirm('Delete material {{ row.name }}? This also removes it from any recipes and batch records.')"
+                          style="display:inline;" autocomplete="off">
+                        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                        <button type="submit" class="btn btn-secondary" style="padding:5px 12px;font-size:12px;color:#dc2626;border-color:#dc2626;">Delete</button>
+                    </form>
+                </td>
             </tr>
             {% endfor %}
         </tbody>

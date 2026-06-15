@@ -67,7 +67,15 @@
                 <td>{{ row.date_shipped or '' }}</td>
                 <td>{{ row.expiration_date or '—' }}</td>
                 <td>{{ row.planned_completion_date or '—' }}</td>
-                <td><a href="/edit-batch/{{ row.batch_id | int }}" class="btn btn-secondary" style="padding:5px 12px;font-size:12px;">Edit</a></td>
+                <td style="white-space:nowrap;">
+                    <a href="/edit-batch/{{ row.batch_id | int }}" class="btn btn-secondary" style="padding:5px 12px;font-size:12px;">Edit</a>
+                    <form method="POST" action="/edit-batch/{{ row.batch_id | int }}/delete"
+                          onsubmit="return confirm('Delete batch {{ row.batch_number }}? Ingredients will NOT be returned to inventory — use Edit to reallocate first.')"
+                          style="display:inline;" autocomplete="off">
+                        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                        <button type="submit" class="btn btn-secondary" style="padding:5px 12px;font-size:12px;color:#dc2626;border-color:#dc2626;">Delete</button>
+                    </form>
+                </td>
             </tr>
             {% endfor %}
         </tbody>
