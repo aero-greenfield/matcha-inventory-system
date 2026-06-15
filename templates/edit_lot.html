@@ -65,18 +65,20 @@
     <p style="color:var(--text-muted);font-size:13px;margin-bottom:16px;">Permanently removes lot <strong>{{ lot[0].lot_number }}</strong> from inventory. This cannot be undone.</p>
     {% if lot_batches %}
     <div class="alert alert-warning" style="margin-bottom:16px;">
-        <strong>Warning:</strong> This lot is tracked in {{ lot_batches | length }} batch{{ 'es' if lot_batches | length > 1 else '' }}:
+        <strong>Cannot delete:</strong> this lot is used by {{ lot_batches | length }} batch{{ 'es' if lot_batches | length > 1 else '' }}:
         {% for b in lot_batches %}
             <strong>{{ b.batch_name }}</strong>{% if not loop.last %}, {% endif %}
         {% endfor %}.
-        Deleting it will remove the lot reference from those batches.
+        Remove or reallocate those batches first to keep batch&rarr;lot traceability intact.
     </div>
-    {% endif %}
+    <button type="button" class="btn btn-danger" disabled title="Lot is used by one or more batches">Delete Lot</button>
+    {% else %}
     <form method="POST" action="/edit-lot/{{ lot[0].lot_id }}/delete" autocomplete="off"
-          onsubmit="return confirm('{% if lot_batches %}This lot is tracked in {{ lot_batches | length }} batch{{ 'es' if lot_batches | length > 1 else '' }}. {% endif %}Delete lot {{ lot[0].lot_number }}? This cannot be undone.')">
+          onsubmit="return confirm('Delete lot {{ lot[0].lot_number }}? This cannot be undone.')">
         <button type="submit" class="btn btn-danger">Delete Lot</button>
         <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
     </form>
+    {% endif %}
 </div>
 
 {% endblock %}

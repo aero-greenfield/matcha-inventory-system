@@ -1476,6 +1476,9 @@ def view_recipes():
     # Show recipe name and notes only on the first ingredient row of each recipe —
     # duplicate rows get blank values so the name doesn't repeat in the table.
     df_display = df.copy()
+    # ADDED: recipes with no valid materials come back with NULL material/quantity/unit
+    #        (LEFT JOIN). Blank them so the table shows an empty cell, not "nan"/"None".
+    df_display = df_display.where(df_display.notna(), '')
     duplicate_mask = df_display['recipe_product_name'].duplicated()
     df_display.loc[duplicate_mask, 'recipe_product_name'] = ''
     df_display.loc[duplicate_mask, 'notes'] = ''
@@ -1737,8 +1740,12 @@ def edit_recipe(recipe_id):
     product_name = df['product_name'].iloc[0]
     notes = df['notes'].iloc[0]
 
-    # Extract materials list — one dict per row
-    materials = df[['material_name', 'quantity_needed']].to_dict(orient='records') # html friendly format. 
+    # Extract materials list — one dict per row.
+    # ADDED: a recipe with no materials comes back from the LEFT JOIN as a single all-NULL
+    #        placeholder row. Drop rows without a material name so the form doesn't render a
+    #        "None"/"nan" input; the user can add materials with the "+ Add Material" button.
+    materials_df = df[df['material_name'].notna()]
+    materials = materials_df[['material_name', 'quantity_needed']].to_dict(orient='records') # html friendly format.
 
     msg = request.args.get('msg', '')
     err = request.args.get('err', '')
@@ -2057,6 +2064,17 @@ def delete_lot_route(lot_id):
         ), 404
 
     lot_number = lot_df['lot_number'].iloc[0]
+
+    # Block deletion of a lot still used by any batch — preserves batch→lot traceability
+    # and avoids the SQLite/Postgres divergence (SQLite would silently orphan the reference,
+    # Postgres would reject it with a generic FK error).
+    lot_batches = get_batches_for_lot(lot_id)
+    if lot_batches:
+        count = len(lot_batches)
+        flash(f"Cannot delete lot — it is used by {count} batch(es). "
+              f"Remove or reallocate those batches first.", 'error')
+        return redirect(url_for('edit_lot', lot_id=lot_id))
+
     result = delete_lot(lot_id)
 
     if result:

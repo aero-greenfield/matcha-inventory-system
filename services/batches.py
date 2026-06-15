@@ -743,14 +743,23 @@ def promote_planned_batches():
         # fetch all overdue planned batches.
         # planned_lot_selections is the JSON-serialized lot picks the user made at creation time —
         # used by finished batches to deduct from specific lots instead of falling back to FIFO.
-        db.execute(cursor, """
+        #
+        # CONCURRENCY: this function is triggered from GET handlers and runs lot deductions.
+        # With multiple gunicorn workers, two requests could select the same overdue batch and
+        # both deduct (over-deducting stock / inserting duplicate housemade lots). On Postgres we
+        # lock the selected rows with FOR UPDATE SKIP LOCKED so a concurrent promote skips rows
+        # already being processed and does no duplicate work. SQLite is a single-writer, local-only
+        # engine and does not support the clause, so it is left unlocked.
+        overdue_query = """
             SELECT batch_id, batch_number, product_name, quantity, batch_type, planned_completion_date, planned_lot_selections
             FROM batches
             WHERE status = 'Planned'
             AND planned_completion_date IS NOT NULL
             AND planned_completion_date <= %s
-
-                   """, (now,))
+        """
+        if db.is_postgres:
+            overdue_query += " FOR UPDATE SKIP LOCKED"
+        db.execute(cursor, overdue_query, (now,))
         overdue = cursor.fetchall()
 
         for batch_id, batch_number, product_name, quantity, batch_type, planned_completion_date, planned_lot_selections_json in overdue:

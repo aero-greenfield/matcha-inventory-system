@@ -197,9 +197,39 @@ def init_database():
     
     print("  ✅ recipe_materials table created")
     
-   # ======================================== 
-   # TABLE 4: batches 
-   # ======================================== 
+   # ========================================
+   # TABLE 4: shipments
+   # ========================================
+   # NOTE: must be created BEFORE batches — batches has a FOREIGN KEY referencing
+   #       shipments(shipment_id), and PostgreSQL requires the referenced table to
+   #       already exist at CREATE time (a fresh init fails otherwise).
+
+    if DATABASE_URL:
+        cursor.execute("""
+        CREATE TABLE IF NOT EXISTS shipments(
+            shipment_id     SERIAL PRIMARY KEY,
+            shipment_number TEXT NOT NULL UNIQUE,
+            date_shipped    TEXT NOT NULL,
+            destination     TEXT,
+            notes           TEXT
+        )
+        """)
+    else:
+        cursor.execute("""
+        CREATE TABLE IF NOT EXISTS shipments(
+            shipment_id     INTEGER PRIMARY KEY AUTOINCREMENT,
+            shipment_number TEXT NOT NULL UNIQUE,
+            date_shipped    TEXT NOT NULL,
+            destination     TEXT,
+            notes           TEXT
+        )
+        """)
+
+    print("  ✅ shipments table created")
+
+   # ========================================
+   # TABLE 5: batches
+   # ========================================
     if DATABASE_URL:
 
 
@@ -244,33 +274,6 @@ def init_database():
         """)
 
     print("  ✅ batches table created")
-    
-   # ========================================
-   # TABLE 5: shipments
-   # ========================================
-
-    if DATABASE_URL:
-        cursor.execute("""
-        CREATE TABLE IF NOT EXISTS shipments(
-            shipment_id     SERIAL PRIMARY KEY,
-            shipment_number TEXT NOT NULL UNIQUE,
-            date_shipped    TEXT NOT NULL,
-            destination     TEXT,
-            notes           TEXT
-        )
-        """)
-    else:
-        cursor.execute("""
-        CREATE TABLE IF NOT EXISTS shipments(
-            shipment_id     INTEGER PRIMARY KEY AUTOINCREMENT,
-            shipment_number TEXT NOT NULL UNIQUE,
-            date_shipped    TEXT NOT NULL,
-            destination     TEXT,
-            notes           TEXT
-        )
-        """)
-
-    print("  ✅ shipments table created")
 
    # ========================================
    # TABLE 6: batch_materials

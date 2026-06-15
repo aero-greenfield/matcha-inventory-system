@@ -379,8 +379,10 @@ def get_batches_for_lot(lot_id):
     db = get_db_connection()
     cursor = db.cursor()
     try:
+        # FIXED: batches has no batch_name column — use product_name, aliased to batch_name
+        #        so callers/templates that read `batch_name` keep working.
         db.execute(cursor, """
-        SELECT DISTINCT b.batch_id, b.batch_name
+        SELECT DISTINCT b.batch_id, b.product_name AS batch_name
         FROM batch_materials bm
         JOIN batches b ON bm.batch_id = b.batch_id
         WHERE bm.lot_id = %s
@@ -403,6 +405,14 @@ def delete_lot(lot_id):
     db = get_db_connection()
     cursor = db.cursor()
     try:
+        # GUARD (defense in depth): never delete a lot still referenced by a batch.
+        # On Postgres the FK would reject the delete anyway; on SQLite (no FK enforcement)
+        # it would silently orphan batch_materials.lot_id. Block it explicitly on both.
+        db.execute(cursor, "SELECT 1 FROM batch_materials WHERE lot_id = %s LIMIT 1", (lot_id,))
+        if cursor.fetchone():
+            logging.warning(f"Refusing to delete lot {lot_id}: still referenced by batch_materials.")
+            return False
+
         db.execute(cursor, """
         DELETE FROM raw_material_lots
         WHERE lot_id = %s

@@ -177,12 +177,16 @@ def get_all_recipes(page=None, per_page=50):
     columns = ['recipe_product_name', 'notes', 'material_name', 'quantity', 'unit']
 
     try:
+        # CHANGED: INNER JOIN -> LEFT JOIN so a recipe still appears even when it has no
+        #          materials, or its materials have a NULL/orphaned material_id. Previously
+        #          such recipes were counted by "COUNT(*) FROM recipes" (the header total)
+        #          but silently dropped from the table — the count and the list disagreed.
         full_query = """
         SELECT r.product_name AS recipe_product_name, r.notes,
                raw.name AS material_name, rm.quantity_needed AS quantity, raw.unit
         FROM recipes r
-        JOIN recipe_materials rm ON r.recipe_id = rm.recipe_id
-        JOIN raw_materials raw ON rm.material_id = raw.material_id
+        LEFT JOIN recipe_materials rm ON r.recipe_id = rm.recipe_id
+        LEFT JOIN raw_materials raw ON rm.material_id = raw.material_id
         ORDER BY r.product_name ASC, raw.name ASC
         """
         # Note: unit comes from raw_materials (raw.unit), NOT recipe_materials
@@ -203,8 +207,8 @@ def get_all_recipes(page=None, per_page=50):
         SELECT r.product_name AS recipe_product_name, r.notes,
                raw.name AS material_name, rm.quantity_needed AS quantity, raw.unit
         FROM recipes r
-        JOIN recipe_materials rm ON r.recipe_id = rm.recipe_id
-        JOIN raw_materials raw ON rm.material_id = raw.material_id
+        LEFT JOIN recipe_materials rm ON r.recipe_id = rm.recipe_id
+        LEFT JOIN raw_materials raw ON rm.material_id = raw.material_id
         WHERE r.recipe_id IN (
             SELECT recipe_id FROM recipes ORDER BY product_name ASC LIMIT %s OFFSET %s
         )
@@ -330,13 +334,12 @@ def get_all_recipes_with_id(page=None, per_page=50):
     columns = ['recipe_id', 'product_name', 'notes']
 
     try:
-        # uses DISTINCT to return one row per recipe; joins ensure only recipes with
-        # at least one valid material are included (same list as the recipes view page).
+        # CHANGED: dropped the INNER JOINs to recipe_materials/raw_materials. They excluded
+        #          recipes with no valid materials, which meant a broken recipe couldn't be
+        #          listed here to be edited or deleted. The manage page needs EVERY recipe.
         base_query = """
-        SELECT DISTINCT r.recipe_id, r.product_name, r.notes
+        SELECT r.recipe_id, r.product_name, r.notes
         FROM recipes r
-        JOIN recipe_materials rm ON rm.recipe_id = r.recipe_id
-        JOIN raw_materials raw ON rm.material_id = raw.material_id
         ORDER BY r.product_name ASC
         """
 
@@ -376,16 +379,21 @@ def get_recipe_by_id(recipe_id):
     cursor = db.cursor()
 
     try:
+        # CHANGED: INNER JOIN -> LEFT JOIN. With INNER JOINs a recipe whose materials are
+        #          orphaned (material_id NULL or not in raw_materials) returned zero rows,
+        #          so the edit page 404'd ("Recipe Not Found") and the recipe could not be
+        #          fixed. LEFT JOIN keeps the recipe row; COALESCE falls back to the name
+        #          stored on recipe_materials so the orphaned material is shown and editable.
         query = ("""
        SELECT r.recipe_id,
        r.product_name,
        r.notes,
        rm.material_id,
-       raw.name AS material_name,
+       COALESCE(raw.name, rm.material_name) AS material_name,
        rm.quantity_needed
        FROM recipes r
-       JOIN recipe_materials rm ON rm.recipe_id = r.recipe_id
-       JOIN raw_materials raw ON rm.material_id = raw.material_id
+       LEFT JOIN recipe_materials rm ON rm.recipe_id = r.recipe_id
+       LEFT JOIN raw_materials raw ON rm.material_id = raw.material_id
        WHERE r.recipe_id = %s
         """)
 
@@ -473,8 +481,12 @@ def update_recipe(recipe_id, product_name=None, materials=None, notes=None):
 
             # ADDED: dict lookup — no extra connection or query
             material_id = material_lookup.get(material_name.lower())
+            # CHANGED: was a print()-and-continue, which inserted a recipe_materials row with
+            #          material_id = NULL. That row is then dropped by the raw_materials JOIN on
+            #          the recipes page, hiding the whole recipe. Raise instead (matches add_recipe)
+            #          so the bad edit is rejected and rolled back rather than silently corrupting.
             if material_id is None:
-                print(f"Warning: Material '{material_name}' not found in raw_materials.")
+                raise ValueError(f"Material '{material_name}' not found in raw_materials. Please add it to inventory before updating the recipe.")
 
             db.execute(cursor,"""
             INSERT INTO recipe_materials (
