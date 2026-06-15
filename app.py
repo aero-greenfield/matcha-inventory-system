@@ -113,6 +113,78 @@ csrf = CSRFProtect(app)
 app.register_blueprint(api_bp)
 
 
+# =======================
+# JINJA TEMPLATE FILTERS
+# =======================
+# Reusable display-formatting filters. DEFINED here only — applying them across
+# templates is deferred per-page work. Each is defensive and never raises on bad input.
+
+EMPTY_DISPLAY = "—"  # em dash shown for any empty/missing value
+
+
+def _is_empty(value):
+    """True for None, NaN, or blank/whitespace-only strings."""
+    if value is None:
+        return True
+    if isinstance(value, float) and math.isnan(value):
+        return True
+    if isinstance(value, str) and value.strip() == "":
+        return True
+    return False
+
+
+@app.template_filter("fmt_num")
+def fmt_num(value, places=2):
+    """Round a number and strip float noise / trailing zeros.
+    Usage: {{ qty | fmt_num }}  ->  48.980000000000004 becomes "48.98"; 5.0 becomes "5"."""
+    if _is_empty(value):
+        return EMPTY_DISPLAY
+    try:
+        num = round(float(value), places)
+    except (TypeError, ValueError):
+        return str(value)
+    # format with fixed places, then drop trailing zeros and any dangling dot
+    text = f"{num:.{places}f}"
+    if "." in text:
+        text = text.rstrip("0").rstrip(".")
+    return text
+
+
+@app.template_filter("dash")
+def dash(value):
+    """Render empty/missing values as an em dash, never None/nan/blank.
+    Usage: {{ value | dash }}  ->  None becomes "—"."""
+    if _is_empty(value):
+        return EMPTY_DISPLAY
+    return value
+
+
+@app.template_filter("humanize")
+def humanize(value):
+    """Turn a machine label into readable text.
+    Usage: {{ action | humanize }}  ->  "material_updated" becomes "Material updated"."""
+    if _is_empty(value):
+        return EMPTY_DISPLAY
+    text = str(value).replace("_", " ").replace("-", " ").strip()
+    return text[:1].upper() + text[1:] if text else EMPTY_DISPLAY
+
+
+@app.template_filter("fmt_date")
+def fmt_date(value, fmt="%Y-%m-%d"):
+    """One consistent date format; tolerant of datetime, ISO string, or None.
+    Usage: {{ row.received_date | fmt_date }}  ->  "2026-06-15"."""
+    if _is_empty(value):
+        return EMPTY_DISPLAY
+    if isinstance(value, datetime):
+        return value.strftime(fmt)
+    try:
+        # accept ISO strings, with or without a time component
+        parsed = datetime.fromisoformat(str(value).replace("Z", "").strip())
+        return parsed.strftime(fmt)
+    except (TypeError, ValueError):
+        return str(value)
+
+
 # WHAT IS 'app':
 # Think of 'app' as your web server. When you do @app.route('/inventory'),
 # you're telling this server "when someone visits /inventory, run this function"

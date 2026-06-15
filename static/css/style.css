@@ -5,40 +5,66 @@
 
 /* --- Custom Properties --- */
 :root {
-    --sidebar-width: 220px;
+    --sidebar-width: 240px;
 
     /* Sidebar */
-    --sidebar-bg: #1a1d1e;
-    --sidebar-border: #2a2d2e;
-    --sidebar-text-muted: #8a9099;
-    --sidebar-text: #c8cdd4;
-    --sidebar-active-bg: #252829;
-    --sidebar-active-text: #ffffff;
+    --sidebar-bg: #17181A;
+    --sidebar-border: #232427;
+    --sidebar-text-muted: #9CA0A6;
+    --sidebar-text: #C8CDD4;
+    --sidebar-active-bg: rgba(42,176,142,.12);
+    --sidebar-active-text: #E9F6F1;
+    --sidebar-section-label: #5A5E63;
 
-    /* Accent */
-    --accent: #2ab08e;
+    /* Accent — reserved ONLY for primary button + active nav item */
+    --accent: #2AB08E;
     --accent-dark: #1e8a6e;
 
-    /* Content */
-    --content-bg: #f5f6f7;
+    /* Content / surfaces */
+    --content-bg: #F7F8F8;
     --card-bg: #ffffff;
-    --border: #e8eaed;
-    --text: #1a1d1e;
-    --text-muted: #6b7280;
+    --border: #E7E8EA;
 
-    /* Status badges */
-    --badge-in-stock-bg: #d1fae5;
-    --badge-in-stock-text: #065f46;
-    --badge-low-bg: #fef3c7;
-    --badge-low-text: #92400e;
-    --badge-out-bg: #fee2e2;
-    --badge-out-text: #991b1b;
+    /* Text */
+    --text: #1A1B1E;
+    --text-muted: #6E7177;
+    --text-faint: #9AA0A6;
+
+    /* Status badges — semantic stock palette */
+    --badge-in-stock-bg: #E7F3EC;
+    --badge-in-stock-text: #1F7A4D;
+    --badge-low-bg: #FBF1DF;
+    --badge-low-text: #8A5A12;
+    --badge-out-bg: #FBEAEA;
+    --badge-out-text: #A12D2D;
+
+    /* Borders / tags / inputs */
+    --border-input: #D3D6D9;   /* visible input border */
+    --border-tag: #D8DADD;     /* neutral outline tags + secondary button */
+    --tag-text: #5F6368;       /* neutral attribute-tag text */
+
+    /* Focus ring (a11y — visible on every interactive element) */
+    --focus-ring: 0 0 0 3px rgba(42,176,142,.35);
 
     /* Buttons */
-    --btn-radius: 6px;
+    --btn-radius: 8px;
 
-    /* Typography */
-    --font: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+    /* Spacing — 4px scale */
+    --sp-1: 4px;
+    --sp-2: 8px;
+    --sp-3: 12px;
+    --sp-4: 16px;
+    --sp-5: 20px;
+    --sp-6: 24px;
+    --sp-8: 32px;
+
+    /* Layout */
+    --content-max: 1280px;   /* readable cap for main content */
+
+    /* Typography — font roles */
+    --font: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;        /* body, labels, table text */
+    --font-display: 'Syne', 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;    /* page titles (h1) + section headers ONLY */
+    --font-mono: 'DM Mono', ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;  /* ALL numerals, IDs, units, costs, dates */
 }
 
 /* --- Reset & Base --- */
@@ -54,20 +80,42 @@ html, body {
 
 body {
     font-family: var(--font);
-    font-size: 14px;
+    font-size: 13px;          /* tightened base density — fits a table page at 100% zoom on a 1366px laptop */
     color: var(--text);
     background: var(--content-bg);
     line-height: 1.5;
 }
 
+/* Tabular numerals everywhere DM Mono is used keep columns aligned */
+.mono,
+.num,
+td.num {
+    font-family: var(--font-mono);
+    font-variant-numeric: tabular-nums;
+    letter-spacing: -0.01em;
+}
+
+/* Global focus ring — a11y, visible on every interactive element */
+a:focus-visible,
+button:focus-visible,
+input:focus-visible,
+select:focus-visible,
+textarea:focus-visible,
+[tabindex]:focus-visible {
+    outline: none;
+    box-shadow: var(--focus-ring);
+    border-radius: 6px;
+}
+
 /* ================================================
-   App Layout — two-panel grid
+   App Layout — two-panel grid (internal scroll only)
    ================================================ */
 
 .app-layout {
     display: grid;
     grid-template-columns: var(--sidebar-width) 1fr;
-    min-height: 100vh;
+    height: 100vh;
+    overflow: hidden;   /* page never scrolls; sidebar + main scroll internally */
 }
 
 /* ================================================
@@ -121,11 +169,11 @@ body {
 }
 
 .nav-section-label {
-    font-size: 10px;
+    font-size: 11px;
     font-weight: 600;
     letter-spacing: 0.08em;
     text-transform: uppercase;
-    color: var(--sidebar-text-muted);
+    color: var(--sidebar-section-label);
     padding: 14px 16px 4px;
 }
 
@@ -137,24 +185,25 @@ body {
     display: flex;
     align-items: center;
     gap: 9px;
-    padding: 7px 16px;
-    color: var(--sidebar-text);
+    padding: 8px 16px;
+    color: var(--sidebar-text-muted);
     text-decoration: none;
     font-size: 13px;
     font-weight: 400;
-    border-radius: 0;
-    transition: background 0.12s, color 0.12s;
+    border-left: 2px solid transparent;   /* reserve space so active border doesn't shift text */
+    transition: background 0.12s, color 0.12s, border-color 0.12s;
     white-space: nowrap;
 }
 
 .nav-item:hover {
-    background: var(--sidebar-active-bg);
-    color: #ffffff;
+    background: rgba(255,255,255,.04);
+    color: var(--sidebar-text);
 }
 
 .nav-item.active {
     background: var(--sidebar-active-bg);
     color: var(--sidebar-active-text);
+    border-left-color: var(--accent);   /* 2px green left border */
     font-weight: 500;
 }
 
@@ -175,9 +224,19 @@ body {
 
 .main-content {
     grid-column: 2;
-    padding: 32px 36px;
-    min-height: 100vh;
+    padding: 28px 32px;
+    height: 100vh;
+    overflow-y: auto;        /* main scrolls internally, not the page */
     background: var(--content-bg);
+}
+
+/* Cap readable content width on large monitors and center within the panel.
+   Direct children of main-content are constrained so tables/forms don't stretch
+   absurdly wide on a 1920px display. */
+.main-content > * {
+    max-width: var(--content-max);
+    margin-left: auto;
+    margin-right: auto;
 }
 
 /* ================================================
@@ -192,8 +251,10 @@ body {
 }
 
 .page-header h1 {
+    font-family: var(--font-display);   /* Syne — page titles only */
     font-size: 22px;
-    font-weight: 600;
+    font-weight: 700;
+    letter-spacing: -0.01em;
     color: var(--text);
     border-bottom: none;
     padding-bottom: 0;
@@ -238,10 +299,16 @@ body {
 }
 
 .data-table td {
-    padding: 13px 16px;
+    padding: 12px 16px;
     border-bottom: 1px solid var(--border);
     color: var(--text);
-    font-size: 13.5px;
+    font-size: 13px;
+}
+
+/* Numeric cells — right-aligned DM Mono. Header + body. Applied per-page later. */
+.data-table th.num,
+.data-table td.num {
+    text-align: right;
 }
 
 .data-table tbody tr:last-child td {
@@ -259,8 +326,10 @@ body {
 .btn {
     display: inline-flex;
     align-items: center;
+    justify-content: center;
     gap: 6px;
-    padding: 8px 16px;
+    min-height: 40px;          /* generous tap target for a warehouse tool */
+    padding: 9px 16px;
     font-family: var(--font);
     font-size: 13px;
     font-weight: 500;
@@ -273,6 +342,7 @@ body {
     white-space: nowrap;
 }
 
+/* Primary = solid green / white text — the ONLY green-button use */
 .btn-primary {
     background: var(--accent);
     color: #ffffff;
@@ -284,24 +354,39 @@ body {
     border-color: var(--accent-dark);
 }
 
+/* Secondary = white + 1px neutral border */
 .btn-secondary {
     background: var(--card-bg);
     color: var(--text);
-    border-color: var(--border);
+    border-color: var(--border-tag);
 }
 
 .btn-secondary:hover {
-    background: #f0f1f3;
+    background: #F2F3F4;
 }
 
+/* Destructive = white + red border/text */
 .btn-danger {
-    background: #fee2e2;
-    color: #991b1b;
-    border-color: #fecaca;
+    background: var(--card-bg);
+    color: var(--badge-out-text);
+    border-color: #E7B9B9;
 }
 
 .btn-danger:hover {
-    background: #fecaca;
+    background: var(--badge-out-bg);
+    border-color: var(--badge-out-text);
+}
+
+/* Ghost = transparent */
+.btn-ghost {
+    background: transparent;
+    color: var(--text-muted);
+    border-color: transparent;
+}
+
+.btn-ghost:hover {
+    background: rgba(0,0,0,.04);
+    color: var(--text);
 }
 
 /* ================================================
@@ -332,11 +417,14 @@ body {
     color: var(--badge-out-text);
 }
 
-/* ADDED: organic feature — derived "Organic" batch label and organic-material toggle.
-   Green-on-light-green, matching the .badge-standard palette. */
+/* Attribute tags (Organic, Housemade, …) — NEUTRAL outline only, never green.
+   .badge-organic re-valued from its old green fill to the shared attribute-tag look. */
+.tag,
+.badge-attr,
 .badge-organic {
-    background: #d1fae5;
-    color: #065f46;
+    background: transparent;
+    color: var(--tag-text);
+    border: 1px solid var(--border-tag);
 }
 
 /* ================================================
@@ -368,21 +456,27 @@ body {
 .form-group select,
 .form-group textarea {
     width: 100%;
-    padding: 9px 12px;
+    min-height: 42px;          /* high-contrast, generous targets for warehouse use */
+    padding: 10px 12px;
     font-family: var(--font);
     font-size: 13.5px;
-    border: 1px solid var(--border);
-    border-radius: 6px;
+    border: 1px solid var(--border-input);   /* VISIBLE border */
+    border-radius: 8px;
     background: var(--card-bg);
     color: var(--text);
     outline: none;
-    transition: border-color 0.12s;
+    transition: border-color 0.12s, box-shadow 0.12s;
+}
+
+.form-group textarea {
+    min-height: 88px;
 }
 
 .form-group input:focus,
 .form-group select:focus,
 .form-group textarea:focus {
     border-color: var(--accent);
+    box-shadow: var(--focus-ring);   /* green focus ring */
 }
 
 .form-row {
@@ -419,8 +513,10 @@ body {
 }
 
 .stat-card .stat-value {
+    font-family: var(--font-mono);   /* numerals → DM Mono */
+    font-variant-numeric: tabular-nums;
     font-size: 28px;
-    font-weight: 600;
+    font-weight: 500;
     color: var(--text);
 }
 
@@ -490,6 +586,7 @@ h1 {
 }
 
 .section-card h2 {
+    font-family: var(--font-display);   /* Syne — section header */
     font-size: 15px;
     font-weight: 600;
     color: var(--text);
