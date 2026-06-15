@@ -31,7 +31,7 @@
                 </li>
             </ul>
 
-            <div class="nav-section-label">Materials</div>
+            <div class="nav-section-label">Inventory</div>
             <ul class="nav-list">
                 <li>
                     <a href="/inventory" class="nav-item{% if request.path == '/inventory' %} active{% endif %}">
@@ -51,18 +51,6 @@
                         Receive Lot
                     </a>
                 </li>
-                <li>
-                    <a href="/manage-lots" class="nav-item{% if request.path == '/manage-lots' %} active{% endif %}">
-                        <svg class="nav-icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="8" y1="6" x2="21" y2="6"/><line x1="8" y1="12" x2="21" y2="12"/><line x1="8" y1="18" x2="21" y2="18"/><line x1="3" y1="6" x2="3.01" y2="6"/><line x1="3" y1="12" x2="3.01" y2="12"/><line x1="3" y1="18" x2="3.01" y2="18"/></svg>
-                        Manage Lots
-                    </a>
-                </li>
-                <li>
-                    <a href="/manage-materials" class="nav-item{% if request.path == '/manage-materials' %} active{% endif %}">
-                        <svg class="nav-icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="8" y1="6" x2="21" y2="6"/><line x1="8" y1="12" x2="21" y2="12"/><line x1="8" y1="18" x2="21" y2="18"/><line x1="3" y1="6" x2="3.01" y2="6"/><line x1="3" y1="12" x2="3.01" y2="12"/><line x1="3" y1="18" x2="3.01" y2="18"/></svg>
-                        Manage Materials
-                    </a>
-                </li>
             </ul>
 
             <div class="nav-section-label">Production</div>
@@ -74,21 +62,9 @@
                     </a>
                 </li>
                 <li>
-                    <a href="/manage-batches" class="nav-item{% if request.path == '/manage-batches' %} active{% endif %}">
-                        <svg class="nav-icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="8" y1="6" x2="21" y2="6"/><line x1="8" y1="12" x2="21" y2="12"/><line x1="8" y1="18" x2="21" y2="18"/><line x1="3" y1="6" x2="3.01" y2="6"/><line x1="3" y1="12" x2="3.01" y2="12"/><line x1="3" y1="18" x2="3.01" y2="18"/></svg>
-                        Manage Batches
-                    </a>
-                </li>
-                <li>
                     <a href="/shipments" class="nav-item{% if request.path == '/shipments' %} active{% endif %}">
                         <svg class="nav-icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="1" y="3" width="15" height="13" rx="1"/><path d="M16 8h4l3 3v5h-7V8z"/><circle cx="5.5" cy="18.5" r="2.5"/><circle cx="18.5" cy="18.5" r="2.5"/></svg>
                         Shipments
-                    </a>
-                </li>
-                <li>
-                    <a href="/manage-shipments" class="nav-item{% if request.path == '/manage-shipments' %} active{% endif %}">
-                        <svg class="nav-icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="8" y1="6" x2="21" y2="6"/><line x1="8" y1="12" x2="21" y2="12"/><line x1="8" y1="18" x2="21" y2="18"/><line x1="3" y1="6" x2="3.01" y2="6"/><line x1="3" y1="12" x2="3.01" y2="12"/><line x1="3" y1="18" x2="3.01" y2="18"/></svg>
-                        Manage Shipments
                     </a>
                 </li>
             </ul>
@@ -107,10 +83,38 @@
                         Add Recipe
                     </a>
                 </li>
+            </ul>
+
+            <div class="nav-section-label">Manage</div>
+            <ul class="nav-list">
+                <li>
+                    <a href="/manage-materials" class="nav-item{% if request.path == '/manage-materials' %} active{% endif %}">
+                        <svg class="nav-icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="8" y1="6" x2="21" y2="6"/><line x1="8" y1="12" x2="21" y2="12"/><line x1="8" y1="18" x2="21" y2="18"/><line x1="3" y1="6" x2="3.01" y2="6"/><line x1="3" y1="12" x2="3.01" y2="12"/><line x1="3" y1="18" x2="3.01" y2="18"/></svg>
+                        Materials
+                    </a>
+                </li>
+                <li>
+                    <a href="/manage-lots" class="nav-item{% if request.path == '/manage-lots' %} active{% endif %}">
+                        <svg class="nav-icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="8" y1="6" x2="21" y2="6"/><line x1="8" y1="12" x2="21" y2="12"/><line x1="8" y1="18" x2="21" y2="18"/><line x1="3" y1="6" x2="3.01" y2="6"/><line x1="3" y1="12" x2="3.01" y2="12"/><line x1="3" y1="18" x2="3.01" y2="18"/></svg>
+                        Lots
+                    </a>
+                </li>
+                <li>
+                    <a href="/manage-batches" class="nav-item{% if request.path == '/manage-batches' %} active{% endif %}">
+                        <svg class="nav-icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="8" y1="6" x2="21" y2="6"/><line x1="8" y1="12" x2="21" y2="12"/><line x1="8" y1="18" x2="21" y2="18"/><line x1="3" y1="6" x2="3.01" y2="6"/><line x1="3" y1="12" x2="3.01" y2="12"/><line x1="3" y1="18" x2="3.01" y2="18"/></svg>
+                        Batches
+                    </a>
+                </li>
+                <li>
+                    <a href="/manage-shipments" class="nav-item{% if request.path == '/manage-shipments' %} active{% endif %}">
+                        <svg class="nav-icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="8" y1="6" x2="21" y2="6"/><line x1="8" y1="12" x2="21" y2="12"/><line x1="8" y1="18" x2="21" y2="18"/><line x1="3" y1="6" x2="3.01" y2="6"/><line x1="3" y1="12" x2="3.01" y2="12"/><line x1="3" y1="18" x2="3.01" y2="18"/></svg>
+                        Shipments
+                    </a>
+                </li>
                 <li>
                     <a href="/manage-recipes" class="nav-item{% if request.path == '/manage-recipes' %} active{% endif %}">
                         <svg class="nav-icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="8" y1="6" x2="21" y2="6"/><line x1="8" y1="12" x2="21" y2="12"/><line x1="8" y1="18" x2="21" y2="18"/><line x1="3" y1="6" x2="3.01" y2="6"/><line x1="3" y1="12" x2="3.01" y2="12"/><line x1="3" y1="18" x2="3.01" y2="18"/></svg>
-                        Manage Recipes
+                        Recipes
                     </a>
                 </li>
             </ul>
