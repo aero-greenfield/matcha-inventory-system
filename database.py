@@ -159,6 +159,18 @@ class DatabaseConnection:
         # FIX: for PostgreSQL, putconn() returns the connection to the pool so it stays
         #      alive and ready for the next caller. For SQLite, close() as before.
         if _pool is not None:
+            # ADDED: roll back any open transaction before returning to the pool. Read-path
+            #        functions run SELECTs (which open a transaction in psycopg2) but never
+            #        commit/rollback; without this the connection goes back "idle in
+            #        transaction". Against Supabase's transaction-mode pooler (port 6543) one
+            #        such connection eventually wedges in an aborted-transaction state, after
+            #        which every later query on it fails — surfacing as empty tables and
+            #        failed inserts. Write paths already commit() first, so this is a no-op
+            #        for them; it only clears leftover read transactions.
+            try:
+                self.conn.rollback()
+            except Exception:
+                pass
             # ADDED: return to pool instead of closing — connection stays alive
             _pool.putconn(self.conn)
         else:

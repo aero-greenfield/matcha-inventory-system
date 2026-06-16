@@ -19,32 +19,33 @@
 </div>
 
 {% if batches %}
+{# CHANGED: table-redesign — cut from ~12 columns to a 6-column scannable spine.
+   Per-row detail (Notes, Expiration, the secondary date, Edit/Delete) now lives in an
+   expandable drawer (see static/js/expand-row.js + .expandable-row / .detail-row CSS). #}
 <div class="table-container">
     <table class="data-table">
         <thead>
             <tr>
                 <th>Batch #</th>
-                <th>Product Name</th>
-                <th>Quantity</th>
-                <th>Date Completed</th>
+                <th>Product</th>
+                <th class="num">Qty</th>
                 <th>Status</th>
-                <th>Type</th>
-                {# ADDED: organic feature — derived Organic status (dash for Planned). #}
-                <th>Organic</th>
-                <th>Notes</th>
-                <th>Date Shipped</th>
-                <th>Expiration Date</th>
-                <th>Planned Date</th>
-                <th></th>
+                <th>Date</th>
+                <th class="chev-cell"></th>
             </tr>
         </thead>
         <tbody>
             {% for row in batches %}
-            <tr>
-                <td>{{ row.batch_number }}</td>
-                <td><strong>{{ row.product_name }}</strong></td>
-                <td>{{ row.quantity }}</td>
-                <td>{{ row.date_completed or '' }}</td>
+            <tr class="expandable-row" tabindex="0" aria-expanded="false">
+                <td class="mono">{{ row.batch_number }}</td>
+                <td>
+                    <span style="font-weight:500;">{{ row.product_name }}</span>
+                    {# ADDED: organic feature — neutral attribute tag, never accent green.
+                       Planned batches have no recorded materials, so organic is undetermined → omit. #}
+                    {% if row.status != 'Planned' and row.is_organic %}<span class="attr-tag">Organic</span>{% endif %}
+                    <span class="attr-tag">{{ row.batch_type or 'standard' }}</span>
+                </td>
+                <td class="num">{{ row.quantity | qty }}</td>
                 <td>
                     {% if row.status == 'Shipped' %}
                         <span class="badge badge-in-stock">Shipped</span>
@@ -53,28 +54,55 @@
                     {% elif row.status == 'Planned' %}
                         <span class="badge badge-planned">Planned</span>
                     {% else %}
-                        {{ row.status or '' }}
+                        {{ row.status | dash }}
                     {% endif %}
                 </td>
-                <td>{{ row.batch_type or 'standard' }}</td>
-                {# ADDED: organic feature — Planned batches are undetermined (no recorded materials) → dash;
-                   organic Ready/Shipped → badge; non-organic → blank (Organic-only style). #}
+                {# Status-aware single date: the label is derived from Status so it can never
+                   contradict it. Planned → planned date; Shipped → ship date; else completed. #}
                 <td>
-                    {% if row.status == 'Planned' %}—
-                    {% elif row.is_organic %}<span class="badge badge-organic">Organic</span>{% endif %}
+                    {% if row.status == 'Planned' %}
+                        <span class="num">{{ row.planned_completion_date | dash }}</span>
+                        <span class="date-label">Planned</span>
+                    {% elif row.status == 'Shipped' %}
+                        <span class="num">{{ row.date_shipped | dash }}</span>
+                        <span class="date-label">Shipped</span>
+                    {% else %}
+                        <span class="num">{{ row.date_completed | dash }}</span>
+                        <span class="date-label">Completed</span>
+                    {% endif %}
                 </td>
-                <td>{{ row.notes or '' }}</td>
-                <td>{{ row.date_shipped or '' }}</td>
-                <td>{{ row.expiration_date or '—' }}</td>
-                <td>{{ row.planned_completion_date or '—' }}</td>
-                <td style="white-space:nowrap;">
-                    <a href="/edit-batch/{{ row.batch_id | int }}" class="btn btn-secondary" style="padding:5px 12px;font-size:12px;">Edit</a>
-                    <form method="POST" action="/edit-batch/{{ row.batch_id | int }}/delete"
-                          onsubmit="return confirm('Delete batch {{ row.batch_number }}? Ingredients will NOT be returned to inventory — use Edit to reallocate first.')"
-                          style="display:inline;" autocomplete="off">
-                        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-                        <button type="submit" class="btn btn-secondary" style="padding:5px 12px;font-size:12px;color:#dc2626;border-color:#dc2626;">Delete</button>
-                    </form>
+                <td class="chev-cell"><i class="ti ti-chevron-down chev"></i></td>
+            </tr>
+            <tr class="detail-row">
+                <td colspan="6">
+                    <div class="drawer-flex">
+                        <div class="drawer-pair">
+                            <span class="drawer-label">Notes</span>
+                            <span class="drawer-value">{{ row.notes | dash }}</span>
+                        </div>
+                        {# ADDED: for Shipped batches the main Date column shows the ship date,
+                           so surface the completion milestone it gave up here. #}
+                        {% if row.status == 'Shipped' %}
+                        <div class="drawer-pair">
+                            <span class="drawer-label">Completed</span>
+                            <span class="drawer-value mono">{{ row.date_completed | dash }}</span>
+                        </div>
+                        {% endif %}
+                        <div class="drawer-pair">
+                            <span class="drawer-label">Expiration</span>
+                            <span class="drawer-value mono">{{ row.expiration_date | dash }}</span>
+                        </div>
+                        {# Edit + Delete moved out of the row and into the drawer to reclaim width. #}
+                        <div style="margin-left:auto;display:flex;gap:8px;align-items:center;">
+                            <a href="/edit-batch/{{ row.batch_id | int }}" class="btn btn-secondary" style="padding:6px 14px;font-size:13px;">Edit</a>
+                            <form method="POST" action="/edit-batch/{{ row.batch_id | int }}/delete"
+                                  onsubmit="return confirm('Delete batch {{ row.batch_number }}? Ingredients will NOT be returned to inventory — use Edit to reallocate first.')"
+                                  style="display:inline;" autocomplete="off">
+                                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                                <button type="submit" class="btn btn-danger" style="padding:6px 14px;font-size:13px;">Delete</button>
+                            </form>
+                        </div>
+                    </div>
                 </td>
             </tr>
             {% endfor %}

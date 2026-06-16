@@ -71,13 +71,13 @@
                 <td>
                     <form method="post" action="/material/{{ row.material_id | int }}/toggle/is_edible?page={{ page }}" style="margin:0;">
                         <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-                        <button type="submit" class="badge {{ 'badge-in-stock' if row.is_edible else 'badge-out' }}" style="border:none;cursor:pointer;">{{ 'Yes' if row.is_edible else 'No' }}</button>
+                        <button type="submit" class="badge {{ 'badge-on' if row.is_edible else 'badge-off' }}" style="cursor:pointer;">{{ 'Yes' if row.is_edible else 'No' }}</button>
                     </form>
                 </td>
                 <td>
                     <form method="post" action="/material/{{ row.material_id | int }}/toggle/is_organic?page={{ page }}" style="margin:0;">
                         <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-                        <button type="submit" class="badge {{ 'badge-organic' if row.is_organic else 'badge-out' }}" style="border:none;cursor:pointer;">{{ 'Organic' if row.is_organic else 'No' }}</button>
+                        <button type="submit" class="badge {{ 'badge-on' if row.is_organic else 'badge-off' }}" style="cursor:pointer;">{{ 'Organic' if row.is_organic else 'No' }}</button>
                     </form>
                 </td>
                 <td style="white-space:nowrap;">

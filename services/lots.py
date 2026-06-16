@@ -86,6 +86,60 @@ def get_all_lots_for_material(material_id):
         db.close()
 
 
+# ADDED: table-redesign feature — bulk fetch of active lots for many materials at once.
+# The inventory page now server-renders each material's lots inside an expandable drawer.
+# Doing that per-row would be an N+1 query storm (one /api/lots call per material);
+# this runs a single SELECT for the whole page and groups the result by material_id.
+def get_active_lots_for_materials(material_ids):
+    """
+    Returns active lots for a list of material_ids, grouped for the inventory drawers.
+
+    "Active" matches get_lots_for_material: quantity > 0, status = 'active', and not expired.
+    Ordered by received_date ASC (FIFO) within each material.
+
+    returns: dict mapping material_id -> list of lot dicts, each with keys
+             lot_number, quantity, received_date, expiration_date.
+             Materials with no active lots are simply absent from the dict.
+    """
+    # ADDED: guard empty input — an empty IN () list is a SQL syntax error.
+    if not material_ids:
+        return {}
+
+    db = get_db_connection()
+    cursor = db.cursor()
+    try:
+        date_now = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+        # ADDED: build the IN-list placeholders dynamically. These are %s placeholders
+        #        (rewritten to ? for SQLite by db.execute), never interpolated values.
+        placeholders = ', '.join(['%s'] * len(material_ids))
+        db.execute(cursor, f"""
+        SELECT material_id, lot_number, quantity, received_date, expiration_date
+        FROM raw_material_lots
+        WHERE material_id IN ({placeholders})
+          AND quantity > 0 AND status = 'active'
+          AND (expiration_date IS NULL OR expiration_date > %s)
+        ORDER BY material_id ASC, received_date ASC
+        """, (*material_ids, date_now))
+        result = cursor.fetchall()
+
+        grouped = {}
+        for material_id, lot_number, quantity, received_date, expiration_date in result:
+            grouped.setdefault(material_id, []).append({
+                'lot_number': lot_number,
+                'quantity': quantity,
+                'received_date': received_date,
+                'expiration_date': expiration_date,
+            })
+        return grouped
+
+    except Exception as e:
+        logging.error(f"Error bulk-fetching active lots for materials {material_ids}: {e}")
+        return {}
+
+    finally:
+        db.close()
+
+
 def get_material_stock_from_lots(material_id):
 
     """

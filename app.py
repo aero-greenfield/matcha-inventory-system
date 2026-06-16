@@ -50,6 +50,8 @@ from services.lots import (
     update_lot,
     delete_lot,
     get_batches_for_lot,
+    # ADDED: table-redesign feature — bulk active-lots fetch for the inventory drawers.
+    get_active_lots_for_materials,
 )
 from services.recipes import (
     add_recipe, get_all_recipes, get_all_recipes_with_id,
@@ -134,9 +136,16 @@ def _is_empty(value):
 
 
 @app.template_filter("fmt_num")
-def fmt_num(value, places=11):
+def fmt_num(value, places=15):
     """Round a number and strip float noise / trailing zeros.
-    Usage: {{ qty | fmt_num }}  ->  48.980000000000004 becomes "48.98"; 5.0 becomes "5"."""
+    Usage: {{ qty | fmt_num }}  ->  48.980000000000004 becomes "48.98"; 5.0 becomes "5".
+
+    Precision contract (see UI-REVIEW.md P1-1): preserve up to 15 decimal places
+    (the boss enters extreme-precision values), strip trailing zeros, and clean up
+    the common float-arithmetic noise (16th-17th digit). Rare noise at the ~15th
+    place can still slip through; the durable fix is Decimal/NUMERIC storage, not
+    this display filter. Never lower `places` below 15 without re-deciding the
+    contract — doing so silently truncates real entered data."""
     if _is_empty(value):
         return EMPTY_DISPLAY
     try:
@@ -145,6 +154,27 @@ def fmt_num(value, places=11):
         return str(value)
     # format with fixed places, then drop trailing zeros and any dangling dot
     text = f"{num:.{places}f}"
+    if "." in text:
+        text = text.rstrip("0").rstrip(".")
+    return text
+
+
+# ADDED: table-redesign feature — `qty` rounds a quantity to 2 dp for display.
+# Distinct from `fmt_num` (which keeps 15 places for the boss's extreme-precision entries):
+# qty is the scannable-table display filter — 2 dp is plenty for stock/quantity columns,
+# and it strips both float spew (48.980000000000004) and trailing-zero noise (5.0 -> 5).
+@app.template_filter("qty")
+def qty(value):
+    """Round a quantity to 2 dp for display, trimming float noise and trailing zeros.
+    Usage: {{ row.stock_level | qty }}  ->  48.980000000000004 becomes "48.98"; 5.0 becomes "5".
+    Returns the em dash for None/nan/empty."""
+    if _is_empty(value):
+        return EMPTY_DISPLAY
+    try:
+        num = round(float(value), 2)
+    except (TypeError, ValueError):
+        return str(value)
+    text = f"{num:.2f}"
     if "." in text:
         text = text.rstrip("0").rstrip(".")
     return text
@@ -364,6 +394,13 @@ def view_inventory():
     materials = df.to_dict(orient='records') if not df.empty else []
     # ADDED: compute total page count for pagination controls in the template
     total_pages = math.ceil(total / PER_PAGE) if total else 1
+
+    # ADDED: table-redesign feature — attach each material's active lots so the template
+    #        can server-render them inside the per-row expand drawer (replaces the old
+    #        per-row /api/lots AJAX). One bulk query for the whole page, then grouped.
+    lots_by_id = get_active_lots_for_materials([row['material_id'] for row in materials])
+    for row in materials:
+        row['lots'] = lots_by_id.get(row['material_id'], [])
 
     return render_template("inventory.html",
         materials=materials,

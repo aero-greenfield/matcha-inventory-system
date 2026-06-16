@@ -434,6 +434,21 @@ textarea:focus-visible,
     border: 1px solid var(--border-tag);
 }
 
+/* On/off attribute toggles (Edible, Organic). These are boolean attributes,
+   NOT stock status — never green/red. ON = filled neutral chip; OFF = muted
+   ghost. Filled-vs-empty is the at-a-glance signal. OFF uses --text-muted
+   (not --text-faint) so the label stays legible for warehouse staff. */
+.badge-on {
+    background: var(--content-bg);
+    color: var(--text);
+    border: 1px solid var(--border-tag);
+}
+.badge-off {
+    background: transparent;
+    color: var(--text-muted);
+    border: 1px solid var(--border);
+}
+
 /* ================================================
    Forms
    ================================================ */
@@ -578,6 +593,15 @@ h1 {
     background: #fef3c7;
     color: #92400e;
     border: 1px solid #fde68a;
+}
+
+/* Neutral informational notice — not success/error/warning. Uses neutral
+   tokens so it reads as "context," not an alarm (e.g. the add-material
+   hand-off banner). */
+.alert-info {
+    background: var(--content-bg);
+    color: var(--text-muted);
+    border: 1px solid var(--border);
 }
 
 /* ================================================
@@ -1000,3 +1024,95 @@ h1 {
     .material-row { flex-wrap: wrap; }
     .stat-card .stat-value { font-size: 24px; }
 }
+
+/* ================================================
+   Expandable table rows (shared pattern)
+   Used by Manage Batches and Raw Materials: each data row is clickable/keyboard
+   focusable and reveals a per-row detail drawer (.detail-row) immediately below it.
+   The interaction lives in static/js/expand-row.js — one copy, both tables reuse it.
+   ================================================ */
+
+.detail-row { display: none; }
+.detail-row.open { display: table-row; }
+.detail-row > td { background: var(--content-bg); }
+
+.expandable-row { cursor: pointer; }
+.expandable-row:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
+
+.expandable-row .chev { transition: transform .15s ease; color: var(--text-faint); }
+.expandable-row[aria-expanded="true"] .chev { transform: rotate(180deg); }
+.expandable-row[aria-expanded="true"] { background: #FCFCFC; }
+
+/* Narrow trailing column that just holds the chevron affordance */
+.chev-cell { width: 1%; text-align: right; white-space: nowrap; }
+
+/* Drawer internals: a left-aligned row of label -> value pairs. */
+.drawer-flex {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 28px;
+    padding: 4px 0;
+}
+.drawer-pair { display: flex; flex-direction: column; gap: 3px; }
+.drawer-label {
+    font-size: 11px;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    color: var(--text-muted);
+}
+.drawer-value { font-size: 13px; color: var(--text); }
+
+/* Status-aware date column: primary date value + a small muted disambiguating label. */
+.date-label { display: block; font-size: 11px; color: var(--text-faint); }
+
+/* Neutral attribute tag (Organic, batch type) — outline only, never accent green. */
+.attr-tag {
+    display: inline-block;
+    border: 1px solid var(--border-tag);
+    color: var(--tag-text);
+    border-radius: 5px;
+    padding: 1px 7px;
+    font-size: 11px;
+    margin-left: 6px;
+    vertical-align: middle;
+}
+
+/* Dark caution flag for non-edible materials — deliberately NOT a status color. */
+.flag-not-edible {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    background: #3A3A38;
+    color: #F1EFE8;
+    border-radius: 5px;
+    padding: 2px 8px;
+    font-size: 11px;
+    margin-left: 6px;
+    vertical-align: middle;
+}
+.flag-not-edible i { font-size: 12px; }
+
+/* White card wrapping the nested lots table inside a material drawer. */
+.lots-card {
+    background: var(--card-bg);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    margin-top: 12px;
+    overflow: hidden;
+}
+.lots-card table { width: 100%; border-collapse: collapse; font-size: 13px; }
+.lots-card th {
+    text-align: left;
+    padding: 8px 12px;
+    font-size: 11px;
+    font-weight: 500;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    color: var(--text-muted);
+    border-bottom: 1px solid var(--border);
+}
+.lots-card td { padding: 8px 12px; border-bottom: 1px solid var(--border); color: var(--text); }
+.lots-card tr:last-child td { border-bottom: none; }
+.lots-card th.num, .lots-card td.num { text-align: right; }
+.drawer-empty { color: var(--text-muted); font-size: 13px; margin-top: 10px; }

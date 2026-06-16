@@ -7,6 +7,8 @@
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=Syne:wght@600;700&family=DM+Mono:wght@400;500&display=swap" rel="stylesheet">
+    <!-- Tabler outline icons (design system icon set) — chevrons, caution flags, etc. -->
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@tabler/icons-webfont@3.34.0/dist/tabler-icons.min.css">
     <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
     {% block extra_styles %}{% endblock %}
 </head>
@@ -178,6 +180,9 @@ document.addEventListener('wheel', function () {
     }
 }, { passive: true });
 </script>
+
+<!-- Shared expandable-table-row interaction (Manage Batches + Raw Materials) -->
+<script src="{{ url_for('static', filename='js/expand-row.js') }}"></script>
 
 </body>
 </html>

@@ -20,37 +20,101 @@
 </label>
 {% endmacro %}
 
+{# ADDED: table-redesign — one macro renders both the Raw and Housemade material tables
+   (identical structure). 4-column scannable spine + an expandable per-row drawer holding
+   reorder level, total cost, and the material's active lots (server-rendered as row.lots). #}
+{% macro material_table(rows) %}
+<div class="table-container" style="margin-bottom:32px;">
+    <table class="data-table">
+        <thead>
+            <tr>
+                <th>Name</th>
+                <th>Category</th>
+                <th class="num">Stock</th>
+                <th>Status</th>
+                <th class="chev-cell"></th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for row in rows %}
+            <tr class="expandable-row" tabindex="0" aria-expanded="false">
+                <td>
+                    <span style="font-weight:500;">{{ row.name }}</span>
+                    {# Organic → neutral attribute tag. Not-edible → dark caution flag.
+                       The flag is NOT a status color: green/amber/red beside it are owned by
+                       the Status pill ("do we have enough"), separate from "is it safe to use". #}
+                    {% if row.is_edible and row.is_organic %}<span class="attr-tag">Organic</span>{% endif %}
+                    {% if not row.is_edible %}<span class="flag-not-edible"><i class="ti ti-alert-triangle"></i>Not edible</span>{% endif %}
+                </td>
+                <td style="color:var(--text-muted);">{{ row.category | dash }}</td>
+                <td class="num">{{ row.stock_level | qty }} <span style="color:var(--text-faint);font-size:13px;">{{ row.unit }}</span></td>
+                <td>
+                    {% if row.stock_level == 0 %}
+                        <span class="badge badge-out">Out of Stock</span>
+                    {% elif row.stock_level <= row.reorder_level %}
+                        <span class="badge badge-low">Low Stock</span>
+                    {% else %}
+                        <span class="badge badge-in-stock">In Stock</span>
+                    {% endif %}
+                </td>
+                <td class="chev-cell"><i class="ti ti-chevron-down chev"></i></td>
+            </tr>
+            <tr class="detail-row">
+                <td colspan="5">
+                    <div class="drawer-flex">
+                        <div class="drawer-pair">
+                            <span class="drawer-label">Reorder level</span>
+                            <span class="drawer-value num">{{ row.reorder_level | qty }} {{ row.unit }}</span>
+                        </div>
+                        {# Full-precision stock total — the collapsed Stock column rounds to 2 dp;
+                           this reveals the true summed value (fmt_num strips float noise but keeps
+                           real entered precision). #}
+                        <div class="drawer-pair">
+                            <span class="drawer-label">Stock (exact)</span>
+                            <span class="drawer-value mono">{{ row.stock_level | fmt_num }} {{ row.unit }}</span>
+                        </div>
+                        <div class="drawer-pair">
+                            <span class="drawer-label">Total cost</span>
+                            <span class="drawer-value num">{% if row.total_cost %}${{ '%.2f'|format(row.total_cost) }}{% else %}{{ None | dash }}{% endif %}</span>
+                        </div>
+                    </div>
+                    {# Lots sub-section — replaces the old per-row "▶ Lots" AJAX button.
+                       row.lots is the material's active lots, server-rendered (see view_inventory). #}
+                    {% if row.lots %}
+                    <div class="lots-card">
+                        <table>
+                            <thead>
+                                <tr>
+                                    <th>Lot #</th>
+                                    <th class="num">Quantity</th>
+                                    <th>Received</th>
+                                    <th>Expiration</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {% for lot in row.lots %}
+                                <tr>
+                                    <td class="mono">{{ lot.lot_number | dash }}</td>
+                                    <td class="num">{{ lot.quantity | fmt_num }}</td>
+                                    <td class="mono">{{ lot.received_date | dash }}</td>
+                                    <td class="mono">{{ lot.expiration_date | dash }}</td>
+                                </tr>
+                                {% endfor %}
+                            </tbody>
+                        </table>
+                    </div>
+                    {% else %}
+                    <p class="drawer-empty">No active lots recorded.</p>
+                    {% endif %}
+                </td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+</div>
+{% endmacro %}
+
 <style>
-.lot-toggle {
-  font-size: 12px; padding: 3px 8px; border-radius: 4px;
-  border: 1px solid var(--border); background: var(--bg-card);
-  color: var(--text-muted); cursor: pointer; white-space: nowrap;
-}
-.lot-toggle:hover { background: var(--bg-content); }
-
-.lot-detail-row > td { padding: 0; background: #f9fafb; border-top: none; }
-.lot-panel { padding: 10px 20px 16px; }
-.lot-panel-controls { margin-bottom: 8px; display: flex; align-items: center; gap: 8px; }
-.lot-panel-label { font-size: 12px; font-weight: 600; color: var(--text-muted); }
-
-.expired-toggle {
-  font-size: 11px; padding: 2px 8px; border-radius: 4px;
-  border: 1px solid var(--border); background: transparent;
-  color: var(--text-muted); cursor: pointer;
-}
-.expired-toggle:hover { background: var(--bg-content); }
-
-.lots-inner-table { width: 100%; border-collapse: collapse; font-size: 13px; }
-.lots-inner-table th {
-  text-align: left; padding: 6px 10px; font-weight: 600;
-  color: var(--text-muted); border-bottom: 1px solid var(--border); background: #f3f4f6;
-}
-.lots-inner-table td { padding: 6px 10px; border-bottom: 1px solid #f0f0f0; }
-.lots-inner-table tr:last-child td { border-bottom: none; }
-
-.lot-expired td { color: #9ca3af; opacity: 0.7; font-style: italic; }
-.lot-no-data { color: var(--text-muted); font-size: 13px; padding: 8px 0; }
-
 .section-toggle {
   display: inline-flex; align-items: center; gap: 6px; cursor: pointer;
   font-size: 13px; font-weight: 600; margin-bottom: 10px; color: var(--text-muted);
@@ -88,70 +152,7 @@
 <button type="button" class="section-toggle" data-section="raw-materials-section"><span class="caret">&#9660;</span> Raw Materials</button>
 <div id="raw-materials-section">
 {% if materials | rejectattr('is_housemade') | list %}
-<div class="table-container" style="margin-bottom:32px;">
-    <table class="data-table">
-        <thead>
-            <tr>
-                <th>Name</th>
-                <th>Category</th>
-                <th>Stock Level</th>
-                <th>Unit</th>
-                <th>Reorder Level</th>
-                {# ADDED: cost-of-material feature — total cost of active stock across all lots. #}
-                <th>Total Cost</th>
-                {# ADDED: organic feature — material edible/organic state. #}
-                <th>Edible</th>
-                <th>Organic</th>
-                <th>Status</th>
-                <th>Lots</th>
-            </tr>
-        </thead>
-        <tbody>
-            {% for row in materials if not row['is_housemade'] %}
-            <tr>
-                <td><strong>{{ row.name }}</strong></td>
-                <td>{{ row.category }}</td>
-                <td>{{ row.stock_level }}</td>
-                <td>{{ row.unit }}</td>
-                <td>{{ row.reorder_level }}</td>
-                {# ADDED: cost-of-material feature — show total cost or dash if no cost data entered. #}
-                <td>{% if row.total_cost %}${{ '%.2f'|format(row.total_cost) }}{% else %}—{% endif %}</td>
-                {# ADDED: organic feature — Edible state; Organic shows a dash for non-edible
-                   (organic is N/A), the Organic badge when organic, blank otherwise. #}
-                <td>{% if row.is_edible %}Edible{% else %}<span style="color:var(--text-muted);">Not edible</span>{% endif %}</td>
-                <td>
-                    {% if not row.is_edible %}—
-                    {% elif row.is_organic %}<span class="badge badge-organic">Organic</span>{% endif %}
-                </td>
-                <td>
-                    {% if row.stock_level == 0 %}
-                        <span class="badge badge-out">Out of Stock</span>
-                    {% elif row.stock_level <= row.reorder_level %}
-                        <span class="badge badge-low">Low Stock</span>
-                    {% else %}
-                        <span class="badge badge-in-stock">In Stock</span>
-                    {% endif %}
-                </td>
-                <td>
-                    <button class="lot-toggle" data-material-id="{{ row.material_id }}">&#9654; Lots</button>
-                </td>
-            </tr>
-            <tr class="lot-detail-row" id="lot-detail-{{ row.material_id }}" style="display:none;">
-                {# CHANGED: cost-of-material feature — colspan 9→10 to match added Total Cost column. #}
-                <td colspan="10">
-                    <div class="lot-panel">
-                        <div class="lot-panel-controls">
-                            <span class="lot-panel-label">Lots for {{ row.name }}</span>
-                            <button class="expired-toggle" data-showing-expired="false">Show Expired</button>
-                        </div>
-                        <div class="lot-panel-body">Loading...</div>
-                    </div>
-                </td>
-            </tr>
-            {% endfor %}
-        </tbody>
-    </table>
-</div>
+{{ material_table(materials | rejectattr('is_housemade') | list) }}
 {% else %}
 <div class="table-container" style="padding:40px 24px;text-align:center;color:var(--text-muted);margin-bottom:32px;">
     <p>No raw materials in inventory. <a href="/add-material" style="color:var(--accent);">Add your first material</a></p>
@@ -162,70 +163,7 @@
 <button type="button" class="section-toggle" data-section="housemade-materials-section"><span class="caret">&#9660;</span> Housemade Materials</button>
 <div id="housemade-materials-section">
 {% if materials | selectattr('is_housemade', 'equalto', 1) | list %}
-<div class="table-container">
-    <table class="data-table">
-        <thead>
-            <tr>
-                <th>Name</th>
-                <th>Category</th>
-                <th>Stock Level</th>
-                <th>Unit</th>
-                <th>Reorder Level</th>
-                {# ADDED: cost-of-material feature — total cost of active stock across all lots. #}
-                <th>Total Cost</th>
-                {# ADDED: organic feature — material edible/organic state. #}
-                <th>Edible</th>
-                <th>Organic</th>
-                <th>Status</th>
-                <th>Lots</th>
-            </tr>
-        </thead>
-        <tbody>
-            {% for row in materials if row['is_housemade'] %}
-            <tr>
-                <td><strong>{{ row.name }}</strong></td>
-                <td>{{ row.category }}</td>
-                <td>{{ row.stock_level }}</td>
-                <td>{{ row.unit }}</td>
-                <td>{{ row.reorder_level }}</td>
-                {# ADDED: cost-of-material feature — show total cost or dash if no cost data entered. #}
-                <td>{% if row.total_cost %}${{ '%.2f'|format(row.total_cost) }}{% else %}—{% endif %}</td>
-                {# ADDED: organic feature — Edible state; Organic shows a dash for non-edible
-                   (organic is N/A), the Organic badge when organic, blank otherwise. #}
-                <td>{% if row.is_edible %}Edible{% else %}<span style="color:var(--text-muted);">Not edible</span>{% endif %}</td>
-                <td>
-                    {% if not row.is_edible %}—
-                    {% elif row.is_organic %}<span class="badge badge-organic">Organic</span>{% endif %}
-                </td>
-                <td>
-                    {% if row.stock_level == 0 %}
-                        <span class="badge badge-out">Out of Stock</span>
-                    {% elif row.stock_level <= row.reorder_level %}
-                        <span class="badge badge-low">Low Stock</span>
-                    {% else %}
-                        <span class="badge badge-in-stock">In Stock</span>
-                    {% endif %}
-                </td>
-                <td>
-                    <button class="lot-toggle" data-material-id="{{ row.material_id }}">&#9654; Lots</button>
-                </td>
-            </tr>
-            <tr class="lot-detail-row" id="lot-detail-{{ row.material_id }}" style="display:none;">
-                {# CHANGED: cost-of-material feature — colspan 9→10 to match added Total Cost column. #}
-                <td colspan="10">
-                    <div class="lot-panel">
-                        <div class="lot-panel-controls">
-                            <span class="lot-panel-label">Lots for {{ row.name }}</span>
-                            <button class="expired-toggle" data-showing-expired="false">Show Expired</button>
-                        </div>
-                        <div class="lot-panel-body">Loading...</div>
-                    </div>
-                </td>
-            </tr>
-            {% endfor %}
-        </tbody>
-    </table>
-</div>
+{{ material_table(materials | selectattr('is_housemade', 'equalto', 1) | list) }}
 {% else %}
 <div class="table-container" style="padding:40px 24px;text-align:center;color:var(--text-muted);">
     <p>No housemade materials in inventory.</p>
@@ -261,81 +199,9 @@ document.querySelectorAll('.section-toggle').forEach(function(btn) {
         this.classList.toggle('collapsed', !collapsed);
     });
 });
-
-function renderLots(panel, lots, showExpired) {
-    var today = new Date().toISOString().slice(0, 10);
-
-    if (!lots || lots.length === 0) {
-        panel.innerHTML = '<p class="lot-no-data">No lots recorded for this material.</p>';
-        return;
-    }
-
-    var html = '<table class="lots-inner-table"><thead><tr>' +
-        '<th>Lot #</th><th>Qty Remaining</th><th>Cost / Unit</th>' +
-        '<th>Received Date</th><th>Expiry Date</th><th>Location</th>' +
-        '</tr></thead><tbody>';
-
-    lots.forEach(function(lot) {
-        var expired = lot.expiration_date && lot.expiration_date < today;
-        if (expired && !showExpired) return;
-        var rowClass = expired ? ' class="lot-expired"' : '';
-        var expiry = lot.expiration_date || '—';
-        var cost = lot.cost_per_unit != null ? lot.cost_per_unit : '—';
-        var location = lot.location || '—';
-        html += '<tr' + rowClass + '>' +
-            '<td>' + (lot.lot_number || '—') + '</td>' +
-            '<td>' + (lot.quantity != null ? lot.quantity : '—') + '</td>' +
-            '<td>' + cost + '</td>' +
-            '<td>' + (lot.received_date || '—') + '</td>' +
-            '<td>' + expiry + '</td>' +
-            '<td>' + location + '</td>' +
-            '</tr>';
-    });
-
-    html += '</tbody></table>';
-    panel.innerHTML = html;
-}
-
-document.querySelectorAll('.lot-toggle').forEach(function(btn) {
-    btn.addEventListener('click', function() {
-        var mid = this.dataset.materialId;
-        var detailRow = document.getElementById('lot-detail-' + mid);
-        var panel = detailRow.querySelector('.lot-panel-body');
-        var isOpen = detailRow.style.display !== 'none';
-
-        if (isOpen) {
-            detailRow.style.display = 'none';
-            this.innerHTML = '&#9654; Lots';
-            return;
-        }
-
-        detailRow.style.display = '';
-        this.innerHTML = '&#9660; Lots';
-
-        if (!panel.dataset.loaded) {
-            fetch('/api/lots/' + mid, { credentials: 'include' })
-                .then(function(r) { return r.json(); })
-                .then(function(lots) {
-                    panel.dataset.lots = JSON.stringify(lots);
-                    panel.dataset.loaded = 'true';
-                    renderLots(panel, lots, false);
-                })
-                .catch(function() {
-                    panel.innerHTML = '<p class="lot-no-data">Failed to load lots.</p>';
-                });
-        }
-    });
-});
-
-document.addEventListener('click', function(e) {
-    if (!e.target.classList.contains('expired-toggle')) return;
-    var panel = e.target.closest('.lot-panel').querySelector('.lot-panel-body');
-    var showing = e.target.dataset.showingExpired === 'true';
-    showing = !showing;
-    e.target.dataset.showingExpired = showing;
-    e.target.textContent = showing ? 'Hide Expired' : 'Show Expired';
-    renderLots(panel, JSON.parse(panel.dataset.lots || '[]'), showing);
-});
+// REMOVED: table-redesign — the per-row lot AJAX (lot-toggle / renderLots / Show-Expired)
+// is gone. Active lots are now server-rendered inside the shared expand drawer; the row
+// expand interaction lives in static/js/expand-row.js.
 </script>
 
 {% endblock %}
