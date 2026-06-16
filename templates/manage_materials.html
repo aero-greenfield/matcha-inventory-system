@@ -37,7 +37,7 @@
                 <td>{{ row.category or '' }}</td>
                 <td>{{ row.stock_level }}</td>
                 <td>{{ row.unit or '' }}</td>
-                <td>{{ row.reorder_level or '' }}</td>
+                <td>{{ row.reorder_level if row.reorder_level is not none else 0 }}</td>
                 {# ADDED: organic feature — each badge is a one-click POST that flips the flag,
                    preserving the current page. #}
                 <td>

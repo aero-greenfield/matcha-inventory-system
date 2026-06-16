@@ -24,7 +24,7 @@
         </div>
         <div class="form-row">
             <div class="form-group"><label>Unit</label><input type="text" name="unit" value="{{ unit or '' }}"></div>
-            <div class="form-group"><label>Reorder Level</label><input type="number" step="any" name="reorder_level" value="{{ reorder_level or '' }}"></div>
+            <div class="form-group"><label>Reorder Level</label><input type="number" step="any" name="reorder_level" value="{{ reorder_level if reorder_level is not none else 0 }}"></div>
         </div>
         {# ADDED: organic feature — edible/organic flags reflect the material's current state. #}
         <div class="form-row">

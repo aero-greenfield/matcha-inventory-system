@@ -121,7 +121,7 @@ def get_low_stock_materials():
             LEFT JOIN raw_material_lots rm_lot ON rm.material_id = rm_lot.material_id
             GROUP BY rm.material_id
             HAVING SUM(CASE WHEN rm_lot.quantity > 0 AND (rm_lot.expiration_date IS NULL OR rm_lot.expiration_date > %s)
-                        THEN rm_lot.quantity ELSE 0 END) < rm.reorder_level
+                        THEN rm_lot.quantity ELSE 0 END) <= rm.reorder_level
             ORDER BY category, name
         """, (now, now))
         result = cursor.fetchall()

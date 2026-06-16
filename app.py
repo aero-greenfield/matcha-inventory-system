@@ -807,7 +807,7 @@ def update_material_details(material_id):
         unit = request.form.get('unit') # Get updated unit (or None if empty)
         unit = unit.strip() if unit else None #validate
         reorder_level_str = request.form.get('reorder_level')
-        reorder_level = float(reorder_level_str) if reorder_level_str else None
+        reorder_level = float(reorder_level_str) if reorder_level_str else 0
 
         # ADDED: organic feature — checkboxes absent from a POST mean unchecked, so pass
         #        explicit True/False (not None) to persist an unchecked box.
@@ -821,10 +821,10 @@ def update_material_details(material_id):
             back_link=True, back_link_url=f"/edit-material/{material_id}", back_link_label="Go back"
         ), 400
 
-    if reorder_level is not None and reorder_level <= 0:
+    if reorder_level is not None and reorder_level < 0:
         return render_template('error.html',
             title="Invalid Input",
-            message = "Reorder Level must be greater than 0.",
+            message = "Reorder Level cannot be negative.",
             back_link=True, back_link_url=f"/edit-material/{material_id}", back_link_label="Go back"
         ), 400
 
