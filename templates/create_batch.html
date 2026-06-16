@@ -114,6 +114,9 @@ document.addEventListener('DOMContentLoaded', () => {
         recipeMaterials.forEach(function(mat) {
             var required = mat.quantity_needed * batchQty;
             var lots = availableLots[mat.material_id] || [];
+            // map lot_id -> available quantity, for auto-fill
+            var lotAvail = {};
+            lots.forEach(function(l) { lotAvail[l.lot_id] = l.quantity; });
             var card = document.createElement('div');
             card.style.cssText = 'border:1px solid var(--border);border-radius:8px;padding:12px 14px;margin-bottom:10px;';
             card.dataset.materialId = mat.material_id;
@@ -123,10 +126,38 @@ document.addEventListener('DOMContentLoaded', () => {
             });
             card.innerHTML =
                 '<div style="font-weight:600;font-size:13px;margin-bottom:6px;">' + mat.material_name +
-                ' <span style="font-weight:400;color:var(--text-muted);">— need ' + required.toFixed(2) + '</span></div>' +
+                ' <span style="font-weight:400;color:var(--text-muted);">— need ' + required.toFixed(2) + '</span>' +
+                ' <span class="lot-remaining" style="font-weight:400;font-size:12px;margin-left:6px;"></span></div>' +
                 '<div class="lot-rows"></div>' +
                 '<button type="button" class="add-lot-btn" style="margin-top:6px;font-size:12px;padding:4px 10px;border:1px dashed var(--border);border-radius:5px;background:transparent;cursor:pointer;">+ Add lot</button>' +
                 '<div class="lot-error" style="color:#dc2626;font-size:12px;margin-top:4px;display:none;"></div>';
+            var remainingEl = card.querySelector('.lot-remaining');
+
+            // sum of quantities entered in all rows except (optionally) one to exclude
+            function sumEntered(excludeInput) {
+                var total = 0;
+                card.querySelectorAll('.lot-rows > div input[type="number"]').forEach(function(inp) {
+                    if (inp === excludeInput) return;
+                    var v = parseFloat(inp.value);
+                    if (v > 0) total += v;
+                });
+                return total;
+            }
+
+            function updateRemaining() {
+                var remaining = required - sumEntered(null);
+                if (Math.abs(remaining) <= 1e-6) {
+                    remainingEl.textContent = '✓ covered';
+                    remainingEl.style.color = '#16a34a';
+                } else if (remaining > 0) {
+                    remainingEl.textContent = 'remaining: ' + remaining;
+                    remainingEl.style.color = 'var(--text-muted)';
+                } else {
+                    remainingEl.textContent = 'over by ' + Math.abs(remaining);
+                    remainingEl.style.color = '#dc2626';
+                }
+            }
+
             function addRow() {
                 var row = document.createElement('div');
                 row.style.cssText = 'display:flex;gap:8px;align-items:center;margin-bottom:4px;';
@@ -134,12 +165,41 @@ document.addEventListener('DOMContentLoaded', () => {
                     '<select style="flex:1;padding:5px 8px;border:1px solid var(--border);border-radius:5px;font-size:13px;">' + optHtml + '</select>' +
                     '<input type="number" step="any" min="0.01" placeholder="qty" style="width:90px;padding:5px 8px;border:1px solid var(--border);border-radius:5px;font-size:13px;">' +
                     '<button type="button" style="padding:4px 8px;border:1px solid var(--border);border-radius:5px;background:transparent;cursor:pointer;color:#dc2626;">×</button>';
-                row.querySelector('button').addEventListener('click', function() { row.remove(); });
+                var sel = row.querySelector('select');
+                var qtyInput = row.querySelector('input[type="number"]');
+
+                // Auto-fill the remaining needed amount when a lot is picked,
+                // capped at that lot's available quantity. Only overwrite empty
+                // or previously auto-filled inputs so hand-typed values are kept.
+                sel.addEventListener('change', function() {
+                    var lotId = parseInt(sel.value);
+                    if (!lotId) { updateRemaining(); return; }
+                    if (qtyInput.value !== '' && qtyInput.dataset.autofilled !== '1') {
+                        updateRemaining();
+                        return;
+                    }
+                    var remaining = required - sumEntered(qtyInput);
+                    var avail = lotAvail[lotId] != null ? lotAvail[lotId] : remaining;
+                    var fill = Math.min(remaining, avail);
+                    if (fill < 0) fill = 0;
+                    qtyInput.value = fill > 0 ? fill : '';
+                    qtyInput.dataset.autofilled = '1';
+                    updateRemaining();
+                });
+
+                // A hand edit clears the auto-filled flag so we won't clobber it later.
+                qtyInput.addEventListener('input', function() {
+                    qtyInput.dataset.autofilled = '';
+                    updateRemaining();
+                });
+
+                row.querySelector('button').addEventListener('click', function() { row.remove(); updateRemaining(); });
                 card.querySelector('.lot-rows').appendChild(row);
             }
             addRow();
             card.querySelector('.add-lot-btn').addEventListener('click', addRow);
             lotCards.appendChild(card);
+            updateRemaining();
         });
         lotArea.style.display = 'block';
     }

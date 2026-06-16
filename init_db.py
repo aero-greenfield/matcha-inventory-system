@@ -71,7 +71,7 @@ def init_database():
             name TEXT NOT NULL UNIQUE,
             category TEXT,
             unit TEXT,
-            reorder_level REAL,
+            reorder_level DOUBLE PRECISION,
             is_housemade BOOLEAN DEFAULT FALSE,
             -- ADDED: organic feature — is_edible flags whether a material counts toward a
             --        batch's organic determination; is_organic flags the material itself.
@@ -114,13 +114,13 @@ def init_database():
                 lot_id SERIAL PRIMARY KEY,
                 material_id INTEGER,
                 lot_number TEXT,
-                quantity REAL,
+                quantity DOUBLE PRECISION,
                 received_date TEXT,
                 expiration_date TEXT,
                 status TEXT DEFAULT 'active',
                 supplier TEXT,
                 location TEXT,
-                cost_per_unit REAL,
+                cost_per_unit DOUBLE PRECISION,
                 FOREIGN KEY (material_id) REFERENCES raw_materials(material_id)
                         )
                         """)
@@ -173,11 +173,11 @@ def init_database():
     
         cursor.execute(""" 
         CREATE TABLE IF NOT EXISTS recipe_materials( 
-            recipe_material_id SERIAL PRIMARY KEY, 
-            recipe_id INTEGER, 
-            material_id INTEGER, 
-            material_name TEXT, 
-            quantity_needed REAL, 
+            recipe_material_id SERIAL PRIMARY KEY,
+            recipe_id INTEGER,
+            material_id INTEGER,
+            material_name TEXT,
+            quantity_needed DOUBLE PRECISION,
             FOREIGN KEY (material_id) REFERENCES raw_materials(material_id), 
             FOREIGN KEY (recipe_id) REFERENCES recipes(recipe_id) 
         ) 
@@ -283,12 +283,12 @@ def init_database():
 
         cursor.execute(""" 
         CREATE TABLE IF NOT EXISTS batch_materials( 
-            batch_material_id SERIAL PRIMARY KEY, 
-            batch_id INTEGER, 
+            batch_material_id SERIAL PRIMARY KEY,
+            batch_id INTEGER,
             material_id INTEGER,
             lot_id INTEGER,
-            quantity_used REAL,
-            cost_per_unit REAL, 
+            quantity_used DOUBLE PRECISION,
+            cost_per_unit DOUBLE PRECISION,
             FOREIGN KEY (material_id) REFERENCES raw_materials(material_id), 
             FOREIGN KEY (batch_id) REFERENCES batches(batch_id),
             FOREIGN KEY(lot_id) REFERENCES raw_material_lots(lot_id)              
@@ -367,6 +367,32 @@ def upgrade_schema():
         conn.commit()
     except Exception:
         conn.rollback()  # column already exists
+
+    # MIGRATION: PostgreSQL REAL is single-precision float4 (~6-7 significant digits), so it
+    #            silently rounds decimal inputs. CREATE TABLE IF NOT EXISTS never alters columns
+    #            on tables that already exist, so existing Supabase deploys keep the old REAL type
+    #            until this runs. Widen every numeric column to DOUBLE PRECISION (float8, ~15 digits),
+    #            matching SQLite's REAL. Note: values already stored as float4 stay truncated — only
+    #            NEW writes gain the extra precision. PostgreSQL only; SQLite REAL is already double.
+    if DATABASE_URL:
+        _real_to_double = [
+            ("raw_materials",     "reorder_level"),
+            ("raw_material_lots", "quantity"),
+            ("raw_material_lots", "cost_per_unit"),
+            ("recipe_materials",  "quantity_needed"),
+            ("batch_materials",   "quantity_used"),
+            ("batch_materials",   "cost_per_unit"),
+        ]
+        for table, column in _real_to_double:
+            try:
+                cursor.execute(
+                    f"ALTER TABLE {table} ALTER COLUMN {column} TYPE DOUBLE PRECISION"
+                )
+                conn.commit()
+            except Exception:
+                conn.rollback()  # table/column missing or already double precision
+        print("  ✅ Numeric columns widened to DOUBLE PRECISION")
+
     cursor.execute("CREATE INDEX IF NOT EXISTS idx_shipments_date        ON shipments(date_shipped)")
     cursor.execute("CREATE INDEX IF NOT EXISTS idx_batches_shipment_id   ON batches(shipment_id)")
     conn.commit()

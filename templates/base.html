@@ -202,5 +202,16 @@ document.addEventListener('keydown', function (e) {
 });
 </script>
 
+<script>
+// Prevent mouse-wheel scrolling from changing the value of a focused
+// <input type="number">. Blur the field so the wheel scrolls the page instead.
+document.addEventListener('wheel', function () {
+    var el = document.activeElement;
+    if (el && el.tagName === 'INPUT' && el.type === 'number') {
+        el.blur();
+    }
+}, { passive: true });
+</script>
+
 </body>
 </html>
