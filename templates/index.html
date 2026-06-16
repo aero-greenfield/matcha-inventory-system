@@ -233,7 +233,11 @@ details.htu-section .htu-body {
 
     {# Left — low-stock list #}
     <div class="dash-panel">
-        <div class="dash-panel-title">Needs Reordering</div>
+        <div class="dash-panel-title">
+            <span>Needs Reordering</span>
+            <button type="button" class="dash-collapse-btn" aria-label="Collapse section"><span class="caret">▾</span></button>
+        </div>
+        <div class="dash-panel-body">
         {% if low_stock_items is defined and low_stock_items %}
         <table class="reorder-table">
             <thead>
@@ -264,11 +268,16 @@ details.htu-section .htu-body {
         {% else %}
         <p style="color:var(--text-muted);font-size:13px;">—</p>
         {% endif %}
+        </div>
     </div>
 
     {# Right — recent activity #}
     <div class="dash-panel">
-        <div class="dash-panel-title">Recent Activity</div>
+        <div class="dash-panel-title">
+            <span>Recent Activity</span>
+            <button type="button" class="dash-collapse-btn" aria-label="Collapse section"><span class="caret">▾</span></button>
+        </div>
+        <div class="dash-panel-body">
         {% if recent_logs is defined and recent_logs %}
         <ul class="activity-list">
             {% for entry in recent_logs %}
@@ -281,6 +290,7 @@ details.htu-section .htu-body {
         {% else %}
         <p style="color:var(--text-muted);font-size:13px;">No recent activity.</p>
         {% endif %}
+        </div>
     </div>
 
 </div>
@@ -462,6 +472,18 @@ details.htu-section .htu-body {
         else if (diff < 86400) label = Math.floor(diff / 3600) + ' h ago';
         else                  label = Math.floor(diff / 86400) + ' d ago';
         el.textContent = label;
+    });
+
+    // Collapsible dashboard panels
+    document.querySelectorAll('.dash-collapse-btn').forEach(function (btn) {
+        btn.addEventListener('click', function () {
+            var panel = btn.closest('.dash-panel');
+            var body = panel.querySelector('.dash-panel-body');
+            if (!body) return;
+            var collapsed = body.style.display === 'none';
+            body.style.display = collapsed ? '' : 'none';
+            btn.classList.toggle('collapsed', !collapsed);
+        });
     });
 }());
 </script>
