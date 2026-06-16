@@ -353,9 +353,13 @@ def view_inventory():
     PER_PAGE = 50
     page = min(max(1, int(request.args.get('page', 1))), MAX_PAGE)  # CHANGED: capped at MAX_PAGE to prevent large-OFFSET DoS
 
+    # ADDED: sort feature — column + direction from URL (validated/whitelisted in the service)
+    sort = request.args.get('sort')
+    direction = request.args.get('dir', 'asc')
+
     # CHANGED: was get_all_materials() returning a plain df.
     #          Now returns (df, total) tuple; page= triggers LIMIT/OFFSET in the query.
-    df, total = get_all_materials(page=page, per_page=PER_PAGE)
+    df, total = get_all_materials(page=page, per_page=PER_PAGE, sort_by=sort, sort_dir=direction)
 
     materials = df.to_dict(orient='records') if not df.empty else []
     # ADDED: compute total page count for pagination controls in the template
@@ -367,6 +371,8 @@ def view_inventory():
         page=page,
         total_pages=total_pages,
         total=total,
+        sort=sort,
+        direction=direction,
         back_link=True,
         back_link_url="/",
         back_link_label="Back to Home"
@@ -726,8 +732,12 @@ def manage_materials():
     PER_PAGE = 50
     page = min(max(1, int(request.args.get('page', 1))), MAX_PAGE)  # CHANGED: capped at MAX_PAGE to prevent large-OFFSET DoS
 
+    # ADDED: sort feature — column + direction from URL (validated/whitelisted in the service)
+    sort = request.args.get('sort')
+    direction = request.args.get('dir', 'asc')
+
     # CHANGED: get_all_materials now returns (df, total) tuple
-    df, total = get_all_materials(page=page, per_page=PER_PAGE)
+    df, total = get_all_materials(page=page, per_page=PER_PAGE, sort_by=sort, sort_dir=direction)
 
     materials = df.to_dict(orient='records') if (df is not None and not df.empty) else []
     # ADDED: total_pages for pagination controls in template
@@ -739,6 +749,8 @@ def manage_materials():
         page=page,
         total_pages=total_pages,
         total=total,
+        sort=sort,
+        direction=direction,
         back_link=True,
         back_link_url="/",
         back_link_label="Back to Home"

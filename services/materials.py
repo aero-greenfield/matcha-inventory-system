@@ -45,13 +45,33 @@ def add_raw_material(name, category, unit, reorder_level, is_housemade=False, is
 
 
 
-def get_all_materials(page=None, per_page=50):
+# ADDED: sort feature — whitelist of sortable columns → SQL expression. The sort key arrives
+#        from the URL (?sort=), so it must never be interpolated into SQL directly; only values
+#        in this map are allowed. Aggregates (stock_level, total_cost) are sorted by their
+#        SELECT alias, which PostgreSQL permits in ORDER BY.
+_MATERIAL_SORT_COLS = {
+    "name": "rm.name",
+    "category": "rm.category",
+    "stock_level": "stock_level",
+    "unit": "rm.unit",
+    "reorder_level": "rm.reorder_level",
+    "total_cost": "total_cost",
+    "is_edible": "rm.is_edible",
+    "is_organic": "rm.is_organic",
+}
+
+
+def get_all_materials(page=None, per_page=50, sort_by=None, sort_dir='asc'):
     """
     Returns all materials. Stock is derived from SUM of active lot quantities.
 
     # ADDED: page/per_page pagination parameters.
     # page=None  → full table, no LIMIT (used by export routes and create-batch); returns (df, None)
     # page=int   → paginated slice; returns (df, total_material_count)
+
+    # ADDED: sort feature — sort_by must be a key in _MATERIAL_SORT_COLS (anything else,
+    #        including None, falls back to the default category/name order). sort_dir is
+    #        sanitized to ASC/DESC.
     """
     db = get_db_connection()
     cursor = db.cursor()
@@ -62,10 +82,21 @@ def get_all_materials(page=None, per_page=50):
         # ADDED: cost-of-material feature — total_cost column added to columns list.
         columns = ['material_id', 'name', 'category', 'stock_level', 'total_cost', 'unit', 'reorder_level', 'is_housemade', 'is_edible', 'is_organic']
 
+        # ADDED: sort feature — build the ORDER BY clause from the whitelist. A valid sort_by
+        #        sorts by that column with rm.name as a stable tiebreaker; otherwise keep the
+        #        original default order.
+        if sort_by in _MATERIAL_SORT_COLS:
+            direction = 'DESC' if str(sort_dir).lower() == 'desc' else 'ASC'
+            order_clause = f"ORDER BY {_MATERIAL_SORT_COLS[sort_by]} {direction}, rm.name ASC"
+        else:
+            order_clause = "ORDER BY category, name"
+
         # does not include expired lots in the stock quantity
         # ADDED: cost-of-material feature — total_cost aggregates quantity * cost_per_unit for active, non-expired lots.
         #        COALESCE on cost_per_unit treats lots with no cost as $0 so the sum stays numeric.
-        base_query = """
+        # CHANGED: sort feature — ORDER BY is now the computed order_clause (was hard-coded
+        #          "ORDER BY category, name").
+        base_query = f"""
         SELECT rm.material_id, rm.name, rm.category,
                SUM(CASE WHEN rm_lot.quantity > 0 AND (rm_lot.expiration_date IS NULL OR rm_lot.expiration_date > %s)
                    THEN rm_lot.quantity ELSE 0 END) as stock_level,
@@ -75,7 +106,7 @@ def get_all_materials(page=None, per_page=50):
         FROM raw_materials rm
         LEFT JOIN raw_material_lots rm_lot ON rm.material_id = rm_lot.material_id
         GROUP BY rm.material_id
-        ORDER BY category, name
+        {order_clause}
         """
 
         if page is None:
