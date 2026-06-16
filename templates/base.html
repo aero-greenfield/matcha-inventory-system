@@ -2,6 +2,7 @@
 <html>
 <head>
     <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
     <title>{% block title %}Botaniks{% endblock %}</title>
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -13,8 +14,19 @@
 
 <div class="app-layout">
 
+    <!-- Mobile top bar (shown only when the sidebar collapses) -->
+    <div class="topbar">
+        <button class="menu-toggle" id="menuToggle" aria-label="Open menu" aria-expanded="false">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="3" y1="6" x2="21" y2="6"/><line x1="3" y1="12" x2="21" y2="12"/><line x1="3" y1="18" x2="21" y2="18"/></svg>
+        </button>
+        <span class="brand-text">Botaniks<span class="brand-sub"> / Inventory</span></span>
+    </div>
+
+    <!-- Backdrop behind the open off-canvas sidebar -->
+    <div class="sidebar-overlay" id="sidebarOverlay"></div>
+
     <!-- Sidebar -->
-    <aside class="sidebar">
+    <aside class="sidebar" id="sidebar">
         <div class="sidebar-brand">
             <img src="{{ url_for('static', filename='images/logo-mark.png') }}" alt="Botaniks logo" class="brand-icon" width="34" height="34">
             <span class="brand-text">Botaniks<span class="brand-sub"> / Inventory</span></span>
@@ -145,6 +157,31 @@
     </main>
 
 </div>
+
+<script>
+// Mobile sidebar: toggle the off-canvas nav + backdrop.
+(function () {
+    var toggle  = document.getElementById('menuToggle');
+    var sidebar = document.getElementById('sidebar');
+    var overlay = document.getElementById('sidebarOverlay');
+    if (!toggle || !sidebar || !overlay) return;
+
+    function setOpen(open) {
+        sidebar.classList.toggle('open', open);
+        overlay.classList.toggle('open', open);
+        toggle.setAttribute('aria-expanded', open ? 'true' : 'false');
+    }
+
+    toggle.addEventListener('click', function () {
+        setOpen(!sidebar.classList.contains('open'));
+    });
+    overlay.addEventListener('click', function () { setOpen(false); });
+    // Close after tapping a nav link
+    sidebar.addEventListener('click', function (e) {
+        if (e.target.closest('.nav-item')) setOpen(false);
+    });
+})();
+</script>
 
 <script>
 // Prevent accidental form submission when Enter is pressed in a text field.

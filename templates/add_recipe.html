@@ -33,7 +33,7 @@
                 </div>
                 <div class="form-group">
                     <label>Quantity Needed *</label>
-                    <input type="number" step="0.01" name="quantity_0" required placeholder="e.g., 10">
+                    <input type="number" step="any" name="quantity_0" required placeholder="e.g., 10">
                 </div>
                 <button type="button" class="btn btn-danger" onclick="removeMaterial(0)" style="align-self:flex-end;padding:9px 12px;">&#x2715;</button>
             </div>
@@ -62,7 +62,7 @@ function addMaterial() {
         </div>
         <div class="form-group">
             <label>Quantity Needed</label>
-            <input type="number" step="0.01" name="quantity_${materialCount}" placeholder="e.g., 200">
+            <input type="number" step="any" name="quantity_${materialCount}" placeholder="e.g., 200">
         </div>
         <button type="button" class="btn btn-danger" onclick="removeMaterial(${materialCount})" style="align-self:flex-end;padding:9px 12px;">&#x2715;</button>
     `;

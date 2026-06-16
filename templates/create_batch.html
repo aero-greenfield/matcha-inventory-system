@@ -15,7 +15,7 @@
     <form method="POST" autocomplete="off">
         <div class="form-row">
             <div class="form-group"><label>Product Name *</label><input type="text" name="product_name" required></div>
-            <div class="form-group"><label>Quantity *</label><input type="number" step="0.01" name="quantity" required></div>
+            <div class="form-group"><label>Quantity *</label><input type="number" step="any" name="quantity" required></div>
         </div>
         <div class="form-group"><label>Batch Number *</label><input type="text" name="batch_number" required></div>
         <div class="form-group"><label>Notes (Optional)</label><input type="text" name="notes"></div>
@@ -131,7 +131,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 row.style.cssText = 'display:flex;gap:8px;align-items:center;margin-bottom:4px;';
                 row.innerHTML =
                     '<select style="flex:1;padding:5px 8px;border:1px solid var(--border);border-radius:5px;font-size:13px;">' + optHtml + '</select>' +
-                    '<input type="number" step="0.01" min="0.01" placeholder="qty" style="width:90px;padding:5px 8px;border:1px solid var(--border);border-radius:5px;font-size:13px;">' +
+                    '<input type="number" step="any" min="0.01" placeholder="qty" style="width:90px;padding:5px 8px;border:1px solid var(--border);border-radius:5px;font-size:13px;">' +
                     '<button type="button" style="padding:4px 8px;border:1px solid var(--border);border-radius:5px;background:transparent;cursor:pointer;color:#dc2626;">×</button>';
                 row.querySelector('button').addEventListener('click', function() { row.remove(); });
                 card.querySelector('.lot-rows').appendChild(row);

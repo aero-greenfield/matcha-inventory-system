@@ -34,6 +34,14 @@
 
 .lot-expired td { color: #9ca3af; opacity: 0.7; font-style: italic; }
 .lot-no-data { color: var(--text-muted); font-size: 13px; padding: 8px 0; }
+
+.section-toggle {
+  display: flex; align-items: center; gap: 8px; cursor: pointer;
+  font-size: 16px; font-weight: 600; margin-bottom: 12px; color: var(--text-muted);
+  user-select: none; background: none; border: none; padding: 0;
+}
+.section-toggle .caret { font-size: 12px; transition: transform 0.15s; }
+.section-toggle.collapsed .caret { transform: rotate(-90deg); }
 </style>
 
 <div class="page-header">
@@ -47,7 +55,8 @@
     </div>
 </div>
 
-<h2 style="font-size:16px;font-weight:600;margin-bottom:12px;color:var(--text-muted);">Raw Materials</h2>
+<button type="button" class="section-toggle" data-section="raw-materials-section"><span class="caret">&#9660;</span> Raw Materials</button>
+<div id="raw-materials-section">
 {% if materials | rejectattr('is_housemade') | list %}
 <div class="table-container" style="margin-bottom:32px;">
     <table class="data-table">
@@ -118,8 +127,10 @@
     <p>No raw materials in inventory. <a href="/add-material" style="color:var(--accent);">Add your first material</a></p>
 </div>
 {% endif %}
+</div>
 
-<h2 style="font-size:16px;font-weight:600;margin-bottom:12px;color:var(--text-muted);">Housemade Materials</h2>
+<button type="button" class="section-toggle" data-section="housemade-materials-section"><span class="caret">&#9660;</span> Housemade Materials</button>
+<div id="housemade-materials-section">
 {% if materials | selectattr('is_housemade', 'equalto', 1) | list %}
 <div class="table-container">
     <table class="data-table">
@@ -190,6 +201,7 @@
     <p>No housemade materials in inventory.</p>
 </div>
 {% endif %}
+</div>
 
 {# ADDED: pagination controls — only shown when there is more than one page #}
 {% if total_pages > 1 %}
@@ -209,6 +221,15 @@
 {% endif %}
 
 <script>
+document.querySelectorAll('.section-toggle').forEach(function(btn) {
+    btn.addEventListener('click', function() {
+        var section = document.getElementById(this.dataset.section);
+        var collapsed = section.style.display === 'none';
+        section.style.display = collapsed ? '' : 'none';
+        this.classList.toggle('collapsed', !collapsed);
+    });
+});
+
 function renderLots(panel, lots, showExpired) {
     var today = new Date().toISOString().slice(0, 10);
 

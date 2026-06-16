@@ -134,7 +134,7 @@ def _is_empty(value):
 
 
 @app.template_filter("fmt_num")
-def fmt_num(value, places=2):
+def fmt_num(value, places=11):
     """Round a number and strip float noise / trailing zeros.
     Usage: {{ qty | fmt_num }}  ->  48.980000000000004 becomes "48.98"; 5.0 becomes "5"."""
     if _is_empty(value):
@@ -238,7 +238,7 @@ from flask_limiter.util import get_remote_address
 limiter = Limiter(
     app=app,
     key_func=get_remote_address,
-    default_limits=["200 per day", "50 per hour"]
+    default_limits=["200 per day", "100 per hour"]
 )
 # ========================
 
@@ -273,7 +273,10 @@ def index():
     df_materials, _ = get_all_materials(page=None)
     df_low = get_low_stock_materials()
     _, batch_count = get_batches(page=None)
-    _, recipe_count = get_all_recipes(page=None)
+    df_recipes, _ = get_all_recipes(page=None)
+    # page=None returns None for the count, and df_recipes has one row per ingredient,
+    # so count distinct recipes by product name.
+    recipe_count = df_recipes['recipe_product_name'].nunique() if not df_recipes.empty else 0
     df_logs = view_logs()
 
     return render_template("index.html",

@@ -39,7 +39,7 @@
                 </div>
                 <div class="form-group">
                     <label>Quantity Needed *</label>
-                    <input type="number" step="0.01" name="quantity_{{ loop.index0 }}" value="{{ mat.quantity_needed }}" required>
+                    <input type="number" step="any" name="quantity_{{ loop.index0 }}" value="{{ mat.quantity_needed }}" required>
                 </div>
                 <button type="button" class="btn btn-danger" onclick="removeMaterial({{ loop.index0 | int }})" style="align-self:flex-end;padding:9px 12px;">&#x2715;</button>
             </div>
@@ -79,7 +79,7 @@ function addMaterial() {
         </div>
         <div class="form-group">
             <label>Quantity Needed</label>
-            <input type="number" step="0.01" name="quantity_${materialCount}" placeholder="e.g., 200">
+            <input type="number" step="any" name="quantity_${materialCount}" placeholder="e.g., 200">
         </div>
         <button type="button" class="btn btn-danger" onclick="removeMaterial(${materialCount})" style="align-self:flex-end;padding:9px 12px;">&#x2715;</button>
     `;

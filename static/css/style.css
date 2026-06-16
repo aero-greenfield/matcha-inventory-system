@@ -230,7 +230,8 @@ textarea:focus-visible,
 
 .main-content {
     grid-column: 2;
-    padding: 28px 32px;
+    /* fluid gutters: tight on small screens, roomy on large ones — no manual zoom needed */
+    padding: clamp(16px, 2.5vw, 28px) clamp(16px, 3vw, 32px);
     height: 100vh;
     overflow-y: auto;        /* main scrolls internally, not the page */
     background: var(--content-bg);
@@ -280,7 +281,7 @@ textarea:focus-visible,
     background: var(--card-bg);
     border: 1px solid var(--border);
     border-radius: 10px;
-    overflow: hidden;
+    overflow-x: auto;   /* wide tables scroll horizontally instead of forcing a page zoom */
 }
 
 .data-table {
@@ -867,4 +868,101 @@ h1 {
     color: var(--text-muted);
     white-space: nowrap;
     flex-shrink: 0;
+}
+
+/* ================================================
+   Responsive — adapt to every screen size so the
+   layout fits without manual browser zoom.
+
+   Strategy:
+     >1280px : full layout, content capped at --content-max
+     ≤1280px : sidebar narrows a little
+     ≤900px  : sidebar collapses off-canvas, a top bar
+               with a menu button appears, content goes
+               full width and multi-column blocks stack
+   ================================================ */
+
+/* Top bar (mobile) — hidden on desktop, shown when sidebar collapses */
+.topbar {
+    display: none;
+    align-items: center;
+    gap: 12px;
+    padding: 10px 16px;
+    background: var(--sidebar-bg);
+    border-bottom: 1px solid var(--sidebar-border);
+    position: sticky;
+    top: 0;
+    z-index: 90;
+}
+
+.topbar .brand-text { color: #fff; font-size: 14px; font-weight: 600; }
+
+.menu-toggle {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 38px;
+    height: 38px;
+    border: 1px solid var(--sidebar-border);
+    border-radius: 8px;
+    background: transparent;
+    color: var(--sidebar-text);
+    cursor: pointer;
+}
+
+/* Dim backdrop behind the open off-canvas sidebar */
+.sidebar-overlay {
+    display: none;
+    position: fixed;
+    inset: 0;
+    background: rgba(0,0,0,.45);
+    z-index: 99;
+}
+.sidebar-overlay.open { display: block; }
+
+/* Slightly narrower sidebar on smaller desktops/laptops */
+@media (max-width: 1280px) {
+    :root { --sidebar-width: 210px; }
+}
+
+/* --- Collapse to a single column with off-canvas sidebar --- */
+@media (max-width: 900px) {
+    .app-layout {
+        grid-template-columns: 1fr;   /* main takes the full width */
+        height: auto;
+        overflow: visible;
+    }
+
+    /* Sidebar slides in from the left, over the content */
+    .sidebar {
+        transform: translateX(-100%);
+        transition: transform 0.2s ease;
+        width: 260px;
+    }
+    .sidebar.open { transform: translateX(0); }
+
+    .topbar { display: flex; }
+
+    .main-content {
+        grid-column: 1;
+        height: auto;          /* let the page scroll normally on mobile */
+        overflow-y: visible;
+    }
+
+    /* Stacks two-up blocks into one column */
+    .form-row,
+    .dash-panels { grid-template-columns: 1fr; }
+
+    /* Forms stretch to the available width instead of a fixed 680px */
+    .form-card { max-width: 100%; }
+
+    /* Page headers (title + action buttons) wrap instead of overflowing */
+    .page-header { flex-wrap: wrap; gap: 12px; }
+}
+
+/* --- Phone tweaks --- */
+@media (max-width: 560px) {
+    .action-row { flex-wrap: wrap; }
+    .material-row { flex-wrap: wrap; }
+    .stat-card .stat-value { font-size: 24px; }
 }
