@@ -63,6 +63,7 @@ from services.batches import (
     get_all_batches_with_id, get_batch_by_id, mark_as_shipped, delete_batch,
     update_batch, update_batch_status, get_batch_materials,
     adjust_batch_material, check_batch_materials_stock,
+    get_batch_materials_for_reallocation,
 )
 from services.shipments import (
     create_shipment, get_all_shipments, get_shipment_by_id,
@@ -1534,16 +1535,23 @@ def change_batch_status(batch_id):
 @requires_auth
 def delete_batch_route(batch_id):
     
-    checked_ids = request.form.getlist('reallocate_material')  #getlist() only returns values for checked boxes, uncheck ones are excluded. 
-
     materials_to_reallocate = []
-    for mid in checked_ids: # for each material that was check, get id by just taking value of checkbox, quantity by 
-        #looking for form field with name qty_{material_id}, and material name by looking for form field with name matname_{material_id}. 
-        materials_to_reallocate.append({
-            'material_id': int(mid),
-            'quantity_used': float(request.form.get(f'qty_{mid}', 0)),
-            'material_name': request.form.get(f'matname_{mid}', '')
-        })
+
+    if request.form.get('reallocate_all'):
+        # Manage Batches deletes reallocate every material on the batch by default.
+        # Build the list straight from batch_materials so no per-material form fields
+        # are needed; the service reads the actual quantities back from the DB.
+        materials_to_reallocate = get_batch_materials_for_reallocation(batch_id)
+    else:
+        checked_ids = request.form.getlist('reallocate_material')  #getlist() only returns values for checked boxes, uncheck ones are excluded.
+
+        for mid in checked_ids: # for each material that was check, get id by just taking value of checkbox, quantity by
+            #looking for form field with name qty_{material_id}, and material name by looking for form field with name matname_{material_id}.
+            materials_to_reallocate.append({
+                'material_id': int(mid),
+                'quantity_used': float(request.form.get(f'qty_{mid}', 0)),
+                'material_name': request.form.get(f'matname_{mid}', '')
+            })
     
 
     

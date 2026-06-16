@@ -96,9 +96,10 @@
                         <div style="margin-left:auto;display:flex;gap:8px;align-items:center;">
                             <a href="/edit-batch/{{ row.batch_id | int }}" class="btn btn-secondary" style="padding:6px 14px;font-size:13px;">Edit</a>
                             <form method="POST" action="/edit-batch/{{ row.batch_id | int }}/delete"
-                                  onsubmit="return confirm('Delete batch {{ row.batch_number }}? Ingredients will NOT be returned to inventory — use Edit to reallocate first.')"
+                                  onsubmit="return confirm('Delete batch {{ row.batch_number }}? All ingredients used by this batch WILL be returned to inventory.')"
                                   style="display:inline;" autocomplete="off">
                                 <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                                <input type="hidden" name="reallocate_all" value="1">
                                 <button type="submit" class="btn btn-danger" style="padding:6px 14px;font-size:13px;">Delete</button>
                             </form>
                         </div>

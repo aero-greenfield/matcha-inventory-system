@@ -1036,6 +1036,37 @@ def get_batch_materials(batch_id):
         db.close()
 
 
+def get_batch_materials_for_reallocation(batch_id):
+    """
+    Returns the distinct materials on a batch as a list of dicts
+    {'material_id', 'material_name', 'quantity_used'} suitable for passing to
+    delete_batch(..., reallocate=True). One row per material (deduplicated across
+    lots) — delete_batch reads the real per-lot quantities back from the DB, so
+    quantity_used here is only the summed total for callers that want it.
+    """
+    db = get_db_connection()
+    cursor = db.cursor()
+
+    try:
+        db.execute(cursor, """
+            SELECT bm.material_id, rm.name AS material_name, SUM(bm.quantity_used)
+            FROM batch_materials bm
+            JOIN raw_materials rm ON bm.material_id = rm.material_id
+            WHERE bm.batch_id = %s
+            GROUP BY bm.material_id, rm.name
+        """, (batch_id,))
+        rows = cursor.fetchall()
+        return [
+            {'material_id': r[0], 'material_name': r[1], 'quantity_used': r[2]}
+            for r in rows
+        ]
+    except Exception as e:
+        logging.error(f"Error getting batch materials for reallocation: {e}")
+        return []
+    finally:
+        db.close()
+
+
 def adjust_batch_material(batch_id, new_quantities: dict, lot_selections: dict = None):
     """
     Updates batch_materials.quantity_used and applies delta to raw_materials.stock_level.
