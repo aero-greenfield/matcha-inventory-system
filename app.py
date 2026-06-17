@@ -2266,7 +2266,6 @@ def shipment_detail(shipment_id):
 @app.route('/shipments/create', methods=['POST'])
 @requires_auth
 def create_shipment_route():
-    import pandas as pd
     raw_ids = request.form.getlist('batch_ids')
     if not raw_ids:
         return render_template('error.html',
@@ -2274,20 +2273,31 @@ def create_shipment_route():
             message="Please select at least one batch to create a shipment.",
             back_link=True, back_link_url="/batches", back_link_label="Back to Batches"
         ), 400
+
+    # Each checked batch carries a qty_<batch_id> field — the amount of that batch to ship.
     try:
-        batch_ids = [int(bid) for bid in raw_ids]
-    except ValueError:
+        lines = {}
+        for bid in raw_ids:
+            batch_id = int(bid)
+            qty_raw = request.form.get(f'qty_{bid}', '').strip()
+            if not qty_raw:
+                raise ValueError(f"Enter a quantity for every selected batch (batch {batch_id} was blank).")
+            qty = float(qty_raw)
+            if qty <= 0:
+                raise ValueError(f"Quantity for batch {batch_id} must be greater than zero.")
+            lines[batch_id] = qty
+    except ValueError as e:
         return render_template('error.html',
             title="Invalid Input",
-            message="One or more batch IDs were invalid.",
-            back_link=True, back_link_url="/batches", back_link_label="Back to Batches"
+            message=str(e),
+            back_link=True, back_link_url="/shipments/new", back_link_label="Back to New Shipment"
         ), 400
 
     destination = request.form.get('destination', '').strip() or None
     notes = request.form.get('notes', '').strip() or None
 
     try:
-        shipment_id = create_shipment(batch_ids, destination=destination, notes=notes)
+        shipment_id = create_shipment(lines, destination=destination, notes=notes)
     except ValueError as e:
         return render_template('error.html',
             title="Cannot Create Shipment",
@@ -2323,7 +2333,40 @@ def edit_shipment(shipment_id):
             message=f"Shipment {shipment_id} does not exist.",
             back_link=True, back_link_url="/manage-shipments", back_link_label="Back to Manage Shipments"
         ), 404
-    return render_template('edit_shipment.html', shipment=data['shipment'])
+
+    # Build the line-editor rows: every batch currently on this shipment, plus any other batch with
+    # remaining quantity that could be added. max_qty is a UI hint — the service is the real guard.
+    candidates = {}
+    for b in data['batches']:
+        candidates[b['batch_id']] = {
+            'batch_id': b['batch_id'],
+            'batch_number': b['batch_number'],
+            'product_name': b['product_name'],
+            'current_qty': b['quantity'],
+            'max_qty': b['batch_quantity'],
+        }
+# make dic of shipment batch details. 
+    # This will be used to populate the line editor in the edit_shipment template.
+
+    pdf, _ = get_batches(page=None) # Get all batches for the line editor
+    for b in (pdf.to_dict('records') if not pdf.empty else []):
+        bid = b['batch_id']
+        if bid in candidates:
+            # picker remaining already subtracts this shipment's allocation → add it back for the cap
+            candidates[bid]['max_qty'] = (candidates[bid]['current_qty'] or 0) + (b['remaining'] or 0)
+        else:
+            candidates[bid] = {
+                'batch_id': bid,
+                'batch_number': b['batch_number'],
+                'product_name': b['product_name'],
+                'current_qty': 0,
+                'max_qty': b['remaining'],
+            }
+
+    return render_template('edit_shipment.html',
+        shipment=data['shipment'],
+        candidates=list(candidates.values()),
+    )
 
 
 @app.route('/edit-shipment/<int:shipment_id>/update', methods=['POST'])
@@ -2331,14 +2374,34 @@ def edit_shipment(shipment_id):
 def update_shipment_route(shipment_id):
     destination = request.form.get('destination', '').strip() or None
     notes = request.form.get('notes', '').strip() or None
+
+    # Collect the batch lines from qty_<batch_id> fields; blanks/zeros drop the line.
     try:
-        update_shipment(shipment_id, destination=destination, notes=notes)
+        lines = {}
+        for key, val in request.form.items():
+            if not key.startswith('qty_'):
+                continue
+            val = val.strip()
+            if not val:
+                continue
+            qty = float(val)
+            if qty > 0:
+                lines[int(key[4:])] = qty
+    except ValueError:
+        return render_template('error.html',
+            title="Invalid Input",
+            message="One or more quantities were not valid numbers.",
+            back_link=True, back_link_url=f"/edit-shipment/{shipment_id}", back_link_label="Back to Edit Shipment"
+        ), 400
+
+    try:
+        update_shipment(shipment_id, destination=destination, notes=notes, lines=lines)
     except ValueError as e:
         return render_template('error.html',
-            title="Shipment Not Found",
+            title="Cannot Update Shipment",
             message=str(e),
-            back_link=True, back_link_url="/manage-shipments", back_link_label="Back to Manage Shipments"
-        ), 404
+            back_link=True, back_link_url=f"/edit-shipment/{shipment_id}", back_link_label="Back to Edit Shipment"
+        ), 400
     flash('Shipment updated successfully', 'success')
     return redirect(url_for('manage_shipments'))
 
@@ -2354,7 +2417,7 @@ def delete_shipment_route(shipment_id):
             message=str(e),
             back_link=True, back_link_url="/manage-shipments", back_link_label="Back to Manage Shipments"
         ), 404
-    flash('Shipment deleted — batches returned to Ready', 'success')
+    flash('Shipment deleted — batch quantities returned to available stock', 'success')
     return redirect(url_for('manage_shipments'))
 
 

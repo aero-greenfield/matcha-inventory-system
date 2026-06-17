@@ -14,7 +14,7 @@
 <div class="page-header">
     <div>
         <h1>Create Shipment</h1>
-        <p class="page-subtitle">Select Ready batches to group into a single shipment</p>
+        <p class="page-subtitle">Select batches and the quantity of each to ship</p>
     </div>
     <a href="/shipments" class="btn btn-secondary">Cancel</a>
 </div>
@@ -46,7 +46,8 @@
                     <th>Batch #</th>
                     <th>Product</th>
                     <th>Type</th>
-                    <th>Qty</th>
+                    <th class="num">Remaining</th>
+                    <th>Ship qty</th>
                     <th>Completed</th>
                 </tr>
             </thead>
@@ -60,7 +61,12 @@
                         <span class="badge badge-{{ row['batch_type'] or 'standard' }}">{{ row['batch_type'] or 'standard' }}</span>
                         {% if row['is_organic'] %}<span class="badge badge-organic">Organic</span>{% endif %}
                     </td>
-                    <td>{{ row['quantity'] }}</td>
+                    <td class="num">{{ row['remaining'] }}</td>
+                    <td>
+                        <input type="number" class="ship-qty num" name="qty_{{ row['batch_id'] }}"
+                               min="0" max="{{ row['remaining'] }}" step="any" value="{{ row['remaining'] }}"
+                               style="width:90px;padding:6px 8px;border:1px solid var(--border-input);border-radius:6px;" disabled>
+                    </td>
                     <td>{{ row['date_completed'] or '—' }}</td>
                 </tr>
                 {% endfor %}
@@ -76,7 +82,7 @@
 </form>
 {% else %}
 <div class="table-container" style="padding:40px 24px;text-align:center;color:var(--text-muted);">
-    <p>No Ready batches available. <a href="/batches" style="color:var(--accent);">Go to Batches</a> to check production status.</p>
+    <p>No batches available to ship. <a href="/batches" style="color:var(--accent);">Go to Batches</a> to check production status.</p>
 </div>
 {% endif %}
 
@@ -85,6 +91,12 @@
     var submitBtn = document.getElementById('submit-shipment');
     var countLabel = document.getElementById('selection-count');
     var selectAll = document.getElementById('select-all');
+
+    function syncRow(cb) {
+        // The ship-qty input lives in the same row as the checkbox; enable it only when checked.
+        var qtyInput = cb.closest('tr').querySelector('.ship-qty');
+        if (qtyInput) qtyInput.disabled = !cb.checked;
+    }
 
     function updateState() {
         var checked = document.querySelectorAll('.batch-select:checked').length;
@@ -100,13 +112,14 @@
     }
 
     document.querySelectorAll('.batch-select').forEach(function(cb) {
-        cb.addEventListener('change', updateState);
+        cb.addEventListener('change', function() { syncRow(cb); updateState(); });
     });
 
     if (selectAll) {
         selectAll.addEventListener('change', function() {
             document.querySelectorAll('.batch-select').forEach(function(cb) {
                 cb.checked = selectAll.checked;
+                syncRow(cb);
             });
             updateState();
         });

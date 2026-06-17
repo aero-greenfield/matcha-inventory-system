@@ -140,6 +140,21 @@ def create_database():
 
                    ) """)
 
+    # Partial-batch shipments — junction table carrying the quantity of a batch on a shipment.
+    # Replaces the one-batch-per-shipment model of batches.shipment_id: a batch can now appear on
+    # several shipments, each row recording how much of it shipped. A batch's remaining quantity is
+    # derived (batches.quantity - SUM(shipment_batches.quantity))
+    cursor.execute("""
+    CREATE TABLE IF NOT EXISTS shipment_batches(
+                   shipment_batch_id INTEGER PRIMARY KEY AUTOINCREMENT,
+                   shipment_id INTEGER NOT NULL,
+                   batch_id INTEGER NOT NULL,
+                   quantity REAL NOT NULL,
+                   FOREIGN KEY (shipment_id) REFERENCES shipments(shipment_id),
+                   FOREIGN KEY (batch_id) REFERENCES batches(batch_id)
+                   )
+                   """)
+
     #Audit Log
     cursor.execute("""
     CREATE TABLE IF NOT EXISTS audit_log(
@@ -158,6 +173,8 @@ def create_database():
     cursor.execute("CREATE INDEX IF NOT EXISTS idx_recipe_mat_recipe ON recipe_materials(recipe_id)")
     cursor.execute("CREATE INDEX IF NOT EXISTS idx_bm_lot_id         ON batch_materials(lot_id)")
     cursor.execute("CREATE INDEX IF NOT EXISTS idx_bm_material_id    ON batch_materials(material_id)")
+    cursor.execute("CREATE INDEX IF NOT EXISTS idx_sb_shipment_id    ON shipment_batches(shipment_id)")
+    cursor.execute("CREATE INDEX IF NOT EXISTS idx_sb_batch_id       ON shipment_batches(batch_id)")
 
     # Save all table creations to the database
     conn.commit()

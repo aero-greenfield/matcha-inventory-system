@@ -313,6 +313,31 @@ def init_database():
     
     print("  ✅ batch_materials table created")
 
+   # ========================================
+   # TABLE 6b: shipment_batches (partial-batch shipments)
+   # ========================================
+   # Junction carrying the quantity of a batch on a shipment. A batch can appear on several
+   # shipments; remaining is derived (batches.quantity - SUM(shipment_batches.quantity)).
+    if DATABASE_URL:
+        cursor.execute("""
+        CREATE TABLE IF NOT EXISTS shipment_batches(
+            shipment_batch_id SERIAL PRIMARY KEY,
+            shipment_id INTEGER NOT NULL REFERENCES shipments(shipment_id),
+            batch_id INTEGER NOT NULL REFERENCES batches(batch_id),
+            quantity DOUBLE PRECISION NOT NULL
+        )
+        """)
+    else:
+        cursor.execute("""
+        CREATE TABLE IF NOT EXISTS shipment_batches(
+            shipment_batch_id INTEGER PRIMARY KEY AUTOINCREMENT,
+            shipment_id INTEGER NOT NULL REFERENCES shipments(shipment_id),
+            batch_id INTEGER NOT NULL REFERENCES batches(batch_id),
+            quantity REAL NOT NULL
+        )
+        """)
+
+    print("  ✅ shipment_batches table created")
 
 
    #=============================
@@ -395,6 +420,8 @@ def upgrade_schema():
 
     cursor.execute("CREATE INDEX IF NOT EXISTS idx_shipments_date        ON shipments(date_shipped)")
     cursor.execute("CREATE INDEX IF NOT EXISTS idx_batches_shipment_id   ON batches(shipment_id)")
+    cursor.execute("CREATE INDEX IF NOT EXISTS idx_sb_shipment_id        ON shipment_batches(shipment_id)")
+    cursor.execute("CREATE INDEX IF NOT EXISTS idx_sb_batch_id           ON shipment_batches(batch_id)")
     conn.commit()
     conn.close()
     print("  ✅ Indexes applied")

@@ -98,7 +98,7 @@
                     <th>Batch #</th>
                     <th>Product</th>
                     <th>Type</th>
-                    <th>Qty</th>
+                    <th class="num">Available</th>
                     <th>Completed</th>
                     {# ADDED: cost-of-material feature — total material cost for this batch. #}
                     <th>Cost</th>
@@ -117,8 +117,11 @@
                     <td><strong>{{ row['product_name'] }}</strong></td>
                     <td><span class="badge badge-{{ row['batch_type'] or 'standard' }}">{{ row['batch_type'] or 'standard' }}</span>
                         {# ADDED: organic feature — derived label, shown only when all edible materials are organic. #}
-                        {% if row['is_organic'] %}<span class="badge badge-organic">Organic</span>{% endif %}</td>
-                    <td>{{ row['quantity'] }}</td>
+                        {% if row['is_organic'] %}<span class="badge badge-organic">Organic</span>{% endif %}
+                        {# partial-batch shipments — flag batches with some quantity already shipped. #}
+                        {% if row['remaining'] < row['quantity'] %}<span class="badge badge-partial">Partially Shipped</span>{% endif %}</td>
+                    {# partial-batch shipments — show remaining available, with produced total when partly shipped. #}
+                    <td class="num">{{ row['remaining'] }}{% if row['remaining'] < row['quantity'] %}<span style="color:var(--text-faint);"> / {{ row['quantity'] }}</span>{% endif %}</td>
                     <td>{{ row['date_completed'] or '—' }}</td>
                     {# ADDED: cost-of-material feature — show total batch cost or dash if no cost data. #}
                     <td>{% if row['batch_cost'] %}${{ '%.2f'|format(row['batch_cost']) }}{% else %}—{% endif %}</td>
@@ -143,8 +146,11 @@
                     <td><strong>{{ row['product_name'] }}</strong></td>
                     <td><span class="badge badge-mix">component</span>
                         {# ADDED: organic feature — derived label, shown only when all edible materials are organic. #}
-                        {% if row['is_organic'] %}<span class="badge badge-organic">Organic</span>{% endif %}</td>
-                    <td>{{ row['quantity'] }}</td>
+                        {% if row['is_organic'] %}<span class="badge badge-organic">Organic</span>{% endif %}
+                        {# partial-batch shipments — flag batches with some quantity already shipped. #}
+                        {% if row['remaining'] < row['quantity'] %}<span class="badge badge-partial">Partially Shipped</span>{% endif %}</td>
+                    {# partial-batch shipments — show remaining available, with produced total when partly shipped. #}
+                    <td class="num">{{ row['remaining'] }}{% if row['remaining'] < row['quantity'] %}<span style="color:var(--text-faint);"> / {{ row['quantity'] }}</span>{% endif %}</td>
                     <td>{{ row['date_completed'] or '—' }}</td>
                     {# ADDED: cost-of-material feature — show total batch cost or dash if no cost data. #}
                     <td>{% if row['batch_cost'] %}${{ '%.2f'|format(row['batch_cost']) }}{% else %}—{% endif %}</td>

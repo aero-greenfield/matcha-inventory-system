@@ -11,7 +11,7 @@
     </div>
 </div>
 
-<div class="table-container" style="padding:24px;max-width:520px;">
+<div class="table-container" style="padding:24px;max-width:720px;">
     <form method="POST" action="/edit-shipment/{{ shipment['shipment_id'] }}/update" autocomplete="off">
         <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
 
@@ -38,6 +38,39 @@
             <textarea id="notes" name="notes" rows="3"
                       placeholder="Optional notes"
                       style="width:100%;padding:8px 12px;border:1px solid var(--border);border-radius:6px;font-size:14px;box-sizing:border-box;resize:vertical;">{{ shipment['notes'] if shipment['notes'] else '' }}</textarea>
+        </div>
+
+        <div style="margin-bottom:24px;">
+            <label style="display:block;font-size:13px;font-weight:600;margin-bottom:6px;">Batches on this shipment</label>
+            <p style="margin:0 0 10px;font-size:12px;color:var(--text-muted);">
+                Set the quantity of each batch to ship. Set a quantity to <strong>0</strong> (or blank) to remove it.
+                Available is the most you can ship of that batch.
+            </p>
+            <table class="data-table">
+                <thead>
+                    <tr>
+                        <th>Batch #</th>
+                        <th>Product</th>
+                        <th class="num">Available</th>
+                        <th>Ship qty</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for c in candidates %}
+                    <tr>
+                        <td>{{ c['batch_number'] or '—' }}</td>
+                        <td><strong>{{ c['product_name'] }}</strong></td>
+                        <td class="num">{{ c['max_qty'] }}</td>
+                        <td>
+                            <input type="number" class="num" name="qty_{{ c['batch_id'] }}"
+                                   min="0" max="{{ c['max_qty'] }}" step="any"
+                                   value="{{ c['current_qty'] if c['current_qty'] else '' }}" placeholder="0"
+                                   style="width:90px;padding:6px 8px;border:1px solid var(--border-input);border-radius:6px;">
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
         </div>
 
         <div style="display:flex;gap:10px;">

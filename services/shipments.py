@@ -5,6 +5,7 @@ import logging
 import pandas as pd
 
 _UNSET = object()
+_EPS = 1e-9  # float tolerance when comparing allocated REAL quantities against a batch total
 
 
 def _generate_shipment_number(cursor, db) -> str:
@@ -14,23 +15,93 @@ def _generate_shipment_number(cursor, db) -> str:
     return f"SHP-{today}-{count+1:03d}"
 
 
-def create_shipment(batch_ids: list, destination=None, notes=None):
+def _batch_remaining(cursor, db, batch_id, exclude_shipment_id=None):
     """
-    Groups batch_ids into one shipment. All batches must be status='Ready'.
+    Remaining unshipped quantity of a batch = produced quantity - SUM of its allocations.
+    Pass exclude_shipment_id to ignore this shipment's own current allocation (used when
+    re-validating an edit, so a line can keep/raise its quantity up to the true remaining).
+    Returns None if the batch does not exist.
+    """
+    db.execute(cursor, "SELECT quantity FROM batches WHERE batch_id = %s", (batch_id,))
+    row = cursor.fetchone()
+    if not row:
+        return None
+    total = row[0] or 0
+
+    if exclude_shipment_id is None:
+        db.execute(cursor, "SELECT COALESCE(SUM(quantity), 0) FROM shipment_batches WHERE batch_id = %s", (batch_id,))
+    else:
+        db.execute(cursor,
+                   "SELECT COALESCE(SUM(quantity), 0) FROM shipment_batches WHERE batch_id = %s AND shipment_id != %s",
+                   (batch_id, exclude_shipment_id))
+    allocated = cursor.fetchone()[0] or 0
+    return total - allocated
+
+
+def _recompute_batch_status(cursor, db, batch_id):
+    """
+    Recompute a batch's shipment state from its allocations. Status is derived, not manually flipped:
+      nothing allocated      -> 'Ready'
+      0 < allocated < total  -> 'Partially Shipped'
+      allocated >= total     -> 'Shipped'
+    date_shipped becomes the latest date of the shipments it's on (NULL when none).
+    Guarded to only touch produced batches — a 'Planned' batch (deferred production) is never
+    changed by shipment logic.
+    """
+    db.execute(cursor, """
+        UPDATE batches SET
+            status = CASE
+                WHEN (SELECT COALESCE(SUM(quantity), 0) FROM shipment_batches WHERE batch_id = %s) <= 0
+                    THEN 'Ready'
+                WHEN (SELECT COALESCE(SUM(quantity), 0) FROM shipment_batches WHERE batch_id = %s) < quantity
+                    THEN 'Partially Shipped'
+                ELSE 'Shipped'
+            END,
+            date_shipped = (SELECT MAX(s.date_shipped)
+                            FROM shipment_batches sb
+                            JOIN shipments s ON sb.shipment_id = s.shipment_id
+                            WHERE sb.batch_id = %s)
+        WHERE batch_id = %s AND status IN ('Ready', 'Partially Shipped', 'Shipped')
+    """, (batch_id, batch_id, batch_id, batch_id))
+
+
+def create_shipment(lines, destination=None, notes=None):
+    """
+    Creates one shipment drawing the given quantities from one or more batches.
+    `lines` is a dict {batch_id: quantity}. Each batch must be produced (status 'Ready' or
+    'Partially Shipped') and the requested quantity must not exceed its remaining quantity.
     Returns the new shipment_id on success, None on unexpected error.
-    Raises ValueError if any batch is not found or not Ready.
+    Raises ValueError on bad input (batch missing/not shippable/over-allocated).
     """
+    if not lines:
+        raise ValueError("A shipment must include at least one batch.")
+
     db = get_db_connection()
     cursor = db.cursor()
     try:
-        # Read pass — validate every batch before writing anything
-        for batch_id in batch_ids:
+        # Validation pass — no writes until every line checks out.
+        normalized = {}
+        for batch_id, qty in lines.items():
+            batch_id = int(batch_id)
+            qty = float(qty)
+            if qty <= 0:
+                continue  # skip blank/zero lines
+
             db.execute(cursor, "SELECT status FROM batches WHERE batch_id = %s", (batch_id,))
             row = cursor.fetchone()
             if not row:
                 raise ValueError(f"Batch {batch_id} not found.")
-            if row[0] != 'Ready':
-                raise ValueError(f"Batch {batch_id} has status '{row[0]}' — only Ready batches can be shipped.")
+            if row[0] not in ('Ready', 'Partially Shipped'):
+                raise ValueError(f"Batch {batch_id} has status '{row[0]}' — only produced batches with "
+                                 f"remaining quantity can be shipped.")
+
+            remaining = _batch_remaining(cursor, db, batch_id)
+            if qty > remaining + _EPS:
+                raise ValueError(f"Batch {batch_id}: requested {qty} exceeds remaining {remaining}.")
+            normalized[batch_id] = qty
+
+        if not normalized:
+            raise ValueError("A shipment must include at least one batch with a positive quantity.")
 
         today = datetime.now().strftime('%Y-%m-%d')
         shipment_number = _generate_shipment_number(cursor, db)
@@ -41,15 +112,15 @@ def create_shipment(batch_ids: list, destination=None, notes=None):
         """, (shipment_number, today, destination, notes))
         shipment_id = db.get_last_insert_id(cursor)
 
-        for batch_id in batch_ids:
+        for batch_id, qty in normalized.items():
             db.execute(cursor, """
-                UPDATE batches
-                SET status = 'Shipped', date_shipped = %s, shipment_id = %s
-                WHERE batch_id = %s
-            """, (today, shipment_id, batch_id))
+                INSERT INTO shipment_batches (shipment_id, batch_id, quantity)
+                VALUES (%s, %s, %s)
+            """, (shipment_id, batch_id, qty))
+            _recompute_batch_status(cursor, db, batch_id)
 
         db.commit()
-        log_action('shipment_created', f"shipment_id={shipment_id}, number={shipment_number}, batches={batch_ids}")
+        log_action('shipment_created', f"shipment_id={shipment_id}, number={shipment_number}, lines={normalized}")
         return shipment_id
 
     except ValueError:
@@ -67,7 +138,7 @@ def create_shipment(batch_ids: list, destination=None, notes=None):
 
 def get_all_shipments(page=None, per_page=50):
     """
-    Returns (DataFrame, total) of all shipments with batch count.
+    Returns (DataFrame, total) of all shipments with the number of batch lines on each.
     page=None returns all records without LIMIT (used by /manage-shipments).
     """
     db = get_db_connection()
@@ -76,9 +147,9 @@ def get_all_shipments(page=None, per_page=50):
     columns = ['shipment_id', 'shipment_number', 'date_shipped', 'destination', 'notes', 'batch_count']
     base_query = """
     SELECT s.shipment_id, s.shipment_number, s.date_shipped, s.destination, s.notes,
-           COUNT(b.batch_id) AS batch_count
+           COUNT(sb.shipment_batch_id) AS batch_count
     FROM shipments s
-    LEFT JOIN batches b ON b.shipment_id = s.shipment_id
+    LEFT JOIN shipment_batches sb ON sb.shipment_id = s.shipment_id
     GROUP BY s.shipment_id, s.shipment_number, s.date_shipped, s.destination, s.notes
     ORDER BY s.shipment_id DESC
     """
@@ -108,6 +179,8 @@ def get_all_shipments(page=None, per_page=50):
 def get_shipment_by_id(shipment_id):
     """
     Returns {'shipment': dict, 'batches': list of dicts} or None if not found.
+    Each batch line carries `quantity` (amount shipped on THIS shipment) plus `batch_quantity`
+    (the batch's produced total, for reference).
     """
     db = get_db_connection()
     cursor = db.cursor()
@@ -130,19 +203,24 @@ def get_shipment_by_id(shipment_id):
         }
 
         db.execute(cursor, """
-            SELECT batch_id, batch_number, product_name, quantity, date_completed, expiration_date
-            FROM batches WHERE shipment_id = %s
-            ORDER BY batch_id ASC
+            SELECT sb.shipment_batch_id, b.batch_id, b.batch_number, b.product_name,
+                   sb.quantity, b.quantity, b.date_completed, b.expiration_date
+            FROM shipment_batches sb
+            JOIN batches b ON sb.batch_id = b.batch_id
+            WHERE sb.shipment_id = %s
+            ORDER BY b.batch_id ASC
         """, (shipment_id,))
         batch_rows = cursor.fetchall()
         batches = [
             {
-                'batch_id': r[0],
-                'batch_number': r[1],
-                'product_name': r[2],
-                'quantity': r[3],
-                'date_completed': r[4],
-                'expiration_date': r[5],
+                'shipment_batch_id': r[0],
+                'batch_id': r[1],
+                'batch_number': r[2],
+                'product_name': r[3],
+                'quantity': r[4],         # amount shipped on this shipment
+                'batch_quantity': r[5],   # batch produced total
+                'date_completed': r[6],
+                'expiration_date': r[7],
             }
             for r in batch_rows
         ]
@@ -157,33 +235,84 @@ def get_shipment_by_id(shipment_id):
         db.close()
 
 
-def update_shipment(shipment_id, destination=_UNSET, notes=_UNSET):
+def update_shipment(shipment_id, destination=_UNSET, notes=_UNSET, lines=_UNSET):
     """
-    Updates editable fields on a shipment. Uses sentinel so None can explicitly clear a field.
-    Returns True on success, None on exception. Raises ValueError if shipment not found.
+    Updates a shipment's editable fields and/or its batch lines.
+    - destination/notes use the _UNSET sentinel so None can explicitly clear a field.
+    - lines (dict {batch_id: quantity}), when provided, replaces the shipment's batch lines:
+      batches absent from the dict (or with qty<=0) are removed, others are added/adjusted.
+      Each batch's status/remaining is recomputed afterwards.
+    Returns True on success, None on exception. Raises ValueError on bad input.
     """
     db = get_db_connection()
     cursor = db.cursor()
 
-    fields = {}
-    if destination is not _UNSET:
-        fields['destination'] = destination
-    if notes is not _UNSET:
-        fields['notes'] = notes
-
-    if not fields:
-        return True
-
     try:
-        set_clause = ', '.join(f"{k} = %s" for k in fields)
-        params = (*fields.values(), shipment_id)
-        db.execute(cursor, f"UPDATE shipments SET {set_clause} WHERE shipment_id = %s", params)
-
-        if cursor.rowcount == 0:
+        db.execute(cursor, "SELECT shipment_id FROM shipments WHERE shipment_id = %s", (shipment_id,))
+        if not cursor.fetchone():
             raise ValueError(f"Shipment {shipment_id} not found — nothing updated.")
 
+        # --- field updates ---
+        fields = {}
+        if destination is not _UNSET:
+            fields['destination'] = destination
+        if notes is not _UNSET:
+            fields['notes'] = notes
+        if fields:
+            set_clause = ', '.join(f"{k} = %s" for k in fields)
+            params = (*fields.values(), shipment_id)
+            db.execute(cursor, f"UPDATE shipments SET {set_clause} WHERE shipment_id = %s", params)
+
+        # --- line edits ---
+        if lines is not _UNSET:
+            db.execute(cursor,
+                       "SELECT batch_id, shipment_batch_id FROM shipment_batches WHERE shipment_id = %s",
+                       (shipment_id,))
+            existing = {r[0]: r[1] for r in cursor.fetchall()}
+
+            new_lines = {}
+            for batch_id, qty in lines.items():
+                qty = float(qty)
+                if qty <= 0:
+                    continue
+                new_lines[int(batch_id)] = qty
+
+            if not new_lines:
+                raise ValueError("A shipment must keep at least one batch line — delete the shipment instead.")
+
+            # Validate every new/changed line against remaining (excluding this shipment's own allocation).
+            for batch_id, qty in new_lines.items():
+                remaining = _batch_remaining(cursor, db, batch_id, exclude_shipment_id=shipment_id)
+                if remaining is None:
+                    raise ValueError(f"Batch {batch_id} not found.")
+                if qty > remaining + _EPS:
+                    raise ValueError(f"Batch {batch_id}: requested {qty} exceeds remaining {remaining}.")
+
+            affected = set(existing) | set(new_lines)
+
+            # Remove lines no longer present.
+            for batch_id, sbid in existing.items():
+                if batch_id not in new_lines:
+                    db.execute(cursor, "DELETE FROM shipment_batches WHERE shipment_batch_id = %s", (sbid,))
+
+            # Add or adjust the rest.
+            for batch_id, qty in new_lines.items():
+                if batch_id in existing:
+                    db.execute(cursor, "UPDATE shipment_batches SET quantity = %s WHERE shipment_batch_id = %s",
+                               (qty, existing[batch_id]))
+                else:
+                    db.execute(cursor, "INSERT INTO shipment_batches (shipment_id, batch_id, quantity) VALUES (%s, %s, %s)",
+                               (shipment_id, batch_id, qty))
+
+            for batch_id in affected:
+                _recompute_batch_status(cursor, db, batch_id)
+
+        if not fields and lines is _UNSET:
+            return True
+
         db.commit()
-        log_action('shipment_updated', f"shipment_id={shipment_id}, fields={list(fields.keys())}")
+        log_action('shipment_updated',
+                   f"shipment_id={shipment_id}, fields={list(fields.keys())}, lines_changed={lines is not _UNSET}")
         return True
 
     except ValueError:
@@ -201,23 +330,26 @@ def update_shipment(shipment_id, destination=_UNSET, notes=_UNSET):
 
 def delete_shipment(shipment_id):
     """
-    Resets all Shipped batches in the shipment back to Ready, then deletes the shipment.
+    Deletes a shipment and its batch lines, then recomputes each affected batch's status/remaining
+    (a batch returns toward 'Ready' if it has no other allocations).
     Returns True on success, None on exception. Raises ValueError if shipment not found.
     """
     db = get_db_connection()
     cursor = db.cursor()
 
     try:
-        db.execute(cursor, """
-            UPDATE batches
-            SET status = 'Ready', date_shipped = NULL, shipment_id = NULL
-            WHERE shipment_id = %s AND status = 'Shipped'
-        """, (shipment_id,))
+        db.execute(cursor, "SELECT shipment_id FROM shipments WHERE shipment_id = %s", (shipment_id,))
+        if not cursor.fetchone():
+            raise ValueError(f"Shipment {shipment_id} not found — nothing deleted.")
 
+        db.execute(cursor, "SELECT DISTINCT batch_id FROM shipment_batches WHERE shipment_id = %s", (shipment_id,))
+        affected = [r[0] for r in cursor.fetchall()]
+
+        db.execute(cursor, "DELETE FROM shipment_batches WHERE shipment_id = %s", (shipment_id,))
         db.execute(cursor, "DELETE FROM shipments WHERE shipment_id = %s", (shipment_id,))
 
-        if cursor.rowcount == 0:
-            raise ValueError(f"Shipment {shipment_id} not found — nothing deleted.")
+        for batch_id in affected:
+            _recompute_batch_status(cursor, db, batch_id)
 
         db.commit()
         log_action('shipment_deleted', f"shipment_id={shipment_id}")

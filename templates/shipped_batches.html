@@ -56,7 +56,7 @@
 <div class="page-header">
     <div>
         <h1>Shipped Batches</h1>
-        <p class="page-subtitle">{{ count }} batch(es) shipped</p>
+        <p class="page-subtitle">{{ count }} shipped line(s)</p>
     </div>
     <a href="/export/shipped-batches-excel" class="btn btn-secondary">&#8595; Export Excel</a>
 </div>
@@ -76,7 +76,7 @@
                 <th>Batch #</th>
                 <th>Product</th>
                 <th>Type</th>
-                <th>Qty</th>
+                <th class="num">Qty Shipped</th>
                 <th>Completed</th>
                 <th>Shipped</th>
                 <th>Shipment #</th>
@@ -100,7 +100,8 @@
                     {# ADDED: organic feature — derived label, shown only when all edible materials are organic. #}
                     {% if row['is_organic'] %}<span class="badge badge-organic">Organic</span>{% endif %}
                 </td>
-                <td>{{ row['quantity'] }}</td>
+                {# partial-batch shipments — quantity is the amount shipped on this shipment (of the batch total). #}
+                <td class="num">{{ row['quantity'] }}<span style="color:var(--text-faint);"> / {{ row['batch_quantity'] }}</span></td>
                 <td>{{ row['date_completed'] if row['date_completed'] and row['date_completed'] != 'nan' else '—' }}</td>
                 <td>{{ row['date_shipped'] if row['date_shipped'] and row['date_shipped'] != 'nan' else '—' }}</td>
                 <td>
@@ -112,9 +113,11 @@
                 </td>
                 <td>{{ row['notes'] if row['notes'] and row['notes'] != 'nan' else '—' }}</td>
                 <td>{{ row['expiration_date'] if row['expiration_date'] and row['expiration_date'] != 'nan' else '—' }}</td>
-                <td><button class="materials-toggle" data-batch-id="{{ row['batch_id'] }}">&#9654; Materials</button></td>
+                {# A batch can appear on several shipments, so key the expandable row by shipment+batch
+                   to keep element IDs unique; the materials fetch is still per batch. #}
+                <td><button class="materials-toggle" data-batch-id="{{ row['batch_id'] }}" data-row-key="{{ row['shipment_id'] }}-{{ row['batch_id'] }}">&#9654; Materials</button></td>
             </tr>
-            <tr class="materials-row" id="materials-{{ row['batch_id'] }}" style="display:none;">
+            <tr class="materials-row" id="materials-{{ row['shipment_id'] }}-{{ row['batch_id'] }}" style="display:none;">
                 <td colspan="10">
                     <div class="materials-detail">Loading...</div>
                 </td>
@@ -149,7 +152,7 @@
 document.querySelectorAll('.materials-toggle').forEach(function(btn) {
   btn.addEventListener('click', function() {
     var batchId = this.dataset.batchId;
-    var row = document.getElementById('materials-' + batchId);
+    var row = document.getElementById('materials-' + this.dataset.rowKey);
     var detail = row.querySelector('.materials-detail');
     var isOpen = row.style.display !== 'none';
 

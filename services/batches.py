@@ -258,7 +258,7 @@ def get_batches(page=None, per_page=50):
     # CHANGED: organic feature — added derived is_organic flag (see subquery below).
     # ADDED: cost-of-material feature — batch_cost column added to columns list.
     columns = ['batch_id', 'batch_number', 'product_name', 'batch_type', 'quantity',
-               'date_completed', 'notes', 'expiration_date', 'is_organic', 'batch_cost']
+               'date_completed', 'notes', 'expiration_date', 'is_organic', 'batch_cost', 'remaining']
     # ADDED: organic feature — is_organic is a read-only derived property, NOT stored.
     #        A batch is organic when it used at least one edible material and every edible
     #        material it used is organic (non-edible materials are ignored). Computed via a
@@ -278,9 +278,14 @@ def get_batches(page=None, per_page=50):
             WHERE bm.batch_id = batches.batch_id) AS is_organic,
            (SELECT COALESCE(SUM(bm2.quantity_used * COALESCE(bm2.cost_per_unit, 0)), 0) -- cost-of-material feature
             FROM batch_materials bm2
-            WHERE bm2.batch_id = batches.batch_id) AS batch_cost
+            WHERE bm2.batch_id = batches.batch_id) AS batch_cost,
+           -- partial-batch shipments: remaining = produced quantity minus what's already allocated to
+           -- shipments. The shipment picker shows/caps against this, not the produced total.
+           (quantity - (SELECT COALESCE(SUM(sb.quantity), 0)
+                        FROM shipment_batches sb
+                        WHERE sb.batch_id = batches.batch_id)) AS remaining
     FROM batches
-    WHERE status = 'Ready'
+    WHERE status IN ('Ready', 'Partially Shipped')
     ORDER BY batch_id DESC
     """
 
@@ -292,7 +297,7 @@ def get_batches(page=None, per_page=50):
             return (pd.DataFrame(result, columns=columns), None)
 
         # ADDED: count query so the route can compute total_pages
-        db.execute(cursor, "SELECT COUNT(*) FROM batches WHERE status = 'Ready'")
+        db.execute(cursor, "SELECT COUNT(*) FROM batches WHERE status IN ('Ready', 'Partially Shipped')")
         total = cursor.fetchone()[0]
 
         # ADDED: LIMIT/OFFSET for pagination
@@ -316,13 +321,16 @@ def get_batches_shipped(page=None, per_page=50):
 
     # ADDED: converted from pd.read_sql_query to cursor approach for LIMIT/OFFSET support
     # CHANGED: organic feature — added derived is_organic flag (same correlated subquery as get_batches).
-    # CHANGED: shipments feature — LEFT JOIN shipments to surface shipment_id and shipment_number.
-    columns = ['batch_id', 'batch_number', 'product_name', 'quantity',
+    # CHANGED: partial-batch shipments — driven off shipment_batches, so this returns ONE ROW PER
+    #          ALLOCATION (a batch split across two shipments yields two rows). `quantity` is the
+    #          amount shipped on that shipment (not the batch total), and shipment_id/number/date come
+    #          from the joined shipment. `batch_quantity` carries the produced total for reference.
+    columns = ['batch_id', 'batch_number', 'product_name', 'quantity', 'batch_quantity',
                'date_completed', 'date_shipped', 'notes', 'expiration_date', 'is_organic',
                'shipment_id', 'shipment_number']
     base_query = """
-    SELECT b.batch_id, b.batch_number, b.product_name, b.quantity,
-           b.date_completed, b.date_shipped, b.notes, b.expiration_date,
+    SELECT b.batch_id, b.batch_number, b.product_name, sb.quantity, b.quantity,
+           b.date_completed, s.date_shipped, b.notes, b.expiration_date,
            (SELECT CASE
                      WHEN COUNT(CASE WHEN rm.is_edible THEN 1 END) > 0
                       AND COUNT(CASE WHEN rm.is_edible AND NOT rm.is_organic THEN 1 END) = 0
@@ -330,12 +338,12 @@ def get_batches_shipped(page=None, per_page=50):
             FROM batch_materials bm
             JOIN raw_materials rm ON bm.material_id = rm.material_id
             WHERE bm.batch_id = b.batch_id) AS is_organic,
-           b.shipment_id,
+           s.shipment_id,
            s.shipment_number
-    FROM batches b
-    LEFT JOIN shipments s ON b.shipment_id = s.shipment_id
-    WHERE b.status = 'Shipped'
-    ORDER BY b.date_shipped DESC
+    FROM shipment_batches sb
+    JOIN batches b ON sb.batch_id = b.batch_id
+    JOIN shipments s ON sb.shipment_id = s.shipment_id
+    ORDER BY s.date_shipped DESC, b.batch_id DESC
     """
 
     try:
@@ -346,7 +354,7 @@ def get_batches_shipped(page=None, per_page=50):
             return (pd.DataFrame(result, columns=columns), None)
 
         # ADDED: count query so the route can compute total_pages
-        db.execute(cursor, "SELECT COUNT(*) FROM batches WHERE status = 'Shipped'")
+        db.execute(cursor, "SELECT COUNT(*) FROM shipment_batches")
         total = cursor.fetchone()[0]
 
         # ADDED: LIMIT/OFFSET for pagination

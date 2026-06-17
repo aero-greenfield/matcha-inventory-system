@@ -771,6 +771,9 @@ h1 {
 .badge-standard { background: #d1fae5; color: #065f46; }
 .badge-mix      { background: #dbeafe; color: #1e40af; }
 .badge-finished { background: #ede9fe; color: #5b21b6; }
+/* partial-batch shipments: a batch some of which has shipped, with quantity still available.
+   Uses the tokenized "low" (amber) palette to signal an in-between/attention state. */
+.badge-partial  { background: var(--badge-low-bg); color: var(--badge-low-text); }
 
 /* ================================================
    Tab bar — status tabs on batches page
