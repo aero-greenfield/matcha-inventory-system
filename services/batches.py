@@ -258,7 +258,7 @@ def get_batches(page=None, per_page=50):
     # CHANGED: organic feature — added derived is_organic flag (see subquery below).
     # ADDED: cost-of-material feature — batch_cost column added to columns list.
     columns = ['batch_id', 'batch_number', 'product_name', 'batch_type', 'quantity',
-               'date_completed', 'notes', 'expiration_date', 'is_organic', 'batch_cost', 'remaining']
+               'date_completed', 'notes', 'expiration_date', 'is_organic', 'batch_cost', 'remaining', 'product_unit']
     # ADDED: organic feature — is_organic is a read-only derived property, NOT stored.
     #        A batch is organic when it used at least one edible material and every edible
     #        material it used is organic (non-edible materials are ignored). Computed via a
@@ -283,7 +283,11 @@ def get_batches(page=None, per_page=50):
            -- shipments. The shipment picker shows/caps against this, not the produced total.
            (quantity - (SELECT COALESCE(SUM(sb.quantity), 0)
                         FROM shipment_batches sb
-                        WHERE sb.batch_id = batches.batch_id)) AS remaining
+                        WHERE sb.batch_id = batches.batch_id)) AS remaining,
+           -- product unit-of-measurement, looked up from the matching recipe by name so the
+           -- list can show the unit next to the quantity. NULL when no recipe matches.
+           (SELECT product_unit FROM recipes
+            WHERE LOWER(recipes.product_name) = LOWER(batches.product_name) LIMIT 1) AS product_unit
     FROM batches
     WHERE status IN ('Ready', 'Partially Shipped')
     ORDER BY batch_id DESC
@@ -556,7 +560,7 @@ def get_all_batches_with_id(page=None, per_page=50):
     #          get_batches/get_batches_shipped). Planned batches have no batch_materials yet, so
     #          this yields 0 for them; the manage-batches template shows a dash for Planned rows.
     columns = ['batch_id', 'batch_number', 'product_name', 'quantity', 'date_completed',
-               'status', 'notes', 'date_shipped', 'expiration_date', 'planned_completion_date', 'batch_type', 'is_organic']
+               'status', 'notes', 'date_shipped', 'expiration_date', 'planned_completion_date', 'batch_type', 'is_organic', 'product_unit']
     base_query = """
     SELECT batch_id, batch_number, product_name, quantity, date_completed, status, notes, date_shipped, expiration_date, planned_completion_date, batch_type,
            (SELECT CASE
@@ -565,7 +569,10 @@ def get_all_batches_with_id(page=None, per_page=50):
                    THEN 1 ELSE 0 END
             FROM batch_materials bm
             JOIN raw_materials rm ON bm.material_id = rm.material_id
-            WHERE bm.batch_id = batches.batch_id) AS is_organic
+            WHERE bm.batch_id = batches.batch_id) AS is_organic,
+           -- product unit-of-measurement from the matching recipe (NULL when no recipe matches)
+           (SELECT product_unit FROM recipes
+            WHERE LOWER(recipes.product_name) = LOWER(batches.product_name) LIMIT 1) AS product_unit
     FROM batches
     ORDER BY date_completed DESC
     """
@@ -976,9 +983,12 @@ def get_batches_planned(page=None, per_page=50):
 
     # ADDED: converted from pd.read_sql_query to cursor approach for LIMIT/OFFSET support
     columns = ['batch_id', 'batch_number', 'product_name', 'batch_type', 'quantity',
-               'planned_completion_date', 'notes', 'expiration_date', 'promotion_failure_reason']
+               'planned_completion_date', 'notes', 'expiration_date', 'promotion_failure_reason', 'product_unit']
     base_query = """
-    SELECT batch_id, batch_number, product_name, batch_type, quantity, planned_completion_date, notes, expiration_date, promotion_failure_reason
+    SELECT batch_id, batch_number, product_name, batch_type, quantity, planned_completion_date, notes, expiration_date, promotion_failure_reason,
+           -- product unit-of-measurement from the matching recipe (NULL when no recipe matches)
+           (SELECT product_unit FROM recipes
+            WHERE LOWER(recipes.product_name) = LOWER(batches.product_name) LIMIT 1) AS product_unit
     FROM batches
     WHERE status = 'Planned'
     ORDER BY batch_id DESC

@@ -29,6 +29,12 @@
             </div>
         </div>
 
+        <div class="form-group" style="max-width:320px;">
+            <label>Product Unit of Measurement *</label>
+            <input type="text" name="product_unit" value="{{ product_unit or '' }}" required placeholder="e.g., lbs, g, bottle">
+            <small style="color:var(--text-muted);display:block;margin-top:4px;">What one unit of this product is (used to label quantities on batches).</small>
+        </div>
+
         <p style="font-size:12px;font-weight:600;text-transform:uppercase;letter-spacing:.06em;color:var(--text-muted);margin:20px 0 12px;">Materials Required</p>
         <div id="materials-container">
             {% for mat in materials %}
@@ -40,6 +46,7 @@
                 <div class="form-group">
                     <label>Quantity Needed *</label>
                     <input type="number" step="any" name="quantity_{{ loop.index0 }}" value="{{ mat.quantity_needed }}" required>
+                    <small class="material-unit" style="color:var(--text-muted);display:block;margin-top:4px;min-height:1em;"></small>
                 </div>
                 <button type="button" class="btn btn-danger" onclick="removeMaterial({{ loop.index0 | int }})" style="align-self:flex-end;padding:9px 12px;">&#x2715;</button>
             </div>
@@ -80,12 +87,35 @@ function addMaterial() {
         <div class="form-group">
             <label>Quantity Needed</label>
             <input type="number" step="any" name="quantity_${materialCount}" placeholder="e.g., 200">
+            <small class="material-unit" style="color:var(--text-muted);display:block;margin-top:4px;min-height:1em;"></small>
         </div>
         <button type="button" class="btn btn-danger" onclick="removeMaterial(${materialCount})" style="align-self:flex-end;padding:9px 12px;">&#x2715;</button>
     `;
     container.appendChild(newRow);
-    attachAutocomplete(newRow.querySelector(`[name="material_name_${materialCount}"]`), fetchMaterials);
+    var nameInput = newRow.querySelector(`[name="material_name_${materialCount}"]`);
+    attachAutocomplete(nameInput, fetchMaterials);
+    attachUnitDisplay(nameInput);
     materialCount++;
+}
+
+// Auto-detect a material's unit of measurement and show it under the quantity field.
+// Reuses the existing /api/material-unit endpoint. Returns the update fn so prefilled
+// rows can be populated immediately on load.
+function attachUnitDisplay(nameInput) {
+    if (!nameInput) return;
+    var span = nameInput.closest('.material-row').querySelector('.material-unit');
+    function update() {
+        var name = nameInput.value.trim();
+        if (!name) { span.textContent = ''; return; }
+        fetch('/api/material-unit?name=' + encodeURIComponent(name), { credentials: 'include' })
+            .then(function(r) { return r.json(); })
+            .then(function(data) {
+                span.textContent = (data.exists && data.unit) ? ('Unit: ' + data.unit) : '';
+            })
+            .catch(function() { span.textContent = ''; });
+    }
+    nameInput.addEventListener('change', update);
+    return update;
 }
 
 function removeMaterial(index) {
@@ -101,6 +131,8 @@ function removeMaterial(index) {
 document.addEventListener('DOMContentLoaded', () => {
     document.querySelectorAll('[name^="material_name_"]').forEach(input => {
         attachAutocomplete(input, fetchMaterials);
+        const update = attachUnitDisplay(input);
+        if (update) update(); // populate unit for prefilled rows on load
     });
 });
 </script>

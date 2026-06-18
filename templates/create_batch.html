@@ -16,7 +16,7 @@
     <form method="POST" autocomplete="off">
         <div class="form-row">
             <div class="form-group"><label>Product Name *</label><input type="text" name="product_name" required></div>
-            <div class="form-group"><label>Quantity *</label><input type="number" step="any" name="quantity" required></div>
+            <div class="form-group"><label>Quantity *</label><input type="number" step="any" name="quantity" required><small id="product-unit-hint" style="color:var(--text-muted);display:block;margin-top:4px;min-height:1em;"></small></div>
         </div>
         <div class="form-group"><label>Batch Number *</label><input type="text" name="batch_number" required></div>
         <div class="form-group"><label>Notes (Optional)</label><input type="text" name="notes"></div>
@@ -61,6 +61,23 @@
 <script>
 document.addEventListener('DOMContentLoaded', () => {
     attachAutocomplete(document.querySelector('[name="product_name"]'), fetchRecipes);
+
+    // Show the selected product's unit of measurement next to the Quantity field.
+    // Independent of lot selection so it appears as soon as a product is chosen.
+    var productNameInput = document.querySelector('[name="product_name"]');
+    var productUnitHint = document.getElementById('product-unit-hint');
+    function loadProductUnit() {
+        var name = productNameInput.value.trim();
+        if (!name) { productUnitHint.textContent = ''; return; }
+        fetch('/api/recipe-unit?name=' + encodeURIComponent(name), { credentials: 'include' })
+            .then(function(r) { return r.json(); })
+            .then(function(data) {
+                productUnitHint.textContent = (data.exists && data.unit) ? ('Unit: ' + data.unit) : '';
+            })
+            .catch(function() { productUnitHint.textContent = ''; });
+    }
+    productNameInput.addEventListener('change', loadProductUnit);
+    productNameInput.addEventListener('blur', loadProductUnit);
 
     var batchTypeInput = document.getElementById('batch_type');
     var mixWarning = document.getElementById('mix-stock-warning');
@@ -113,6 +130,7 @@ document.addEventListener('DOMContentLoaded', () => {
         lotCards.innerHTML = '';
         recipeMaterials.forEach(function(mat) {
             var required = mat.quantity_needed * batchQty;
+            var unit = mat.unit ? (' ' + mat.unit) : '';  // material unit of measurement, if known
             var lots = availableLots[mat.material_id] || [];
             // map lot_id -> available quantity, for auto-fill
             var lotAvail = {};
@@ -122,11 +140,11 @@ document.addEventListener('DOMContentLoaded', () => {
             card.dataset.materialId = mat.material_id;
             var optHtml = '<option value="">-- select lot --</option>';
             lots.forEach(function(l) {
-                optHtml += '<option value="' + l.lot_id + '">' + l.lot_number + ' (' + l.quantity + ' avail)</option>';
+                optHtml += '<option value="' + l.lot_id + '">' + l.lot_number + ' (' + l.quantity + unit + ' avail)</option>';
             });
             card.innerHTML =
                 '<div style="font-weight:600;font-size:13px;margin-bottom:6px;">' + mat.material_name +
-                ' <span style="font-weight:400;color:var(--text-muted);">— need ' + required.toFixed(2) + '</span>' +
+                ' <span style="font-weight:400;color:var(--text-muted);">— need ' + required.toFixed(2) + unit + '</span>' +
                 ' <span class="lot-remaining" style="font-weight:400;font-size:12px;margin-left:6px;"></span></div>' +
                 '<div class="lot-rows"></div>' +
                 '<button type="button" class="add-lot-btn" style="margin-top:6px;font-size:12px;padding:4px 10px;border:1px dashed var(--border);border-radius:5px;background:transparent;cursor:pointer;">+ Add lot</button>' +
@@ -150,10 +168,10 @@ document.addEventListener('DOMContentLoaded', () => {
                     remainingEl.textContent = '✓ covered';
                     remainingEl.style.color = '#16a34a';
                 } else if (remaining > 0) {
-                    remainingEl.textContent = 'remaining: ' + remaining;
+                    remainingEl.textContent = 'remaining: ' + remaining + unit;
                     remainingEl.style.color = 'var(--text-muted)';
                 } else {
-                    remainingEl.textContent = 'over by ' + Math.abs(remaining);
+                    remainingEl.textContent = 'over by ' + Math.abs(remaining) + unit;
                     remainingEl.style.color = '#dc2626';
                 }
             }

@@ -101,7 +101,7 @@
                     {% if row['is_organic'] %}<span class="badge badge-organic">Organic</span>{% endif %}
                 </td>
                 {# partial-batch shipments — quantity is the amount shipped on this shipment (of the batch total). #}
-                <td class="num">{{ row['quantity'] }}<span style="color:var(--text-faint);"> / {{ row['batch_quantity'] }}</span></td>
+                <td class="num">{{ row['quantity'] }}<span style="color:var(--text-faint);"> / {{ row['batch_quantity'] }}</span>{% if row['product_unit'] %}<span style="color:var(--text-faint);font-weight:400;"> {{ row['product_unit'] }}</span>{% endif %}</td>
                 <td>{{ row['date_completed'] if row['date_completed'] and row['date_completed'] != 'nan' else '—' }}</td>
                 <td>{{ row['date_shipped'] if row['date_shipped'] and row['date_shipped'] != 'nan' else '—' }}</td>
                 <td>

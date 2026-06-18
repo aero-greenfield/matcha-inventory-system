@@ -45,7 +45,7 @@
                     {% if row.status != 'Planned' and row.is_organic %}<span class="attr-tag">Organic</span>{% endif %}
                     <span class="attr-tag">{{ row.batch_type or 'standard' }}</span>
                 </td>
-                <td class="num">{{ row.quantity | qty }}</td>
+                <td class="num">{{ row.quantity | qty }}{% if row.product_unit %}<span style="color:var(--text-faint);font-weight:400;"> {{ row.product_unit }}</span>{% endif %}</td>
                 <td>
                     {% if row.status == 'Shipped' %}
                         <span class="badge badge-in-stock">Shipped</span>

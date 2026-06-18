@@ -26,6 +26,7 @@
             <div class="form-group">
                 <label>Quantity</label>
                 <input type="number" step="any" name="quantity" value="{{ batch[2] }}" required>
+                <small id="product-unit-hint" style="color:var(--text-muted);display:block;margin-top:4px;min-height:1em;"></small>
             </div>
         </div>
         <div class="form-group" style="max-width:300px;">
@@ -330,7 +331,24 @@
 <script src="{{ url_for('static', filename='js/autocomplete.js') }}"></script>
 <script>
 document.addEventListener('DOMContentLoaded', () => {
-    attachAutocomplete(document.querySelector('[name="product_name"]'), fetchRecipes);
+    var productNameInput = document.querySelector('[name="product_name"]');
+    attachAutocomplete(productNameInput, fetchRecipes);
+
+    // Show the selected product's unit of measurement next to the Quantity field.
+    var productUnitHint = document.getElementById('product-unit-hint');
+    function loadProductUnit() {
+        var name = productNameInput.value.trim();
+        if (!name) { productUnitHint.textContent = ''; return; }
+        fetch('/api/recipe-unit?name=' + encodeURIComponent(name), { credentials: 'include' })
+            .then(function(r) { return r.json(); })
+            .then(function(data) {
+                productUnitHint.textContent = (data.exists && data.unit) ? ('Unit: ' + data.unit) : '';
+            })
+            .catch(function() { productUnitHint.textContent = ''; });
+    }
+    productNameInput.addEventListener('change', loadProductUnit);
+    productNameInput.addEventListener('blur', loadProductUnit);
+    loadProductUnit(); // populate for the current product on load
 });
 </script>
 

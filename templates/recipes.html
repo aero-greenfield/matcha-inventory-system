@@ -22,6 +22,7 @@
         <thead>
             <tr>
                 <th>Recipe</th>
+                <th>Product Unit</th>
                 <th>Notes</th>
                 <th>Material</th>
                 <th>Quantity</th>
@@ -32,6 +33,7 @@
             {% for row in recipes %}
             <tr>
                 <td><strong>{{ row.recipe_product_name }}</strong></td>
+                <td>{{ row.product_unit or '' }}</td>
                 <td style="color:var(--text-muted);font-style:italic;">{{ row.notes or '' }}</td>
                 <td>{{ row.material_name }}</td>
                 <td>{{ row.quantity }}</td>

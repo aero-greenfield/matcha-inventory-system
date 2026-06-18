@@ -52,9 +52,11 @@ def _recompute_batch_status(cursor, db, batch_id):
         UPDATE batches SET
             status = CASE
                 WHEN (SELECT COALESCE(SUM(quantity), 0) FROM shipment_batches WHERE batch_id = %s) <= 0
-                    THEN 'Ready'
+                THEN 'Ready'
+               
                 WHEN (SELECT COALESCE(SUM(quantity), 0) FROM shipment_batches WHERE batch_id = %s) < quantity
-                    THEN 'Partially Shipped'
+                THEN 'Partially Shipped'
+               
                 ELSE 'Shipped'
             END,
             date_shipped = (SELECT MAX(s.date_shipped)
@@ -72,6 +74,9 @@ def create_shipment(lines, destination=None, notes=None):
     'Partially Shipped') and the requested quantity must not exceed its remaining quantity.
     Returns the new shipment_id on success, None on unexpected error.
     Raises ValueError on bad input (batch missing/not shippable/over-allocated).
+
+
+    note-- this loops over each batch in lines, and does 2 queries per batch: (might be optimized in the future)
     """
     if not lines:
         raise ValueError("A shipment must include at least one batch.")
@@ -86,7 +91,9 @@ def create_shipment(lines, destination=None, notes=None):
             qty = float(qty)
             if qty <= 0:
                 continue  # skip blank/zero lines
-
+            
+           
+            #check each batch status
             db.execute(cursor, "SELECT status FROM batches WHERE batch_id = %s", (batch_id,))
             row = cursor.fetchone()
             if not row:
@@ -95,13 +102,16 @@ def create_shipment(lines, destination=None, notes=None):
                 raise ValueError(f"Batch {batch_id} has status '{row[0]}' — only produced batches with "
                                  f"remaining quantity can be shipped.")
 
+            #check remaining quantity of each batch
             remaining = _batch_remaining(cursor, db, batch_id)
             if qty > remaining + _EPS:
                 raise ValueError(f"Batch {batch_id}: requested {qty} exceeds remaining {remaining}.")
-            normalized[batch_id] = qty
+            normalized[batch_id] = qty #add validated batch_id and quantity to the normalized dictionary
 
         if not normalized:
             raise ValueError("A shipment must include at least one batch with a positive quantity.")
+
+         #validation done--
 
         today = datetime.now().strftime('%Y-%m-%d')
         shipment_number = _generate_shipment_number(cursor, db)
@@ -117,7 +127,7 @@ def create_shipment(lines, destination=None, notes=None):
                 INSERT INTO shipment_batches (shipment_id, batch_id, quantity)
                 VALUES (%s, %s, %s)
             """, (shipment_id, batch_id, qty))
-            _recompute_batch_status(cursor, db, batch_id)
+            _recompute_batch_status(cursor, db, batch_id) # update the status of the batch
 
         db.commit()
         log_action('shipment_created', f"shipment_id={shipment_id}, number={shipment_number}, lines={normalized}")
@@ -204,7 +214,9 @@ def get_shipment_by_id(shipment_id):
 
         db.execute(cursor, """
             SELECT sb.shipment_batch_id, b.batch_id, b.batch_number, b.product_name,
-                   sb.quantity, b.quantity, b.date_completed, b.expiration_date
+                   sb.quantity, b.quantity, b.date_completed, b.expiration_date,
+                   (SELECT product_unit FROM recipes
+                    WHERE LOWER(recipes.product_name) = LOWER(b.product_name) LIMIT 1) AS product_unit
             FROM shipment_batches sb
             JOIN batches b ON sb.batch_id = b.batch_id
             WHERE sb.shipment_id = %s
@@ -221,6 +233,7 @@ def get_shipment_by_id(shipment_id):
                 'batch_quantity': r[5],   # batch produced total
                 'date_completed': r[6],
                 'expiration_date': r[7],
+                'product_unit': r[8],
             }
             for r in batch_rows
         ]

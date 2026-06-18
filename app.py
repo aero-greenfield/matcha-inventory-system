@@ -1614,6 +1614,7 @@ def view_recipes():
     duplicate_mask = df_display['recipe_product_name'].duplicated()
     df_display.loc[duplicate_mask, 'recipe_product_name'] = ''
     df_display.loc[duplicate_mask, 'notes'] = ''
+    df_display.loc[duplicate_mask, 'product_unit'] = ''
 
     # CHANGED: recipe_count now comes from the total returned by the service (all recipes),
     #          not nunique() on the current page (which would undercount when paginated).
@@ -1704,11 +1705,22 @@ def add_recipe_route():
         notes = request.form.get('notes')#can be none
 
         notes = notes.strip() if notes else None
-        
+
+        product_unit = request.form.get('product_unit')  # required — what one unit of the product is
+
+        product_unit = product_unit.strip() if product_unit else None
+
         if not product_name:
             return render_template('error.html',
                 title="Invalid Input",
                 message="Product name cannot be blank.",
+                back_link=True, back_link_url="/add-recipe", back_link_label="Go back"
+                 ), 400
+
+        if not product_unit:
+            return render_template('error.html',
+                title="Invalid Input",
+                message="Product unit of measurement cannot be blank.",
                 back_link=True, back_link_url="/add-recipe", back_link_label="Go back"
                  ), 400
     
@@ -1777,7 +1789,7 @@ def add_recipe_route():
         
         try:
             
-            result = add_recipe(product_name, materials, notes)
+            result = add_recipe(product_name, materials, notes, product_unit=product_unit)
             # materials is the list of dictionaries we build from form data. 
             if result:
                 #success
@@ -1871,6 +1883,7 @@ def edit_recipe(recipe_id):
     recipe_id_val = df['recipe_id'].iloc[0]
     product_name = df['product_name'].iloc[0]
     notes = df['notes'].iloc[0]
+    product_unit = df['product_unit'].iloc[0]
 
     # Extract materials list — one dict per row.
     # ADDED: a recipe with no materials comes back from the LEFT JOIN as a single all-NULL
@@ -1886,6 +1899,7 @@ def edit_recipe(recipe_id):
         recipe_id=recipe_id_val,
         product_name=product_name,
         notes=notes,
+        product_unit=product_unit,
         materials=materials,
         msg=msg,
         err=err,
@@ -1912,11 +1926,13 @@ def update_recipe_route(recipe_id):
 
         notes = notes.strip() if notes else None
 
-        product_name = request.form.get('product_name') 
+        product_name = request.form.get('product_name')
 
         product_name = product_name.strip() if product_name else None
 
-        
+        product_unit = request.form.get('product_unit')  # required — what one unit of the product is
+
+        product_unit = product_unit.strip() if product_unit else None
 
         materials = [] # materials come in as indexed fields, so we have to parse same as recipe
         index = 0
@@ -1953,6 +1969,13 @@ def update_recipe_route(recipe_id):
             back_link=True, back_link_url=f"/edit-recipe/{recipe_id}", back_link_label="Go back"
         ), 400
 
+    if not product_unit:
+        return render_template('error.html',
+            title="Invalid Input",
+            message="Product unit of measurement cannot be blank.",
+            back_link=True, back_link_url=f"/edit-recipe/{recipe_id}", back_link_label="Go back"
+        ), 400
+
     if not materials:
         return render_template('error.html',
             title="Invalid Input",
@@ -1960,7 +1983,7 @@ def update_recipe_route(recipe_id):
             back_link=True, back_link_url=f"/edit-recipe/{recipe_id}", back_link_label="Go back"
         ), 400
     
-    result = update_recipe(recipe_id, product_name=product_name, notes=notes, materials=materials)
+    result = update_recipe(recipe_id, product_name=product_name, notes=notes, materials=materials, product_unit=product_unit)
     
 
     if result:

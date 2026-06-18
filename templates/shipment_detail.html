@@ -53,7 +53,7 @@
             <tr>
                 <td>{{ row['batch_number'] or '—' }}</td>
                 <td><strong>{{ row['product_name'] }}</strong></td>
-                <td class="num">{{ row['quantity'] }}<span style="color:var(--text-faint);"> / {{ row['batch_quantity'] }}</span></td>
+                <td class="num">{{ row['quantity'] }}<span style="color:var(--text-faint);"> / {{ row['batch_quantity'] }}</span>{% if row['product_unit'] %}<span style="color:var(--text-faint);font-weight:400;"> {{ row['product_unit'] }}</span>{% endif %}</td>
                 <td>{{ row['date_completed'] if row['date_completed'] and row['date_completed'] != 'None' else '—' }}</td>
                 <td>{{ row['expiration_date'] if row['expiration_date'] and row['expiration_date'] != 'None' else '—' }}</td>
             </tr>

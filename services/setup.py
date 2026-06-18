@@ -69,7 +69,8 @@ def create_database():
     CREATE TABLE IF NOT EXISTS recipes(
                    recipe_id INTEGER PRIMARY KEY AUTOINCREMENT,
                    product_name TEXT NOT NULL,
-                   notes TEXT
+                   notes TEXT,
+                   product_unit TEXT
 
 
                    )

@@ -10,7 +10,7 @@ from database import get_db_connection
 # ADDED: get_material_by_name, get_material_names, get_recipe_names — targeted lookups used below
 from services.materials import get_material_by_name, get_material_names
 from services.lots import get_all_lots_for_material, get_lots_for_material
-from services.recipes import get_recipe_names, get_recipe
+from services.recipes import get_recipe_names, get_recipe, get_recipe_unit
 
 api_bp = Blueprint('api', __name__, url_prefix='/api')
 
@@ -79,6 +79,18 @@ def api_material_unit():
     if row is None:
         return jsonify({'exists': False})
     return jsonify({'exists': True, 'unit': row[1]})
+
+
+# looks up a recipe's product unit-of-measurement by name (used to show the product's unit
+# next to the quantity field on the create/edit batch pages). Mirrors /api/material-unit.
+@api_bp.route('/recipe-unit')
+@requires_auth
+def api_recipe_unit():
+    name = request.args.get('name', '').strip()
+    if not name:
+        return jsonify({'exists': False})
+    unit = get_recipe_unit(name)
+    return jsonify({'exists': unit is not None, 'unit': unit or ''})
 
 
 

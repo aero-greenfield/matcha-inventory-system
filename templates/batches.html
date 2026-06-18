@@ -121,7 +121,7 @@
                         {# partial-batch shipments — flag batches with some quantity already shipped. #}
                         {% if row['remaining'] < row['quantity'] %}<span class="badge badge-partial">Partially Shipped</span>{% endif %}</td>
                     {# partial-batch shipments — show remaining available, with produced total when partly shipped. #}
-                    <td class="num">{{ row['remaining'] }}{% if row['remaining'] < row['quantity'] %}<span style="color:var(--text-faint);"> / {{ row['quantity'] }}</span>{% endif %}</td>
+                    <td class="num">{{ row['remaining'] }}{% if row['remaining'] < row['quantity'] %}<span style="color:var(--text-faint);"> / {{ row['quantity'] }}</span>{% endif %}{% if row['product_unit'] %}<span style="color:var(--text-faint);font-weight:400;"> {{ row['product_unit'] }}</span>{% endif %}</td>
                     <td>{{ row['date_completed'] or '—' }}</td>
                     {# ADDED: cost-of-material feature — show total batch cost or dash if no cost data. #}
                     <td>{% if row['batch_cost'] %}${{ '%.2f'|format(row['batch_cost']) }}{% else %}—{% endif %}</td>
@@ -150,7 +150,7 @@
                         {# partial-batch shipments — flag batches with some quantity already shipped. #}
                         {% if row['remaining'] < row['quantity'] %}<span class="badge badge-partial">Partially Shipped</span>{% endif %}</td>
                     {# partial-batch shipments — show remaining available, with produced total when partly shipped. #}
-                    <td class="num">{{ row['remaining'] }}{% if row['remaining'] < row['quantity'] %}<span style="color:var(--text-faint);"> / {{ row['quantity'] }}</span>{% endif %}</td>
+                    <td class="num">{{ row['remaining'] }}{% if row['remaining'] < row['quantity'] %}<span style="color:var(--text-faint);"> / {{ row['quantity'] }}</span>{% endif %}{% if row['product_unit'] %}<span style="color:var(--text-faint);font-weight:400;"> {{ row['product_unit'] }}</span>{% endif %}</td>
                     <td>{{ row['date_completed'] or '—' }}</td>
                     {# ADDED: cost-of-material feature — show total batch cost or dash if no cost data. #}
                     <td>{% if row['batch_cost'] %}${{ '%.2f'|format(row['batch_cost']) }}{% else %}—{% endif %}</td>
@@ -223,7 +223,7 @@
                         {% endif %}
                     </td>
                     <td><span class="badge badge-{{ row['batch_type'] or 'standard' }}">{{ row['batch_type'] or 'standard' }}</span></td>
-                    <td>{{ row['quantity'] }}</td>
+                    <td>{{ row['quantity'] }}{% if row['product_unit'] %}<span style="color:var(--text-faint);"> {{ row['product_unit'] }}</span>{% endif %}</td>
                     <td>{{ row['planned_completion_date'] or '—' }}</td>
                     <td>
                         <form method="POST" action="/edit-batch/{{ row['batch_id'] }}/change-status"
@@ -254,7 +254,7 @@
                         {% endif %}
                     </td>
                     <td><span class="badge badge-mix">component</span></td>
-                    <td>{{ row['quantity'] }}</td>
+                    <td>{{ row['quantity'] }}{% if row['product_unit'] %}<span style="color:var(--text-faint);"> {{ row['product_unit'] }}</span>{% endif %}</td>
                     <td>{{ row['planned_completion_date'] or '—' }}</td>
                     <td>
                         <form method="POST" action="/edit-batch/{{ row['batch_id'] }}/change-status"

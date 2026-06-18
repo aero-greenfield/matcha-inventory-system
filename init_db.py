@@ -150,18 +150,20 @@ def init_database():
 
         cursor.execute(""" 
         CREATE TABLE IF NOT EXISTS recipes( 
-            recipe_id SERIAL PRIMARY KEY, 
-            product_name TEXT NOT NULL, 
-            notes TEXT 
-        ) 
+            recipe_id SERIAL PRIMARY KEY,
+            product_name TEXT NOT NULL,
+            notes TEXT,
+            product_unit TEXT
+        )
         """) 
     else:
         cursor.execute(""" 
         CREATE TABLE IF NOT EXISTS recipes( 
             recipe_id INTEGER PRIMARY KEY AUTOINCREMENT,
-            product_name TEXT NOT NULL, 
-            notes TEXT 
-        ) 
+            product_name TEXT NOT NULL,
+            notes TEXT,
+            product_unit TEXT
+        )
         """) 
     print("  ✅ recipes table created")
     
