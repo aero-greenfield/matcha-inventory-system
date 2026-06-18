@@ -8,6 +8,22 @@ import logging
 _LOT_UPDATABLE_COLS = frozenset({"lot_number", "quantity", "received_date", "expiration_date",
                                   "location", "supplier", "cost_per_unit", "status"})
 
+# Below this many units, a lot is treated as fully depleted. Deducting (nearly) all of a lot
+# leaves a tiny floating-point residual (e.g. 0.0000055) that is too small to be useful but
+# big enough to pass the `quantity > 0` filters, so the lot keeps showing as available stock.
+LOT_EXHAUST_THRESHOLD = 0.001
+
+
+def exhaust_lot_if_depleted(db, cursor, lot_id, threshold=LOT_EXHAUST_THRESHOLD):
+    """After a deduction, zero out and deactivate a lot whose remaining quantity is a negligible
+    residual, so it no longer shows as available stock. Uses `< threshold` so it also catches
+    small negatives from float drift."""
+    db.execute(cursor, """
+        UPDATE raw_material_lots
+        SET quantity = 0, status = 'inactive'
+        WHERE lot_id = %s AND quantity < %s
+    """, (lot_id, threshold))
+
 
 #=======================
 #LOT NUMBER FUNCTIONS

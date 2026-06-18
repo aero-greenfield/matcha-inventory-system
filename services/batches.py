@@ -15,6 +15,7 @@ _BATCH_UPDATABLE_COLS = frozenset({"product_name", "quantity", "date_completed",
 #        They live in their own service modules now, so we import them explicitly.
 from services.materials import get_raw_material
 from services.recipes import get_recipe
+from services.lots import exhaust_lot_if_depleted
 
 # ADDED: promote_planned_batches calls log_action directly to record promotions.
 #        log_action moved to services.audit, so we import it here.
@@ -181,6 +182,9 @@ def add_to_batches(product_name, quantity, notes=None, batch_number=None, deduct
                     if cursor.rowcount == 0:
                         raise ValueError(f"Lot {lot_id} not found during deduction.")
                     #deduciton validation
+
+                    # if the deduction left only a negligible residual, exhaust the lot
+                    exhaust_lot_if_depleted(db, cursor, lot_id)
 
                     db.execute(cursor, """
                         INSERT INTO batch_materials (batch_id, material_id, lot_id, quantity_used, cost_per_unit)
@@ -944,6 +948,9 @@ def promote_planned_batches():
                                 WHERE lot_id = %s
                             """, (take, lot_id))
 
+                            # if the deduction left only a negligible residual, exhaust the lot
+                            exhaust_lot_if_depleted(db, cursor, lot_id)
+
                             # record the usage in batch_materials with lot_id so we have full traceability
                             db.execute(cursor, """
                                 INSERT INTO batch_materials (batch_id, material_id, lot_id, quantity_used, cost_per_unit)
@@ -1126,6 +1133,8 @@ def adjust_batch_material(batch_id, new_quantities: dict, lot_selections: dict =
                     db.execute(cursor, """
                         UPDATE raw_material_lots SET quantity = quantity - %s WHERE lot_id = %s
                     """, (delta, lot_id))
+                    # if the deduction left only a negligible residual, exhaust the lot
+                    exhaust_lot_if_depleted(db, cursor, lot_id)
                 else:
                     db.execute(cursor, """
                         SELECT COALESCE(SUM(quantity), 0) FROM raw_material_lots WHERE material_id = %s
