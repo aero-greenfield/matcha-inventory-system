@@ -1605,21 +1605,41 @@ def view_recipes():
             back_link=True, back_link_url="/", back_link_label="Back to Home"
     )
 
-    # Show recipe name and notes only on the first ingredient row of each recipe —
-    # duplicate rows get blank values so the name doesn't repeat in the table.
+    # CHANGED: instead of blanking duplicate rows for a flat table, group the flat
+    #          (one-row-per-ingredient) result into one dict per recipe so the template
+    #          can render a collapsible accordion row per recipe.
     df_display = df.copy()
     # ADDED: recipes with no valid materials come back with NULL material/quantity/unit
-    #        (LEFT JOIN). Blank them so the table shows an empty cell, not "nan"/"None".
+    #        (LEFT JOIN). Blank them so we show empty cells / "No materials", not "nan"/"None".
     df_display = df_display.where(df_display.notna(), '')
-    duplicate_mask = df_display['recipe_product_name'].duplicated()
-    df_display.loc[duplicate_mask, 'recipe_product_name'] = ''
-    df_display.loc[duplicate_mask, 'notes'] = ''
-    df_display.loc[duplicate_mask, 'product_unit'] = ''
+
+    # Rows are ordered by recipe_product_name then material_name (see get_all_recipes),
+    # so we can group sequentially. A recipe with no materials has a blank material_name —
+    # skip that row when collecting materials, leaving an empty materials list.
+    recipes = []
+    by_name = {}
+    for row in df_display.to_dict(orient='records'):
+        name = row['recipe_product_name']
+        recipe = by_name.get(name)
+        if recipe is None:
+            recipe = {
+                'name': name,
+                'product_unit': row['product_unit'],
+                'notes': row['notes'],
+                'materials': [],
+            }
+            by_name[name] = recipe
+            recipes.append(recipe)
+        if row['material_name']:
+            recipe['materials'].append({
+                'material_name': row['material_name'],
+                'quantity': row['quantity'],
+                'unit': row['unit'],
+            })
 
     # CHANGED: recipe_count now comes from the total returned by the service (all recipes),
     #          not nunique() on the current page (which would undercount when paginated).
     recipe_count = total
-    recipes = df_display.to_dict(orient='records')
 
     # ADDED: total_pages for pagination controls in the template
     total_pages = math.ceil(total / PER_PAGE) if total else 1

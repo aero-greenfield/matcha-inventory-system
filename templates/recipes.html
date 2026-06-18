@@ -17,31 +17,109 @@
 </div>
 
 {% if recipes %}
-<div class="table-container">
-    <table class="data-table">
-        <thead>
-            <tr>
-                <th>Recipe</th>
-                <th>Product Unit</th>
-                <th>Notes</th>
-                <th>Material</th>
-                <th>Quantity</th>
-                <th>Unit</th>
-            </tr>
-        </thead>
-        <tbody>
-            {% for row in recipes %}
-            <tr>
-                <td><strong>{{ row.recipe_product_name }}</strong></td>
-                <td>{{ row.product_unit or '' }}</td>
-                <td style="color:var(--text-muted);font-style:italic;">{{ row.notes or '' }}</td>
-                <td>{{ row.material_name }}</td>
-                <td>{{ row.quantity }}</td>
-                <td>{{ row.unit }}</td>
-            </tr>
-            {% endfor %}
-        </tbody>
-    </table>
+<style>
+    .recipe-list { display:flex; flex-direction:column; gap:8px; }
+    .recipe-row {
+        background:var(--card-bg);
+        border:1px solid var(--border);
+        border-radius:10px;
+        overflow:hidden;
+    }
+    .recipe-row > summary {
+        list-style:none;
+        cursor:pointer;
+        display:flex;
+        align-items:center;
+        gap:14px;
+        padding:14px 18px;
+        user-select:none;
+    }
+    .recipe-row > summary::-webkit-details-marker { display:none; }
+    .recipe-row > summary:hover { background:#fafafa; }
+    .recipe-chevron {
+        flex:0 0 auto;
+        color:var(--text-faint);
+        transition:transform .15s ease;
+        font-size:12px;
+        line-height:1;
+    }
+    .recipe-row[open] > summary .recipe-chevron { transform:rotate(90deg); }
+    .recipe-name { flex:1 1 auto; font-weight:600; color:var(--text); }
+    .recipe-unit { flex:0 0 auto; color:var(--text-muted); }
+    .recipe-materials { border-top:1px solid var(--border); padding:14px 18px; }
+    .recipe-detail-notes {
+        color:var(--text-muted);
+        font-style:italic;
+        margin-top:14px;
+        padding-top:12px;
+        border-top:1px solid var(--border);
+    }
+    .recipe-detail-notes .label {
+        font-style:normal;
+        font-size:11px;
+        text-transform:uppercase;
+        letter-spacing:.04em;
+        font-weight:600;
+        margin-right:8px;
+    }
+    .recipe-materials table { width:100%; border-collapse:collapse; table-layout:fixed; }
+    /* Material column takes remaining width; Quantity / Unit are fixed-width and
+       left-aligned so each header sits directly above its values without touching
+       the neighbouring column. */
+    .recipe-materials col.col-qty { width:140px; }
+    .recipe-materials col.col-unit { width:100px; }
+    .recipe-materials th {
+        text-align:left;
+        font-size:11px;
+        text-transform:uppercase;
+        letter-spacing:.04em;
+        color:var(--text-muted);
+        font-weight:600;
+        padding:8px 10px;
+    }
+    .recipe-materials td { text-align:left; padding:6px 10px; border-top:1px solid var(--border); }
+    .recipe-materials .empty { color:var(--text-muted); font-style:italic; padding:8px 0; }
+</style>
+<div class="recipe-list">
+    {% for recipe in recipes %}
+    <details class="recipe-row">
+        <summary>
+            <span class="recipe-chevron">&#9654;</span>
+            <span class="recipe-name">{{ recipe.name }}</span>
+            <span class="recipe-unit mono">{{ recipe.product_unit or '—' }}</span>
+        </summary>
+        <div class="recipe-materials">
+            {% if recipe.materials %}
+            <table>
+                <colgroup>
+                    <col class="col-material">
+                    <col class="col-qty">
+                    <col class="col-unit">
+                </colgroup>
+                <thead>
+                    <tr>
+                        <th>Material</th>
+                        <th>Quantity</th>
+                        <th>Unit</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for m in recipe.materials %}
+                    <tr>
+                        <td>{{ m.material_name }}</td>
+                        <td class="num">{{ m.quantity }}</td>
+                        <td>{{ m.unit }}</td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+            {% else %}
+            <div class="empty">No materials in this recipe</div>
+            {% endif %}
+            <div class="recipe-detail-notes"><span class="label">Notes</span>{{ recipe.notes or '—' }}</div>
+        </div>
+    </details>
+    {% endfor %}
 </div>
 {% else %}
 <div class="table-container" style="padding:40px 24px;text-align:center;color:var(--text-muted);">
