@@ -45,6 +45,9 @@ from services.materials import (
 )
 from services.lots import (
     get_all_lots,
+    # ADDED: excel-exports feature — full unfiltered lot list (incl. expired/exhausted) for the
+    #        inventory workbook's Lots sheet.
+    get_all_lots_joined,
     get_lot_by_id,
     receive_lot as inventory_receive_lot,
     update_lot,
@@ -68,14 +71,18 @@ from services.batches import (
 from services.shipments import (
     create_shipment, get_all_shipments, get_shipment_by_id,
     update_shipment, delete_shipment,
+    # ADDED: excel-exports feature — summary (one row/shipment) + detail (one row/split) queries
+    #        for the shipments workbook.
+    get_shipments_summary, get_shipment_details,
 )
 
 
 # Import helper functions for exporting data
 # - export_to_csv: Exports DataFrames to CSV files (not currently used)
 # - export_to_excel: NEW - Exports DataFrames to Excel files (.xlsx format)
+# - export_multi_sheet_to_excel: excel-exports feature - one workbook, many named sheets
 
-from helper_functions import ( export_to_excel,)
+from helper_functions import ( export_to_excel, export_multi_sheet_to_excel,)
 
 from auth import requires_auth
 from routes.api import api_bp
@@ -422,24 +429,55 @@ def view_inventory():
 @requires_auth
 def export_inventory_excel():
     """
-    Export inventory data to Excel file and trigger download
+    Export inventory data to a multi-sheet Excel workbook and trigger download.
+
+    CHANGED (excel-exports feature): was a single flat sheet of materials. Now produces ONE
+    workbook with two tabs:
+      - "Materials": every material (raw + housemade) with a derived Status and Type column.
+      - "Lots": every lot, including expired/exhausted ones, so the reader can filter in Excel.
 
     How it works:
-    1. Gets all materials from database
-    2. Checks if there's data (returns error if empty)
-    3. Calls export_to_excel() to create timestamped .xlsx file
-    4. Uses send_file() to trigger browser download
+    1. Get all materials (page=None → full table, no pagination) and derive Status/Type.
+    2. Get all lots via get_all_lots_joined() (no UI hiding — completeness).
+    3. Write both DataFrames to one workbook with export_multi_sheet_to_excel().
+    4. send_file() triggers the browser download.
     """
-    # CHANGED: get_all_materials now returns (df, total). page=None skips LIMIT/OFFSET
-    #          so the export still contains all rows, not just one page.
-    df, _ = get_all_materials(page=None)
+    # --- Materials sheet ---
+    # get_all_materials returns (df, total); page=None skips LIMIT/OFFSET so we get every
+    # material — and it already includes housemade materials, so no extra query is needed.
+    mats, _ = get_all_materials(page=None)
 
-    # Return error if no data to export
-    if df.empty:
+    if not mats.empty:
+        # Status is DERIVED here (not stored): out of stock first, then at/below reorder = low,
+        # otherwise in stock. This mirrors the badge logic the inventory page computes inline,
+        # but we bake it into a real column so the spreadsheet reader can sort/filter on it.
+        def _material_status(row):
+            if row['stock_level'] == 0:
+                return "Out of Stock"
+            if row['stock_level'] <= row['reorder_level']:
+                return "Low Stock"
+            return "In Stock"
+        mats['Status'] = mats.apply(_material_status, axis=1)
+
+        # Type comes from the is_housemade boolean. Housemade "materials" are intermediate
+        # house-made products (mix batches) surfaced as pseudo-materials; labeling them lets the
+        # reader tell raw purchases apart from in-house production at a glance.
+        mats['Type'] = mats['is_housemade'].apply(lambda h: "Housemade" if h else "Raw")
+
+        # Keep only the columns we want in the export, in reading order. (get_all_materials also
+        # returns material_id, total_cost, is_edible, is_organic — not needed for this sheet.)
+        mats = mats[['name', 'category', 'stock_level', 'unit', 'reorder_level', 'Status', 'Type']]
+
+    # --- Lots sheet ---
+    # Unfiltered, completeness-first list (active + expired + exhausted), with a status column.
+    lots = get_all_lots_joined()
+
+    # Guard: if there's genuinely nothing in either sheet, don't hand back an empty workbook.
+    if mats.empty and lots.empty:
         return "No data to export", 400
 
-    # Create Excel file with timestamp (e.g., inventory_20260203_143022.xlsx)
-    filepath = export_to_excel(df, 'inventory') # from helper_functions, this creates the excel file and returns the file path.
+    # One workbook, two tabs. Insertion order of the dict = tab order in the file.
+    filepath = export_multi_sheet_to_excel({'Materials': mats, 'Lots': lots}, 'inventory')
 
     # Send file to browser as download
     # - as_attachment=True: Forces download instead of opening in browser
@@ -1049,27 +1087,31 @@ def batch_materials(batch_id):
 
 
 
-# NEW: Excel export route for batches
+# Excel export route for batches
 @app.route('/export/batches-excel')
 @requires_auth
 def export_batches_excel():
     """
-    Export batches to Excel file
+    Export batches to a multi-sheet Excel workbook.
 
-    Useful for:
-    - Creating shipping manifests
-    - Sharing batch info with logistics team
-    - Record keeping of completed batches
+    CHANGED (excel-exports feature): was a single sheet of Ready batches. Now ONE workbook with:
+      - "Planned": deferred/finished batches awaiting promotion (get_batches_planned).
+      - "Ready":   produced batches with remaining quantity (get_batches).
+
+    WHY no "Shipped" sheet: shipped data now lives in the shipments workbook. Because a batch can
+    be split across several shipments, a per-batch whole-batch "shipped" row is no longer a clean
+    value — the shipments export models it correctly off shipment_batches instead.
     """
-    # CHANGED: get_batches now returns (df, total). page=None skips LIMIT/OFFSET
-    #          so the export still contains all ready-batch rows, not just one page.
-    df, _ = get_batches(page=None)
+    # Both return (df, total); page=None → full table, no pagination.
+    planned, _ = get_batches_planned(page=None)
+    ready, _ = get_batches(page=None)
 
-    if df.empty:
+    # If both are empty there's nothing meaningful to export.
+    if planned.empty and ready.empty:
         return "No data to export", 400  # No batches to export
 
-    # Create Excel file (e.g., batches_20260203_143022.xlsx)
-    filepath = export_to_excel(df, 'batches')
+    # One workbook, two tabs (Planned first, then Ready).
+    filepath = export_multi_sheet_to_excel({'Planned': planned, 'Ready': ready}, 'batches')
 
     # Trigger browser download
     return send_file(filepath, as_attachment=True, download_name=os.path.basename(filepath))
@@ -1104,28 +1146,38 @@ def view_shipped_batches():
 )
 
 
-@app.route('/export/shipped-batches-excel')
+# REMOVED (excel-exports feature): /export/shipped-batches-excel. Shipped data is now exported
+#   from the shipments workbook (/export/shipments-excel), which models batch-splits-across-
+#   shipments correctly via shipment_batches. A whole-batch "shipped" export is redundant and
+#   misleading now that a batch can be partially shipped on multiple shipments. The /shipped-batches
+#   VIEW page and get_batches_shipped query remain — only this export route was removed.
+
+
+# NEW (excel-exports feature): Excel export route for shipments.
+@app.route('/export/shipments-excel')
 @requires_auth
-def export_shipped_batches_excel():
+def export_shipments_excel():
     """
-    Export shipped batches to Excel file
- 
- 
+    Export shipments to a multi-sheet Excel workbook:
+      - "Shipments":      one row per shipment, with batch_count and total_units (summary).
+      - "Shipment Detail": one row per batch-split (shipment_batches), with the SPLIT quantity.
+
+    This replaces the old shipped-batches export. Because batches split across shipments,
+    shipment_batches is the source of truth for "what actually shipped".
     """
-    # CHANGED: get_batches_shipped now returns (df, total). page=None skips LIMIT/OFFSET
-    #          so the export still contains all shipped-batch rows, not just one page.
-    df, _ = get_batches_shipped(page=None)
+    summary = get_shipments_summary()
+    details = get_shipment_details()
 
-    if df.empty:
-        return "No data to export", 400  # No shipped batches to export
+    # Nothing to export if there are no shipments at all.
+    if summary.empty and details.empty:
+        return "No data to export", 400
 
-    # Create Excel file (e.g., shipped_batches_20260203_143022.xlsx)
-    filepath = export_to_excel(df, 'shipped_batches')
+    # One workbook, two tabs (summary first, then line-level detail).
+    filepath = export_multi_sheet_to_excel(
+        {'Shipments': summary, 'Shipment Detail': details}, 'shipments')
 
     # Trigger browser download
     return send_file(filepath, as_attachment=True, download_name=os.path.basename(filepath))
-
-
 
 
 @app.route('/create-batch', methods=['GET', 'POST'])

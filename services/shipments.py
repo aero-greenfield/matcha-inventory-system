@@ -186,6 +186,94 @@ def get_all_shipments(page=None, per_page=50):
         db.close()
 
 
+def get_shipments_summary():
+    """
+    One row per shipment — the "Shipments" sheet of the shipments Excel export.
+
+    WHY shipment_batches is the source of truth: a batch can be split across several shipments,
+    each split recorded as a shipment_batches row carrying its own `quantity`. So a shipment's
+    "size" isn't a column on `shipments` — it's derived from its shipment_batches rows:
+        batch_count = how many batch-lines are on the shipment (COUNT of the junction rows)
+        total_units = SUM of those split quantities (the actual amount that shipped)
+
+    WHY LEFT JOIN (not JOIN): a shipment with zero batch lines should still appear in the
+    export (completeness). With a plain JOIN it would silently vanish. The LEFT JOIN keeps it;
+    COUNT then returns 0 and COALESCE turns the NULL SUM into 0 instead of a blank cell.
+
+    WHY a plain DataFrame (no pagination tuple): exports always want every row.
+
+    Columns: shipment_number, destination, notes, batch_count, total_units.
+    """
+    db = get_db_connection()
+    cursor = db.cursor()
+    columns = ['shipment_number', 'destination', 'notes', 'batch_count', 'total_units']
+    try:
+        db.execute(cursor, """
+        SELECT s.shipment_number, s.destination, s.notes,
+               COUNT(sb.shipment_batch_id) AS batch_count,
+               COALESCE(SUM(sb.quantity), 0) AS total_units
+        FROM shipments s
+        LEFT JOIN shipment_batches sb ON sb.shipment_id = s.shipment_id
+        GROUP BY s.shipment_id, s.shipment_number, s.destination, s.notes
+        ORDER BY s.shipment_id DESC
+        """)
+        result = cursor.fetchall()
+        return pd.DataFrame(result, columns=columns)
+
+    except Exception as e:
+        logging.error(f"Error getting shipments summary for export: {e}")
+        return pd.DataFrame()
+
+    finally:
+        db.close()
+
+
+def get_shipment_details():
+    """
+    One row per shipment_batches record — the "Shipment Detail" sheet of the shipments export.
+
+    This is the line-level companion to get_shipments_summary: where the summary has one row per
+    shipment, this has one row per (shipment, batch) split. A batch split across two shipments
+    produces two rows here.
+
+    WHY a three-way join shipment_batches -> shipments -> batches: shipment_batches holds only
+    ids + the split quantity, so we join out to `shipments` for the human-readable shipment_number
+    and destination, and to `batches` for the batch_number / product_name / expiration_date.
+
+    CRITICAL — which quantity: `quantity` is `sb.quantity`, the amount of the batch that shipped
+    ON THIS shipment (the SPLIT amount), NOT `b.quantity` (the batch's full produced total).
+    Using the batch total here would overstate what actually shipped on each line.
+
+    WHY parent columns are repeated on every row (shipment_number, destination): an export row
+    must stand alone for Excel sorting/filtering. We deliberately do NOT blank-out repeated
+    parent values the way an HTML table might — each line carries its own shipment context.
+
+    Columns: shipment_number, destination, batch_number, product_name, quantity, expiration_date.
+    """
+    db = get_db_connection()
+    cursor = db.cursor()
+    columns = ['shipment_number', 'destination', 'batch_number', 'product_name',
+               'quantity', 'expiration_date']
+    try:
+        db.execute(cursor, """
+        SELECT s.shipment_number, s.destination, b.batch_number, b.product_name,
+               sb.quantity, b.expiration_date
+        FROM shipment_batches sb
+        JOIN shipments s ON sb.shipment_id = s.shipment_id
+        JOIN batches b ON sb.batch_id = b.batch_id
+        ORDER BY s.shipment_id DESC, b.batch_id ASC
+        """)
+        result = cursor.fetchall()
+        return pd.DataFrame(result, columns=columns)
+
+    except Exception as e:
+        logging.error(f"Error getting shipment details for export: {e}")
+        return pd.DataFrame()
+
+    finally:
+        db.close()
+
+
 def get_shipment_by_id(shipment_id):
     """
     Returns {'shipment': dict, 'batches': list of dicts} or None if not found.

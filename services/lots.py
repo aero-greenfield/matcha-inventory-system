@@ -317,6 +317,54 @@ def get_all_lots(material_id=None, page=None, per_page=50):
     finally:
         db.close()
 
+def get_all_lots_joined():
+    """
+    Returns EVERY lot in the system (one row per lot) joined to its material name, for the
+    inventory Excel export's "Lots" sheet.
+
+    WHY a separate function from get_lots_for_material / get_active_lots_for_materials:
+        Those UI functions deliberately HIDE lots the warehouse can't draw from right now —
+        they filter to quantity > 0, status = 'active', and not-expired. An EXPORT has the
+        opposite goal: completeness. The boss/analyst opening this in Excel wants the full
+        history — expired lots, exhausted (quantity 0 / status 'inactive') lots, everything —
+        and will filter/sort themselves. So this query applies NO WHERE filter at all; the
+        `status` column is included precisely so the reader can filter in Excel instead.
+
+    WHY no pagination tuple: exports always want the whole table, so this returns a plain
+        DataFrame (not the (df, total) shape the paginated read functions use).
+
+    Columns: lot_number, material_name, quantity (remaining), cost_per_unit,
+             received_date, expiration_date, location, supplier, status.
+    """
+    db = get_db_connection()
+    cursor = db.cursor()
+    # Column order here is the column order in the spreadsheet, so it's chosen for reading:
+    # identity first (lot + material), then the numbers, then dates, then location/supplier, status last.
+    columns = ['lot_number', 'material_name', 'quantity', 'cost_per_unit',
+               'received_date', 'expiration_date', 'location', 'supplier', 'status']
+    try:
+        # JOIN (not LEFT JOIN) to raw_materials: every lot has a material_id by construction,
+        # and we need the human-readable material name rather than the numeric id in the export.
+        # ORDER BY material name then received_date so a reader scanning the sheet sees each
+        # material's lots grouped together in receive order (FIFO), matching get_all_lots.
+        db.execute(cursor, """
+        SELECT rml.lot_number, rm.name AS material_name, rml.quantity, rml.cost_per_unit,
+               rml.received_date, rml.expiration_date, rml.location, rml.supplier, rml.status
+        FROM raw_material_lots rml
+        JOIN raw_materials rm ON rml.material_id = rm.material_id
+        ORDER BY rm.name ASC, rml.received_date ASC
+        """)
+        result = cursor.fetchall()
+        return pd.DataFrame(result, columns=columns)
+
+    except Exception as e:
+        logging.error(f"Error fetching all lots joined for export: {e}")
+        return pd.DataFrame()
+
+    finally:
+        db.close()
+
+
 def get_lot_by_id(lot_id):
 
     """

@@ -237,6 +237,64 @@ def export_to_excel(df, filename_prefix):
     return filepath # Return path so Flask can send the file to browser
 
 
+def export_multi_sheet_to_excel(sheets, filename_prefix):
+    """
+    Exports several DataFrames into ONE Excel workbook, each on its own named sheet/tab.
+
+    WHY this exists (vs. calling export_to_excel multiple times):
+        export_to_excel makes one .xlsx per DataFrame. For exports like the inventory
+        workbook (Materials + Lots) or the shipments workbook (summary + detail) we want
+        a SINGLE downloadable file the user opens once, with related data on separate tabs.
+        pd.ExcelWriter lets us keep one open file handle and drop each DataFrame onto its
+        own sheet before the file is finalized.
+
+    inputs:
+        - sheets: dict of {sheet_name (str): DataFrame}. Insertion order = tab order.
+        - filename_prefix: string prefix for the filename (e.g. 'inventory', 'shipments').
+
+    returns: the filepath to the created Excel file (same timestamped naming as export_to_excel).
+
+    Example: export_multi_sheet_to_excel({'Materials': mats_df, 'Lots': lots_df}, 'inventory')
+             creates 'exports/inventory_20260621_143022.xlsx' with two tabs.
+    """
+    ensure_export_folder() # makes sure exports/ folder exists, creates if needed
+
+    # Same timestamped filename scheme as export_to_excel so all exports look consistent.
+    timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
+    filename = f"{filename_prefix}_{timestamp}.xlsx"
+    filepath = os.path.join('exports', filename)
+
+    # The `with` block opens one writer for the whole workbook and saves+closes it on exit.
+    # engine='openpyxl' is the .xlsx engine (same as export_to_excel).
+    with pd.ExcelWriter(filepath, engine='openpyxl') as writer:
+        wrote_any = False  # track whether at least one real sheet made it into the book
+
+        for sheet_name, df in sheets.items():
+            # Excel hard-caps sheet/tab names at 31 characters — a longer name raises an
+            # error when the file is written. Truncate defensively so a long name can't break
+            # the export. (Our names are short, but this keeps the helper safe to reuse.)
+            safe_name = str(sheet_name)[:31]
+
+            # Skip empty DataFrames: a blank tab is noise. We still guarantee a valid file
+            # below if EVERYTHING was empty.
+            if df is None or df.empty:
+                continue
+
+            # index=False: don't write the pandas row index as a leading column.
+            df.to_excel(writer, sheet_name=safe_name, index=False)
+            wrote_any = True
+
+        # EDGE CASE: openpyxl refuses to save a workbook with zero visible sheets — it raises
+        #            "At least one sheet must be visible". If every DataFrame was empty we still
+        #            want a valid (if empty) file rather than a crash, so write one empty sheet.
+        if not wrote_any:
+            # Reuse the first requested sheet name (or a default) for the placeholder tab.
+            first_name = (str(next(iter(sheets)))[:31] if sheets else 'Sheet1')
+            pd.DataFrame().to_excel(writer, sheet_name=first_name, index=False)
+
+    return filepath # Return path so Flask can send the file to browser
+
+
 def optional_export_to_csv(df, default_prefix):
     """
     Asks user if they want to export dataframe to csv.
