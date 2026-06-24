@@ -42,7 +42,8 @@
             <strong>Housemade material stock:</strong>
             <ul style="margin:6px 0 0 16px; padding:0;">
                 {% for m in housemade_materials %}
-                <li>{{ m.name }}: {{ m.stock_level }} {{ m.unit }}</li>
+                {# CHANGED: units-conversion-layer feature — stock stored in base unit; convert for display. #}
+                <li>{{ m.name }}: {{ m.stock_level | disp(m.unit) }} {{ m.unit }}</li>
                 {% endfor %}
             </ul>
             <span style="display:block;margin-top:6px;">If this batch requires more than what is available, it will stay Planned until a mix batch is completed first.</span>
@@ -130,7 +131,10 @@ document.addEventListener('DOMContentLoaded', () => {
         lotCards.innerHTML = '';
         recipeMaterials.forEach(function(mat) {
             var required = mat.quantity_needed * batchQty;
-            var unit = mat.unit ? (' ' + mat.unit) : '';  // material unit of measurement, if known
+            // CHANGED: units-conversion-layer feature — recipe amounts and lot quantities are
+            // stored in the base unit (grams for mass), so label them with base_unit ('g'),
+            // not the material's display unit. Batch deduction also works in this base unit.
+            var unit = mat.base_unit ? (' ' + mat.base_unit) : '';
             var lots = availableLots[mat.material_id] || [];
             // map lot_id -> available quantity, for auto-fill
             var lotAvail = {};

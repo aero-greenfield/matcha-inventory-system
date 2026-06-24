@@ -48,6 +48,20 @@
                     <input type="number" step="any" name="quantity_{{ loop.index0 }}" value="{{ mat.quantity_needed }}" required>
                     <small class="material-unit" style="color:var(--text-muted);display:block;margin-top:4px;min-height:1em;"></small>
                 </div>
+                {# ADDED: units-conversion-layer feature — entry unit, pre-set to the unit this
+                   line was originally entered in. Ignored by the server for count materials. #}
+                <div class="form-group material-unit-select" style="max-width:90px;">
+                    <label>Unit</label>
+                    <select name="unit_{{ loop.index0 }}">
+                        {% for u in ['g','kg','lb','oz'] %}
+                        <option value="{{ u }}" {% if mat.unit == u %}selected{% endif %}>{{ u }}</option>
+                        {% endfor %}
+                        {# preserve a non-mass (count) unit so it round-trips #}
+                        {% if mat.unit and mat.unit not in ['g','kg','lb','oz'] %}
+                        <option value="{{ mat.unit }}" selected>{{ mat.unit }}</option>
+                        {% endif %}
+                    </select>
+                </div>
                 <button type="button" class="btn btn-danger" onclick="removeMaterial({{ loop.index0 | int }})" style="align-self:flex-end;padding:9px 12px;">&#x2715;</button>
             </div>
             {% endfor %}
@@ -88,6 +102,15 @@ function addMaterial() {
             <label>Quantity Needed</label>
             <input type="number" step="any" name="quantity_${materialCount}" placeholder="e.g., 200">
             <small class="material-unit" style="color:var(--text-muted);display:block;margin-top:4px;min-height:1em;"></small>
+        </div>
+        <div class="form-group material-unit-select" style="max-width:90px;">
+            <label>Unit</label>
+            <select name="unit_${materialCount}">
+                <option value="g" selected>g</option>
+                <option value="kg">kg</option>
+                <option value="lb">lb</option>
+                <option value="oz">oz</option>
+            </select>
         </div>
         <button type="button" class="btn btn-danger" onclick="removeMaterial(${materialCount})" style="align-self:flex-end;padding:9px 12px;">&#x2715;</button>
     `;

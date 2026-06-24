@@ -11,6 +11,8 @@ from database import get_db_connection
 from services.materials import get_material_by_name, get_material_names
 from services.lots import get_all_lots_for_material, get_lots_for_material
 from services.recipes import get_recipe_names, get_recipe, get_recipe_unit
+# ADDED: units-conversion-layer feature — base-unit labels for the lot-selection UI.
+from services import units
 
 api_bp = Blueprint('api', __name__, url_prefix='/api')
 
@@ -117,4 +119,10 @@ def api_recipe_materials(product_name):
     df = get_recipe(product_name)
     if df is None or df.empty:
         return jsonify([])
-    return jsonify(df.to_dict(orient='records'))
+    rows = df.to_dict(orient='records')
+    # ADDED: units-conversion-layer feature — quantity_needed and lot quantities are stored in
+    #        the base unit (grams for mass). Tell the create-batch UI which label to show for
+    #        those amounts: 'g' for mass materials, the material's own unit for counts.
+    for r in rows:
+        r['base_unit'] = units.MASS_BASE if r.get('dimension') == 'mass' else (r.get('unit') or '')
+    return jsonify(rows)

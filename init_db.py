@@ -76,7 +76,11 @@ def init_database():
             -- ADDED: organic feature — is_edible flags whether a material counts toward a
             --        batch's organic determination; is_organic flags the material itself.
             is_edible BOOLEAN DEFAULT TRUE,
-            is_organic BOOLEAN DEFAULT FALSE
+            is_organic BOOLEAN DEFAULT FALSE,
+            -- ADDED: units-conversion-layer feature — 'mass' or 'count'. The existing
+            --        `unit` column is the display unit (e.g. 'lb'); stored quantities are
+            --        in the canonical base unit (grams for mass).
+            dimension TEXT
         )
         """)
 
@@ -93,7 +97,9 @@ def init_database():
             -- ADDED: organic feature — is_edible flags whether a material counts toward a
             --        batch's organic determination; is_organic flags the material itself.
             is_edible BOOLEAN DEFAULT TRUE,
-            is_organic BOOLEAN DEFAULT FALSE
+            is_organic BOOLEAN DEFAULT FALSE,
+            -- ADDED: units-conversion-layer feature — see Postgres branch above.
+            dimension TEXT
         )
         """)
     
@@ -114,7 +120,10 @@ def init_database():
                 lot_id SERIAL PRIMARY KEY,
                 material_id INTEGER,
                 lot_number TEXT,
-                quantity DOUBLE PRECISION,
+                -- ADDED: units-conversion-layer feature — NUMERIC (not DOUBLE PRECISION) so
+                --        gram quantities and SQL SUM/comparisons stay exact, killing the
+                --        float-precision noise this feature exists to fix.
+                quantity NUMERIC,
                 received_date TEXT,
                 expiration_date TEXT,
                 status TEXT DEFAULT 'active',
@@ -174,28 +183,33 @@ def init_database():
     if DATABASE_URL:
     
         cursor.execute(""" 
-        CREATE TABLE IF NOT EXISTS recipe_materials( 
+        CREATE TABLE IF NOT EXISTS recipe_materials(
             recipe_material_id SERIAL PRIMARY KEY,
             recipe_id INTEGER,
             material_id INTEGER,
             material_name TEXT,
-            quantity_needed DOUBLE PRECISION,
-            FOREIGN KEY (material_id) REFERENCES raw_materials(material_id), 
-            FOREIGN KEY (recipe_id) REFERENCES recipes(recipe_id) 
-        ) 
-        """) 
+            -- ADDED: units-conversion-layer feature — NUMERIC for exact gram amounts;
+            --        `unit` records the entry unit (quantity_needed itself is in grams).
+            quantity_needed NUMERIC,
+            unit TEXT,
+            FOREIGN KEY (material_id) REFERENCES raw_materials(material_id),
+            FOREIGN KEY (recipe_id) REFERENCES recipes(recipe_id)
+        )
+        """)
     else:
-        cursor.execute(""" 
-        CREATE TABLE IF NOT EXISTS recipe_materials( 
+        cursor.execute("""
+        CREATE TABLE IF NOT EXISTS recipe_materials(
             recipe_material_id INTEGER PRIMARY KEY AUTOINCREMENT,
-            recipe_id INTEGER, 
-            material_id INTEGER, 
-            material_name TEXT, 
-            quantity_needed REAL, 
-            FOREIGN KEY (material_id) REFERENCES raw_materials(material_id), 
-            FOREIGN KEY (recipe_id) REFERENCES recipes(recipe_id) 
-        ) 
-        """) 
+            recipe_id INTEGER,
+            material_id INTEGER,
+            material_name TEXT,
+            quantity_needed REAL,
+            -- ADDED: units-conversion-layer feature — see Postgres branch above.
+            unit TEXT,
+            FOREIGN KEY (material_id) REFERENCES raw_materials(material_id),
+            FOREIGN KEY (recipe_id) REFERENCES recipes(recipe_id)
+        )
+        """)
     
     print("  ✅ recipe_materials table created")
     

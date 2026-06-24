@@ -63,9 +63,10 @@
             <tr>
                 <td><strong>{{ row.name }}</strong></td>
                 <td>{{ row.category or '' }}</td>
-                <td>{{ row.stock_level }}</td>
+                {# CHANGED: units-conversion-layer feature — stock/reorder stored in base unit; convert for display. #}
+                <td>{{ row.stock_level | disp(row.unit) }}</td>
                 <td>{{ row.unit or '' }}</td>
-                <td>{{ row.reorder_level if row.reorder_level is not none else 0 }}</td>
+                <td>{{ row.reorder_level | disp(row.unit) if row.reorder_level is not none else 0 }}</td>
                 {# ADDED: organic feature — each badge is a one-click POST that flips the flag,
                    preserving the current page. #}
                 <td>

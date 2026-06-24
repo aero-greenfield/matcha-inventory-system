@@ -80,13 +80,17 @@ def get_recipe(product_name):
             return None
         recipe_id = row[0]
 
+        # CHANGED: units-conversion-layer feature — also return the material's dimension so the
+        #          create-batch lot UI can label gram-denominated amounts with the correct base
+        #          unit ('g' for mass) instead of the material's display unit.
         query = ("""
         SELECT r.product_name,
         r.notes,
         rm.material_id,
         raw.name AS material_name,
         rm.quantity_needed,
-        raw.unit AS unit
+        raw.unit AS unit,
+        raw.dimension AS dimension
         FROM recipes r
         JOIN recipe_materials rm ON r.recipe_id = rm.recipe_id
         JOIN raw_materials raw ON rm.material_id = raw.material_id
@@ -204,7 +208,11 @@ def get_all_recipes(page=None, per_page=50):
         #          but silently dropped from the table — the count and the list disagreed.
         full_query = """
         SELECT r.product_name AS recipe_product_name, r.notes, r.product_unit,
-               raw.name AS material_name, rm.quantity_needed AS quantity, raw.unit
+               raw.name AS material_name, rm.quantity_needed AS quantity,
+               -- CHANGED: units-conversion-layer feature — show the unit the line was entered
+               -- in (recipe_materials.unit), falling back to the material's unit for old rows.
+               -- quantity_needed is stored in grams; the route converts it back to this unit.
+               COALESCE(rm.unit, raw.unit) AS unit
         FROM recipes r
         LEFT JOIN recipe_materials rm ON r.recipe_id = rm.recipe_id
         LEFT JOIN raw_materials raw ON rm.material_id = raw.material_id
@@ -226,7 +234,11 @@ def get_all_recipes(page=None, per_page=50):
         #        Inner SELECT gets the recipe_ids for this page; outer JOIN fetches all their ingredients.
         paginated_query = """
         SELECT r.product_name AS recipe_product_name, r.notes, r.product_unit,
-               raw.name AS material_name, rm.quantity_needed AS quantity, raw.unit
+               raw.name AS material_name, rm.quantity_needed AS quantity,
+               -- CHANGED: units-conversion-layer feature — show the unit the line was entered
+               -- in (recipe_materials.unit), falling back to the material's unit for old rows.
+               -- quantity_needed is stored in grams; the route converts it back to this unit.
+               COALESCE(rm.unit, raw.unit) AS unit
         FROM recipes r
         LEFT JOIN recipe_materials rm ON r.recipe_id = rm.recipe_id
         LEFT JOIN raw_materials raw ON rm.material_id = raw.material_id
@@ -297,6 +309,10 @@ def add_recipe(product_name, materials, notes=None, product_unit=None):
         for material in materials:
             material_name = material["material_name"]
             quantity_needed = material['quantity_needed']
+            # ADDED: units-conversion-layer feature — `unit` is the entry unit the amount was
+            #        typed in; `quantity_needed` is already stored in the material's base unit
+            #        (grams for mass) by the route, so batch deduction needs no conversion.
+            unit = material.get('unit')
 
             # REMOVED: get_raw_material(material_name) — opened a new connection per iteration
             # material_info = get_raw_material(material_name)
@@ -312,9 +328,10 @@ def add_recipe(product_name, materials, notes=None, product_unit=None):
                    recipe_id,
                    material_name,
                    material_id,
-                   quantity_needed)
-            VALUES (%s,%s,%s,%s)
-              """,(recipe_id, material_name, material_id, quantity_needed))
+                   quantity_needed,
+                   unit)
+            VALUES (%s,%s,%s,%s,%s)
+              """,(recipe_id, material_name, material_id, quantity_needed, unit))
 
 
         db.commit()
@@ -412,7 +429,9 @@ def get_recipe_by_id(recipe_id):
        r.product_unit,
        rm.material_id,
        COALESCE(raw.name, rm.material_name) AS material_name,
-       rm.quantity_needed
+       rm.quantity_needed,
+       rm.unit,
+       raw.unit AS material_display_unit
        FROM recipes r
        LEFT JOIN recipe_materials rm ON rm.recipe_id = r.recipe_id
        LEFT JOIN raw_materials raw ON rm.material_id = raw.material_id
@@ -498,6 +517,8 @@ def update_recipe(recipe_id, product_name=None, materials=None, notes=None, prod
         for material in materials:
             material_name = material["material_name"]
             quantity_needed = material['quantity_needed']
+            # ADDED: units-conversion-layer feature — entry unit; quantity_needed is in base units.
+            unit = material.get('unit')
 
             # REMOVED: get_raw_material(material_name) — opened a new connection per iteration
             # material_info = get_raw_material(material_name)
@@ -517,9 +538,10 @@ def update_recipe(recipe_id, product_name=None, materials=None, notes=None, prod
             recipe_id,
             material_name,
             material_id,
-            quantity_needed)
-            VALUES (%s,%s,%s,%s)
-                """, (recipe_id, material_name, material_id, quantity_needed))
+            quantity_needed,
+            unit)
+            VALUES (%s,%s,%s,%s,%s)
+                """, (recipe_id, material_name, material_id, quantity_needed, unit))
 
 
             if cursor.rowcount == 0:

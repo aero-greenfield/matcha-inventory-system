@@ -36,12 +36,15 @@ from flask_wtf.csrf import CSRFProtect # security necesity.
 
 from services.setup import create_database
 from services.audit import log_action, view_logs
+# ADDED: units-conversion-layer feature — conversion helpers (entry units -> stored base unit).
+from services import units
 from services.materials import (
     add_raw_material, get_all_materials,
     get_material_by_id,
     update_raw_material,
     delete_raw_material, get_material_id,
     get_low_stock_materials,  # ADDED: was missing — /low-stock route raised NameError without this
+    get_unit_and_dimension,  # ADDED: units-conversion-layer feature — per-material unit/dimension lookup
 )
 from services.lots import (
     get_all_lots,
@@ -195,6 +198,35 @@ def dash(value):
     if _is_empty(value):
         return EMPTY_DISPLAY
     return value
+
+
+# ADDED: units-conversion-layer feature — convert a stored base-unit quantity into the
+# material's display unit and format it for a table cell. Quantities are stored in grams
+# (mass) or the material's own count unit; this shows them back in `unit` (e.g. lb), rounded
+# via the existing `qty` rules. Empty/missing -> em dash.
+#   Usage: {{ row.stock_level | disp(row.unit) }}  -> 907.18474 (g), 'lb'  ->  "2"
+@app.template_filter("disp")
+def disp(value, unit=None):
+    if _is_empty(value):
+        return EMPTY_DISPLAY
+    try:
+        converted = units.from_base(value, unit) if unit else value
+    except (TypeError, ValueError):
+        return str(value)
+    return qty(converted)  # reuse the 2-dp, noise-stripping table formatter
+
+
+# ADDED: units-conversion-layer feature — same base->display conversion as `disp`, but keeps
+# full precision (via fmt_num) for "exact" drawer values and per-lot quantities.
+@app.template_filter("disp_full")
+def disp_full(value, unit=None):
+    if _is_empty(value):
+        return EMPTY_DISPLAY
+    try:
+        converted = units.from_base(value, unit) if unit else value
+    except (TypeError, ValueError):
+        return str(value)
+    return fmt_num(converted)
 
 
 @app.template_filter("humanize")
@@ -564,6 +596,17 @@ def receive_lot():
             return render_template('error.html', title="Invalid Input", message="Cost per Unit must be greater than 0.",
                 back_link=True, back_link_url="/receive-lot", back_link_label="Go back"), 400
 
+        # ADDED: units-conversion-layer feature — the quantity and cost are entered in the
+        #        material's display unit (e.g. lb). Convert both to the stored base unit:
+        #        quantity -> grams (to_base); cost-per-display-unit -> cost-per-gram, which is
+        #        from_base() of the cost (cost/factor) so that quantity*cost stays the same total.
+        #        For count materials the factor is 1, so both are identities.
+        material_row = get_material_by_id(material_id)
+        mat_unit = material_row[3] if material_row else None
+        quantity = float(units.to_base(quantity, mat_unit))
+        if cost_per_unit is not None:
+            cost_per_unit = float(units.from_base(cost_per_unit, mat_unit))
+
         #call function, add to lots
         lot_id = inventory_receive_lot(material_id, lot_number, quantity, received_date, expiry_date, location, supplier, cost_per_unit)
         
@@ -624,10 +667,14 @@ def add_material_route():
         name = request.form.get('name') # Get value from <input name="name"> handled in add_material.html
         category=request.form.get('category')
         unit=request.form.get('unit')
+        # ADDED: units-conversion-layer feature — material_type is the Weight/Count toggle
+        #        ('mass' or 'count'); it becomes the material's `dimension`.
+        dimension = request.form.get('material_type')
 
         name = name.strip() if name else None
         category = category.strip() if category else None
         unit = unit.strip() if unit else None
+        dimension = dimension.strip().lower() if dimension else None
 
         
         
@@ -652,8 +699,25 @@ def add_material_route():
                     message="Material Unit cannot be blank.",
                     back_link=True, back_link_url="/add-material", back_link_label="Go back"
                 ), 400
-        
-    
+
+        # ADDED: units-conversion-layer feature — validate the Weight/Count type and that the
+        #        unit matches it. Weight materials must use a known mass unit (so quantities can
+        #        convert to grams); Count materials use a free-text label and never convert.
+        if dimension not in ("mass", "count"):
+                return render_template('error.html',
+                    title="Invalid Input",
+                    message="Please choose whether this material is tracked by Weight or Count.",
+                    back_link=True, back_link_url="/add-material", back_link_label="Go back"
+                ), 400
+
+        if dimension == "mass" and units.dimension_of(unit) != "mass":
+                return render_template('error.html',
+                    title="Invalid Input",
+                    message=f"'{unit}' is not a recognized weight unit. Use one of: {', '.join(units.MASS_UNITS)}.",
+                    back_link=True, back_link_url="/add-material", back_link_label="Go back"
+                ), 400
+
+
         # numeric input validation (cant be <0 )
         try:
             reorder_level=float(request.form.get('reorder_level', 0))
@@ -678,6 +742,10 @@ def add_material_route():
         is_edible = request.form.get('is_edible') == '1'
         is_organic = request.form.get('is_organic') == '1'
 
+        # ADDED: units-conversion-layer feature — reorder_level is entered in the material's
+        #        display unit; store it in the base unit (grams for mass, unchanged for count).
+        reorder_level = float(units.to_base(reorder_level, unit))
+
         #function call.
         result = add_raw_material(
                 name=name,
@@ -686,6 +754,7 @@ def add_material_route():
                 reorder_level=reorder_level,
                 is_edible=is_edible,      # ADDED: organic feature
                 is_organic=is_organic,    # ADDED: organic feature
+                dimension=dimension,      # ADDED: units-conversion-layer feature
             )
 
         from_receive_lot = request.form.get('from_receive_lot', '')
@@ -862,13 +931,20 @@ def edit_material(material_id):
 
     
     # CHANGED: organic feature — get_material_by_id now also returns is_edible/is_organic.
-    mat_id, name, category,  unit, reorder_level, is_edible, is_organic = material # unpack material details for display in edit form.
+    # CHANGED: units-conversion-layer feature — also returns dimension.
+    mat_id, name, category,  unit, reorder_level, is_edible, is_organic, dimension = material # unpack material details for display in edit form.
+
+    # ADDED: units-conversion-layer feature — reorder_level is stored in the base unit (grams
+    #        for mass); convert back to the display unit so the user edits the value they see.
+    if reorder_level is not None:
+        reorder_level = float(units.from_base(reorder_level, unit))
 
     msg = request.args.get('msg', '')
     err = request.args.get('err', '')
     return render_template("edit_material.html",
         mat_id=mat_id, name=name, category=category,
         unit=unit, reorder_level=reorder_level,
+        dimension=dimension,  # ADDED: units-conversion-layer feature
         is_edible=is_edible, is_organic=is_organic,  # ADDED: organic feature
         msg=msg, err=err,
         back_link=True,
@@ -894,6 +970,9 @@ def update_material_details(material_id):
         category = category.strip() if category else None#validate
         unit = request.form.get('unit') # Get updated unit (or None if empty)
         unit = unit.strip() if unit else None #validate
+        # ADDED: units-conversion-layer feature — Weight/Count toggle -> dimension.
+        dimension = request.form.get('material_type')
+        dimension = dimension.strip().lower() if dimension else None
         reorder_level_str = request.form.get('reorder_level')
         reorder_level = float(reorder_level_str) if reorder_level_str else 0
 
@@ -916,8 +995,25 @@ def update_material_details(material_id):
             back_link=True, back_link_url=f"/edit-material/{material_id}", back_link_label="Go back"
         ), 400
 
+    # ADDED: units-conversion-layer feature — validate the type/unit pairing, then convert the
+    #        reorder level from the displayed unit back to the stored base unit.
+    if dimension not in ("mass", "count"):
+        return render_template('error.html',
+            title="Invalid Input",
+            message="Please choose whether this material is tracked by Weight or Count.",
+            back_link=True, back_link_url=f"/edit-material/{material_id}", back_link_label="Go back"
+        ), 400
+    if dimension == "mass" and units.dimension_of(unit) != "mass":
+        return render_template('error.html',
+            title="Invalid Input",
+            message=f"'{unit}' is not a recognized weight unit. Use one of: {', '.join(units.MASS_UNITS)}.",
+            back_link=True, back_link_url=f"/edit-material/{material_id}", back_link_label="Go back"
+        ), 400
+    reorder_level = float(units.to_base(reorder_level, unit))
+
     result = update_raw_material(material_id, name=name, category=category, unit=unit,
                                  reorder_level=reorder_level,
+                                 dimension=dimension,  # ADDED: units-conversion-layer feature
                                  is_edible=is_edible, is_organic=is_organic)  # ADDED: organic feature
 
     if result:
@@ -1683,10 +1779,16 @@ def view_recipes():
             by_name[name] = recipe
             recipes.append(recipe)
         if row['material_name']:
+            # ADDED: units-conversion-layer feature — quantity_needed is stored in grams;
+            #        convert back to the line's entry unit for display.
+            line_qty = row['quantity']
+            line_unit = row['unit']
+            if line_qty not in ('', None) and line_unit:
+                line_qty = float(units.from_base(line_qty, line_unit))
             recipe['materials'].append({
                 'material_name': row['material_name'],
-                'quantity': row['quantity'],
-                'unit': row['unit'],
+                'quantity': line_qty,
+                'unit': line_unit,
             })
 
     # CHANGED: recipe_count now comes from the total returned by the service (all recipes),
@@ -1732,6 +1834,27 @@ def export_recipes_excel():
 
 
 
+
+
+# ADDED: units-conversion-layer feature — shared recipe-line converter used by both the
+#        add- and edit-recipe routes. Returns (quantity_in_base_unit, stored_unit):
+#          - mass material: convert `quantity` from `line_unit` (default 'g') to grams;
+#            stored_unit is the entry unit.
+#          - count material: amount is a plain count (identity); stored_unit is the
+#            material's own unit label, `line_unit` is ignored.
+#        Raises ValueError if the material is unknown or a mass unit is unrecognized.
+def recipe_qty_to_base(material_name, quantity, line_unit):
+    row = get_unit_and_dimension(material_name)
+    if row is None:
+        raise ValueError(f"material '{material_name}' is not in inventory; add it first")
+    mat_unit, dimension = row[0], row[1]
+    if dimension == 'count':
+        return float(quantity), mat_unit
+    # mass material
+    entry_unit = (line_unit or 'g').strip()
+    if units.dimension_of(entry_unit) != 'mass':
+        raise ValueError(f"'{entry_unit}' is not a recognized weight unit")
+    return float(units.to_base(quantity, entry_unit)), entry_unit
 
 
 @app.route('/add-recipe', methods=['GET', 'POST'])
@@ -1814,8 +1937,9 @@ def add_recipe_route():
             # Try to get material at current index
             material_name = request.form.get(f'material_name_{index}')
             quantity_str = request.form.get(f'quantity_{index}')
-
-            
+            # ADDED: units-conversion-layer feature — per-line entry unit (mass dropdown; absent
+            #        for count materials).
+            line_unit = request.form.get(f'unit_{index}')
 
             # If no material name found at this index, we've processed all materials
             if not material_name:
@@ -1826,19 +1950,23 @@ def add_recipe_route():
                 try:
                     # Convert quantity to float for decimal support
                     quantity = float(quantity_str)
-
-                    # Add material to our list in the format expected by add_recipe()
-                    # Each material is a dict with 'material_name' and 'quantity_needed'
-                    materials.append({
-                        'material_name': material_name.strip(),
-                        'quantity_needed': quantity
-                    })
-                except ValueError:
+                    # ADDED: units-conversion-layer feature — convert the entered amount to the
+                    #        material's stored base unit (grams for mass via the line's unit;
+                    #        identity for counts). Raises ValueError on an unrecognized unit.
+                    qn, stored_unit = recipe_qty_to_base(material_name.strip(), quantity, line_unit)
+                except ValueError as e:
                     return render_template('error.html',
                         title="Invalid Input",
-                        message=f"Quantity for material '{material_name}' must be a valid number.",
+                        message=f"Quantity for material '{material_name}': {e}",
                         back_link=True, back_link_url="/add-recipe", back_link_label="Go back and fix it"
                     ), 400
+
+                # Add material to our list in the format expected by add_recipe()
+                materials.append({
+                    'material_name': material_name.strip(),
+                    'quantity_needed': qn,
+                    'unit': stored_unit,
+                })
 
             # Move to next index
             index += 1
@@ -1962,7 +2090,16 @@ def edit_recipe(recipe_id):
     #        placeholder row. Drop rows without a material name so the form doesn't render a
     #        "None"/"nan" input; the user can add materials with the "+ Add Material" button.
     materials_df = df[df['material_name'].notna()]
-    materials = materials_df[['material_name', 'quantity_needed']].to_dict(orient='records') # html friendly format.
+    materials = materials_df[['material_name', 'quantity_needed', 'unit']].to_dict(orient='records') # html friendly format.
+
+    # ADDED: units-conversion-layer feature — quantity_needed is stored in the material's base
+    #        unit (grams for mass). Convert it back to the unit the line was entered in (`unit`)
+    #        so the edit form shows the original number; default to grams if no unit recorded.
+    for m in materials:
+        entry_unit = m.get('unit') or 'g'
+        m['unit'] = entry_unit
+        if m.get('quantity_needed') is not None:
+            m['quantity_needed'] = float(units.from_base(m['quantity_needed'], entry_unit))
 
     msg = request.args.get('msg', '')
     err = request.args.get('err', '')
@@ -2011,18 +2148,23 @@ def update_recipe_route(recipe_id):
         while True:
             material_name = request.form.get(f'material_name_{index}')
             quantity_str = request.form.get(f'quantity_{index}')
+            line_unit = request.form.get(f'unit_{index}')  # ADDED: units-conversion-layer feature
             if not material_name: #loop until out of material name
                 break
             if material_name.strip() and quantity_str: # if we have a material name and quantity, add to materials list
                 try:
-                    materials.append({ #as a dictionary. 
+                    # ADDED: units-conversion-layer feature — convert each line to the material's
+                    #        base unit (grams for mass via the line unit; identity for counts).
+                    qn, stored_unit = recipe_qty_to_base(material_name.strip(), float(quantity_str), line_unit)
+                    materials.append({ #as a dictionary.
                         'material_name': material_name.strip(),
-                        'quantity_needed': float(quantity_str)
+                        'quantity_needed': qn,
+                        'unit': stored_unit,
                     })
-                except ValueError:
+                except ValueError as e:
                     return render_template('error.html',
                         title="Invalid Input",
-                        message=f"Quantity for '{material_name}' must be a valid number.",
+                        message=f"Quantity for '{material_name}': {e}",
                         back_link=True, back_link_url=f"/edit-recipe/{recipe_id}", back_link_label="Go back"
                     ), 400
             index += 1
@@ -2153,6 +2295,17 @@ def edit_lot(lot_id):
         ), 404
     
     lot = df.to_dict(orient='records') if (df is not None and not df.empty) else [] # convert to dictionary for HTML display, like usual.
+
+    # ADDED: units-conversion-layer feature — the lot stores quantity in the base unit (grams
+    #        for mass) and cost per base unit; convert both back to the material's display unit
+    #        so the edit form shows the values the user originally entered.
+    if lot:
+        lot_unit = lot[0].get('unit')
+        if lot[0].get('quantity') is not None:
+            lot[0]['quantity'] = float(units.from_base(lot[0]['quantity'], lot_unit))
+        if lot[0].get('cost_per_unit') is not None:
+            lot[0]['cost_per_unit'] = float(units.to_base(lot[0]['cost_per_unit'], lot_unit))
+
     lot_batches = get_batches_for_lot(lot_id)
 
     return render_template("edit_lot.html",
@@ -2215,7 +2368,7 @@ def update_lot_route(lot_id):
         
         if lot_df['is_housemade'].iloc[0]: # if this is a housemade material,
             quantity = None
-        
+
         #validate float inputs
         if quantity is not None and quantity <= 0:
             return render_template('error.html',
@@ -2242,6 +2395,15 @@ def update_lot_route(lot_id):
                     back_link=True, back_link_url=f"/edit-lot/{lot_id}", back_link_label="Go back to Edit Lot"
                 ), 400
             
+        # ADDED: units-conversion-layer feature — quantity and cost are entered in the
+        #        material's display unit; store them in the base unit (grams for mass).
+        #        quantity -> to_base; cost-per-display-unit -> cost-per-gram via from_base.
+        lot_unit = lot_df['unit'].iloc[0]
+        if quantity is not None:
+            quantity = float(units.to_base(quantity, lot_unit))
+        if cost_per_unit is not None:
+            cost_per_unit = float(units.from_base(cost_per_unit, lot_unit))
+
         result = update_lot(lot_id, lot_number=lot_number, quantity=quantity, expiration_date=expiration_date, location=location, cost_per_unit=cost_per_unit, supplier=supplier)
 
         

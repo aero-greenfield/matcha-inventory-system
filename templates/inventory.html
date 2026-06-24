@@ -47,7 +47,9 @@
                     {% if not row.is_edible %}<span class="flag-not-edible"><i class="ti ti-alert-triangle"></i>Not edible</span>{% endif %}
                 </td>
                 <td style="color:var(--text-muted);">{{ row.category | dash }}</td>
-                <td class="num">{{ row.stock_level | qty }} <span style="color:var(--text-faint);font-size:13px;">{{ row.unit }}</span></td>
+                {# CHANGED: units-conversion-layer feature — stock is stored in the base unit (grams);
+                   `disp(row.unit)` converts it back to the display unit. #}
+                <td class="num">{{ row.stock_level | disp(row.unit) }} <span style="color:var(--text-faint);font-size:13px;">{{ row.unit }}</span></td>
                 <td>
                     {% if row.stock_level == 0 %}
                         <span class="badge badge-out">Out of Stock</span>
@@ -64,14 +66,14 @@
                     <div class="drawer-flex">
                         <div class="drawer-pair">
                             <span class="drawer-label">Reorder level</span>
-                            <span class="drawer-value num">{{ row.reorder_level | qty }} {{ row.unit }}</span>
+                            <span class="drawer-value num">{{ row.reorder_level | disp(row.unit) }} {{ row.unit }}</span>
                         </div>
                         {# Full-precision stock total — the collapsed Stock column rounds to 2 dp;
                            this reveals the true summed value (fmt_num strips float noise but keeps
                            real entered precision). #}
                         <div class="drawer-pair">
                             <span class="drawer-label">Stock (exact)</span>
-                            <span class="drawer-value mono">{{ row.stock_level | fmt_num }} {{ row.unit }}</span>
+                            <span class="drawer-value mono">{{ row.stock_level | disp_full(row.unit) }} {{ row.unit }}</span>
                         </div>
                         <div class="drawer-pair">
                             <span class="drawer-label">Total cost</span>
@@ -95,7 +97,8 @@
                                 {% for lot in row.lots %}
                                 <tr>
                                     <td class="mono">{{ lot.lot_number | dash }}</td>
-                                    <td class="num">{{ lot.quantity | fmt_num }}</td>
+                                    {# CHANGED: units-conversion-layer feature — lot quantity stored in base unit. #}
+                                    <td class="num">{{ lot.quantity | disp_full(row.unit) }} <span style="color:var(--text-faint);font-size:12px;">{{ row.unit }}</span></td>
                                     <td class="mono">{{ lot.received_date | dash }}</td>
                                     <td class="mono">{{ lot.expiration_date | dash }}</td>
                                 </tr>

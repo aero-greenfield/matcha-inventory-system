@@ -107,7 +107,9 @@
                     {% for m in recipe.materials %}
                     <tr>
                         <td>{{ m.material_name }}</td>
-                        <td class="num">{{ m.quantity }}</td>
+                        {# CHANGED: units-conversion-layer feature — quantity already converted to the
+                           line's entry unit in the route; fmt_num just trims float noise/trailing zeros. #}
+                        <td class="num">{{ m.quantity | fmt_num }}</td>
                         <td>{{ m.unit }}</td>
                     </tr>
                     {% endfor %}

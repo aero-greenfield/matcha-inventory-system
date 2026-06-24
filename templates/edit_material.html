@@ -22,9 +22,34 @@
             <div class="form-group"><label>Name</label><input type="text" name="name" value="{{ name }}" required></div>
             <div class="form-group"><label>Category</label><input type="text" name="category" value="{{ category or '' }}"></div>
         </div>
+        {# ADDED: units-conversion-layer feature — Weight/Count toggle + unit control, pre-set
+           to the material's current dimension/unit. Changing the display unit is safe (storage
+           is always in the base unit); changing the Weight/Count type implies re-entering stock. #}
+        {% set is_mass = (dimension != 'count') %}
         <div class="form-row">
-            <div class="form-group"><label>Unit</label><input type="text" name="unit" value="{{ unit or '' }}"></div>
-            <div class="form-group"><label>Reorder Level</label><input type="number" step="any" name="reorder_level" value="{{ reorder_level if reorder_level is not none else 0 }}"></div>
+            <div class="form-group">
+                <label>Tracked by</label>
+                <div style="display:flex;gap:16px;align-items:center;">
+                    <label style="margin:0;font-weight:400;display:flex;align-items:center;gap:6px;">
+                        <input type="radio" name="material_type" value="mass" {% if is_mass %}checked{% endif %} style="width:auto;" onclick="umToggle()"> Weight
+                    </label>
+                    <label style="margin:0;font-weight:400;display:flex;align-items:center;gap:6px;">
+                        <input type="radio" name="material_type" value="count" {% if not is_mass %}checked{% endif %} style="width:auto;" onclick="umToggle()"> Count
+                    </label>
+                </div>
+            </div>
+            <div class="form-group">
+                <label>Unit</label>
+                <select id="unit-mass" name="unit">
+                    {% for u in ['lb','g','kg','oz'] %}
+                    <option value="{{ u }}" {% if is_mass and unit == u %}selected{% endif %}>{{ u }}</option>
+                    {% endfor %}
+                </select>
+                <input id="unit-count" type="text" name="unit" placeholder="e.g. tin, sachet" value="{{ unit if not is_mass else '' }}" disabled style="display:none;">
+            </div>
+        </div>
+        <div class="form-row">
+            <div class="form-group"><label>Reorder Level <span style="color:var(--text-faint);font-weight:400;">(in the unit selected above)</span></label><input type="number" step="any" name="reorder_level" value="{{ reorder_level if reorder_level is not none else 0 }}"></div>
         </div>
         {# ADDED: organic feature — edible/organic flags reflect the material's current state. #}
         <div class="form-row">
@@ -53,6 +78,19 @@
 </div>
 
 <script>
+// ADDED: units-conversion-layer feature — toggle mass dropdown vs count text box so only
+// one `unit` field submits (the disabled one is omitted).
+function umToggle() {
+    var isMass = document.querySelector('input[name="material_type"]:checked').value === 'mass';
+    var massSel = document.getElementById('unit-mass');
+    var countInp = document.getElementById('unit-count');
+    massSel.style.display = isMass ? '' : 'none';
+    massSel.disabled = !isMass;
+    countInp.style.display = isMass ? 'none' : '';
+    countInp.disabled = isMass;
+}
+umToggle();
+
 function confirmDeleteMaterial(name) {
     if (!confirm('Delete "' + name + '"? This cannot be undone.')) {
         return false;

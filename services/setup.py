@@ -23,7 +23,12 @@ def create_database():
                    reorder_level REAL,
                    is_housemade BOOLEAN DEFAULT FALSE,
                    is_edible BOOLEAN DEFAULT TRUE,
-                   is_organic BOOLEAN DEFAULT FALSE
+                   is_organic BOOLEAN DEFAULT FALSE,
+                   -- ADDED: units-conversion-layer feature — `dimension` is 'mass' or
+                   -- 'count'. The existing `unit` column is the display unit shown to the
+                   -- user (e.g. 'lb'); stored quantities are always in the canonical base
+                   -- unit for the dimension (grams for mass, the material's own unit for counts).
+                   dimension TEXT
 
                    )
                    """)
@@ -83,6 +88,11 @@ def create_database():
                    material_id INTEGER,
                    material_name TEXT,
                    quantity_needed REAL,
+                   -- ADDED: units-conversion-layer feature — `unit` records the unit the
+                   -- ingredient amount was entered in (for display/round-trip);
+                   -- `quantity_needed` itself is stored in the material's base unit (grams
+                   -- for mass) so batch deduction needs no conversion.
+                   unit TEXT,
                    FOREIGN KEY (material_id) REFERENCES raw_materials(material_id),
                    FOREIGN KEY (recipe_id) REFERENCES recipes(recipe_id)
 

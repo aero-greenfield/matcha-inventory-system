@@ -9,11 +9,15 @@ import logging
 
 # CHANGED: organic feature — added is_edible/is_organic to the updatable allowlist so
 #          update_raw_material (and the inline toggle route) can change them.
-_MATERIAL_UPDATABLE_COLS = frozenset({"name", "category", "unit", "reorder_level", "is_edible", "is_organic"})
+# CHANGED: units-conversion-layer feature — added "dimension" ('mass'|'count') to the
+#          allowlist. `unit` holds the display unit (e.g. 'lb'); `dimension` says whether
+#          quantities convert (mass -> grams base) or are a plain count.
+_MATERIAL_UPDATABLE_COLS = frozenset({"name", "category", "unit", "reorder_level", "is_edible", "is_organic", "dimension"})
 
 
 # CHANGED: organic feature — added is_edible/is_organic params (default edible, non-organic).
-def add_raw_material(name, category, unit, reorder_level, is_housemade=False, is_edible=True, is_organic=False):
+# CHANGED: units-conversion-layer feature — added `dimension` param.
+def add_raw_material(name, category, unit, reorder_level, is_housemade=False, is_edible=True, is_organic=False, dimension=None):
     # adds material to raw_materials
 
     db = get_db_connection()
@@ -25,11 +29,12 @@ def add_raw_material(name, category, unit, reorder_level, is_housemade=False, is
             return "duplicate"
 
         # CHANGED: organic feature — insert the two new boolean columns.
+        # CHANGED: units-conversion-layer feature — insert `dimension`.
         db.execute(cursor, """
-            INSERT INTO raw_materials (name, category, unit, reorder_level, is_housemade, is_edible, is_organic)
-            VALUES (%s,%s,%s,%s,%s,%s,%s)
+            INSERT INTO raw_materials (name, category, unit, reorder_level, is_housemade, is_edible, is_organic, dimension)
+            VALUES (%s,%s,%s,%s,%s,%s,%s,%s)
 
-                        """, (name, category, unit, reorder_level, is_housemade, is_edible, is_organic))
+                        """, (name, category, unit, reorder_level, is_housemade, is_edible, is_organic, dimension))
 
         db.commit()
         logging.info(f"added new material: {name}")
@@ -171,8 +176,9 @@ def get_material_by_id(material_id):
 
     try:
         # CHANGED: organic feature — return is_edible/is_organic for the edit form.
+        # CHANGED: units-conversion-layer feature — return dimension for the edit form.
         db.execute(cursor, """
-        SELECT material_id, name, category, unit, reorder_level, is_edible, is_organic
+        SELECT material_id, name, category, unit, reorder_level, is_edible, is_organic, dimension
         FROM raw_materials
         WHERE material_id = %s
                        """,(material_id,))
@@ -189,7 +195,7 @@ def get_material_by_id(material_id):
 
 # CHANGED: organic feature — added is_edible/is_organic params so the edit form and the
 #          inline toggle route can update them (None = leave unchanged, as with other fields).
-def update_raw_material(material_id, name=None, category=None, stock_level=None, unit=None, reorder_level=None, is_edible=None, is_organic=None):
+def update_raw_material(material_id, name=None, category=None, stock_level=None, unit=None, reorder_level=None, is_edible=None, is_organic=None, dimension=None):
     """changes raw material info given id and which parameters are not None (ONLY CHANGES details, not stock level)"""
 
     db = get_db_connection()
@@ -199,7 +205,8 @@ def update_raw_material(material_id, name=None, category=None, stock_level=None,
 
     #iterate through params, if not None, add to field dict to update
     # CHANGED: organic feature — include is_edible/is_organic in the field-collection loop.
-    for key, value in [("name", name), ("category", category), ("stock_level", stock_level), ("unit", unit), ("reorder_level", reorder_level), ("is_edible", is_edible), ("is_organic", is_organic)]:
+    # CHANGED: units-conversion-layer feature — include dimension.
+    for key, value in [("name", name), ("category", category), ("stock_level", stock_level), ("unit", unit), ("reorder_level", reorder_level), ("is_edible", is_edible), ("is_organic", is_organic), ("dimension", dimension)]:
         if value is not None:
             field[key] = value
 
@@ -343,6 +350,24 @@ def get_material_by_name(name):
         return cursor.fetchone()  # (name, unit) tuple or None
     except Exception as e:
         logging.error(f"get_material_by_name: {e}")
+        return None
+    finally:
+        db.close()
+
+
+# ADDED: units-conversion-layer feature — fetch a material's display unit + dimension by name.
+#        Used by the recipe routes to decide how to convert each ingredient amount:
+#        mass -> grams via the entered unit; count -> identity (store the material's own unit).
+def get_unit_and_dimension(name):
+    db = get_db_connection()
+    cursor = db.cursor()
+    try:
+        db.execute(cursor,
+            "SELECT unit, dimension FROM raw_materials WHERE LOWER(name) = LOWER(%s) LIMIT 1",
+            (name,))
+        return cursor.fetchone()  # (unit, dimension) or None
+    except Exception as e:
+        logging.error(f"get_unit_and_dimension: {e}")
         return None
     finally:
         db.close()

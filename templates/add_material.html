@@ -36,10 +36,36 @@
             <div class="form-group"><label>Material Name *</label><input type="text" name="name" value="{{ material_name if from_receive_lot else '' }}" required></div>
             <div class="form-group"><label>Category *</label><input type="text" name="category" required></div>
         </div>
+        {# ADDED: units-conversion-layer feature — Weight/Count type toggle + unit control.
+           Weight materials pick a mass unit (lb/g/kg/oz) so quantities convert to grams;
+           Count materials type a free label (tin, sachet) and never convert. Only the active
+           unit control is enabled, so exactly one `unit` value is submitted. #}
         <div class="form-row">
-            <div class="form-group"><label>Unit *</label><input type="text" name="unit" required></div>
+            <div class="form-group">
+                <label>Tracked by *</label>
+                <div style="display:flex;gap:16px;align-items:center;">
+                    <label style="margin:0;font-weight:400;display:flex;align-items:center;gap:6px;">
+                        <input type="radio" name="material_type" value="mass" checked style="width:auto;" onclick="umToggle()"> Weight
+                    </label>
+                    <label style="margin:0;font-weight:400;display:flex;align-items:center;gap:6px;">
+                        <input type="radio" name="material_type" value="count" style="width:auto;" onclick="umToggle()"> Count
+                    </label>
+                </div>
+            </div>
+            <div class="form-group">
+                <label>Unit *</label>
+                {# Weight: dropdown of mass units (kept in sync with services/units.MASS_UNITS) #}
+                <select id="unit-mass" name="unit">
+                    <option value="lb">lb</option>
+                    <option value="g">g</option>
+                    <option value="kg">kg</option>
+                    <option value="oz">oz</option>
+                </select>
+                {# Count: free-text label (e.g. tin, sachet). Disabled until Count is chosen. #}
+                <input id="unit-count" type="text" name="unit" placeholder="e.g. tin, sachet" disabled style="display:none;">
+            </div>
         </div>
-        <div class="form-group"><label>Reorder Level *</label><input type="number" step="any" name="reorder_level" required></div>
+        <div class="form-group"><label>Reorder Level * <span style="color:var(--text-faint);font-weight:400;">(in the unit selected above)</span></label><input type="number" step="any" name="reorder_level" required></div>
         {# ADDED: organic feature — edible/organic flags. is_edible defaults checked (most ingredients are edible). #}
         <div class="form-row">
             <div class="form-group" style="flex-direction:row;align-items:center;gap:8px;">
@@ -55,5 +81,22 @@
         <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
     </form>
 </div>
+
+{# ADDED: units-conversion-layer feature — show the mass dropdown OR the count text box
+   depending on the Weight/Count radio, and disable the hidden one so only one `unit`
+   field is submitted. #}
+<script>
+function umToggle() {
+    var isMass = document.querySelector('input[name="material_type"]:checked').value === 'mass';
+    var massSel = document.getElementById('unit-mass');
+    var countInp = document.getElementById('unit-count');
+    massSel.style.display = isMass ? '' : 'none';
+    massSel.disabled = !isMass;
+    countInp.style.display = isMass ? 'none' : '';
+    countInp.disabled = isMass;
+    countInp.required = !isMass;
+}
+umToggle();
+</script>
 
 {% endblock %}

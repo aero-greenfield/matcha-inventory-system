@@ -11,7 +11,10 @@ _LOT_UPDATABLE_COLS = frozenset({"lot_number", "quantity", "received_date", "exp
 # Below this many units, a lot is treated as fully depleted. Deducting (nearly) all of a lot
 # leaves a tiny floating-point residual (e.g. 0.0000055) that is too small to be useful but
 # big enough to pass the `quantity > 0` filters, so the lot keeps showing as available stock.
-LOT_EXHAUST_THRESHOLD = 0.001
+# CHANGED: units-conversion-layer feature — quantities are now stored in grams (mass) instead
+#          of pounds, so this threshold is re-based to grams. 0.01 g (10 mg) is well below any
+#          real usage but safely above float drift; counts (whole units) are far above it too.
+LOT_EXHAUST_THRESHOLD = 0.01
 
 
 def exhaust_lot_if_depleted(db, cursor, lot_id, threshold=LOT_EXHAUST_THRESHOLD):
@@ -253,14 +256,17 @@ def get_all_lots(material_id=None, page=None, per_page=50):
 
     db = get_db_connection()
     cursor = db.cursor()
-    columns = ['lot_id', 'lot_number', 'material_name', 'material_id', 'quantity', 'received_date', 'expiration_date', 'location', 'supplier', 'cost_per_unit', 'status']
+    # CHANGED: units-conversion-layer feature — include the material's display unit so the
+    #          manage-lots page can convert the stored base-unit quantity/cost back for display.
+    columns = ['lot_id', 'lot_number', 'material_name', 'material_id', 'quantity', 'received_date', 'expiration_date', 'location', 'supplier', 'cost_per_unit', 'status', 'unit']
 
     try:
         if material_id:
             base_query = """
             SELECT rml.lot_id, rml.lot_number, rm.name AS material_name, rm.material_id,
                    rml.quantity, rml.received_date, rml.expiration_date,
-                   rml.location, rml.supplier, rml.cost_per_unit, rml.status
+                   rml.location, rml.supplier, rml.cost_per_unit, rml.status,
+                   rm.unit
             FROM raw_material_lots rml
             JOIN raw_materials rm ON rml.material_id = rm.material_id
             WHERE rml.material_id = %s
@@ -274,7 +280,8 @@ def get_all_lots(material_id=None, page=None, per_page=50):
             base_query = """
             SELECT rml.lot_id, rml.lot_number, rm.name AS material_name, rm.material_id,
                    rml.quantity, rml.received_date, rml.expiration_date,
-                   rml.location, rml.supplier, rml.cost_per_unit, rml.status
+                   rml.location, rml.supplier, rml.cost_per_unit, rml.status,
+                   rm.unit
             FROM raw_material_lots rml
             JOIN raw_materials rm ON rml.material_id = rm.material_id
             ORDER BY rm.name ASC, rml.received_date ASC
@@ -378,8 +385,11 @@ def get_lot_by_id(lot_id):
     cursor = db.cursor()
 
     try:
+        # CHANGED: units-conversion-layer feature — also select the material's unit and
+        #          dimension so the edit-lot page can display/convert the stored base-unit
+        #          quantity and cost back into the user's display unit.
         db.execute(cursor, """
-        SELECT rml.*, rm.name AS material_name, rm.is_housemade
+        SELECT rml.*, rm.name AS material_name, rm.is_housemade, rm.unit, rm.dimension
         FROM raw_material_lots rml
         JOIN raw_materials rm ON rml.material_id = rm.material_id
         WHERE rml.lot_id = %s
@@ -387,8 +397,8 @@ def get_lot_by_id(lot_id):
         result = cursor.fetchone()
         if result is None:
             raise ValueError(f"Lot with ID {lot_id} not found.")
-        
-        columns = ['lot_id', 'material_id', 'lot_number', 'quantity', 'received_date', 'expiration_date', 'location', 'supplier', 'cost_per_unit', 'status', 'material_name', 'is_housemade']
+
+        columns = ['lot_id', 'material_id', 'lot_number', 'quantity', 'received_date', 'expiration_date', 'location', 'supplier', 'cost_per_unit', 'status', 'material_name', 'is_housemade', 'unit', 'dimension']
         df = pd.DataFrame([result], columns=columns) # create a dataframe with a single row. 
 
         return df

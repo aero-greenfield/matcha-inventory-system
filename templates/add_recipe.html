@@ -43,6 +43,18 @@
                     <input type="number" step="any" name="quantity_0" required placeholder="e.g., 10">
                     <small class="material-unit" style="color:var(--text-muted);display:block;margin-top:4px;min-height:1em;"></small>
                 </div>
+                {# ADDED: units-conversion-layer feature — entry unit for this line. For mass
+                   materials the amount is converted from this unit to grams; for count materials
+                   the server ignores it (the amount is a plain count). #}
+                <div class="form-group material-unit-select" style="max-width:90px;">
+                    <label>Unit</label>
+                    <select name="unit_0">
+                        <option value="g" selected>g</option>
+                        <option value="kg">kg</option>
+                        <option value="lb">lb</option>
+                        <option value="oz">oz</option>
+                    </select>
+                </div>
                 <button type="button" class="btn btn-danger" onclick="removeMaterial(0)" style="align-self:flex-end;padding:9px 12px;">&#x2715;</button>
             </div>
         </div>
@@ -72,6 +84,15 @@ function addMaterial() {
             <label>Quantity Needed</label>
             <input type="number" step="any" name="quantity_${materialCount}" placeholder="e.g., 200">
             <small class="material-unit" style="color:var(--text-muted);display:block;margin-top:4px;min-height:1em;"></small>
+        </div>
+        <div class="form-group material-unit-select" style="max-width:90px;">
+            <label>Unit</label>
+            <select name="unit_${materialCount}">
+                <option value="g" selected>g</option>
+                <option value="kg">kg</option>
+                <option value="lb">lb</option>
+                <option value="oz">oz</option>
+            </select>
         </div>
         <button type="button" class="btn btn-danger" onclick="removeMaterial(${materialCount})" style="align-self:flex-end;padding:9px 12px;">&#x2715;</button>
     `;
