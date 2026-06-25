@@ -2304,7 +2304,9 @@ def edit_lot(lot_id):
         if lot[0].get('quantity') is not None:
             lot[0]['quantity'] = float(units.from_base(lot[0]['quantity'], lot_unit))
         if lot[0].get('cost_per_unit') is not None:
-            lot[0]['cost_per_unit'] = float(units.to_base(lot[0]['cost_per_unit'], lot_unit))
+            # CHANGED: was units.to_base — cost is stored per base unit; convert it back to
+            #          the display unit (mirrors the quantity line above) for the edit form.
+            lot[0]['cost_per_unit'] = float(units.from_base(lot[0]['cost_per_unit'], lot_unit))
 
     lot_batches = get_batches_for_lot(lot_id)
 

@@ -388,8 +388,17 @@ def get_lot_by_id(lot_id):
         # CHANGED: units-conversion-layer feature — also select the material's unit and
         #          dimension so the edit-lot page can display/convert the stored base-unit
         #          quantity and cost back into the user's display unit.
+        # CHANGED: list the lot columns explicitly instead of `rml.*`. With `rml.*` the
+        #          result column order followed the table's physical order
+        #          (... status, supplier, location, cost_per_unit) while the `columns` list
+        #          below assumed (... location, supplier, cost_per_unit, status), so the
+        #          location field received the status value ("active") and cost_per_unit
+        #          received the location text — breaking the edit-lot page. Explicit columns
+        #          keep query order and `columns` order in lock-step.
         db.execute(cursor, """
-        SELECT rml.*, rm.name AS material_name, rm.is_housemade, rm.unit, rm.dimension
+        SELECT rml.lot_id, rml.material_id, rml.lot_number, rml.quantity, rml.received_date,
+               rml.expiration_date, rml.location, rml.supplier, rml.cost_per_unit, rml.status,
+               rm.name AS material_name, rm.is_housemade, rm.unit, rm.dimension
         FROM raw_material_lots rml
         JOIN raw_materials rm ON rml.material_id = rm.material_id
         WHERE rml.lot_id = %s
