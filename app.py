@@ -147,7 +147,7 @@ def _is_empty(value):
 
 
 @app.template_filter("fmt_num")
-def fmt_num(value, places=15):
+def fmt_num(value, places=3):
     """Round a number and strip float noise / trailing zeros.
     Usage: {{ qty | fmt_num }}  ->  48.980000000000004 becomes "48.98"; 5.0 becomes "5".
 
