@@ -308,7 +308,7 @@ from flask_limiter.util import get_remote_address
 limiter = Limiter(
     app=app,
     key_func=get_remote_address,
-    default_limits=["200 per day", "100 per hour"]
+    default_limits=["200 per day", "2000 per hour"]
 )
 # ========================
 

@@ -38,6 +38,8 @@ except ImportError:
 
 DATABASE_URL = os.getenv('DATABASE_URL')  # ← THEN read it
 
+
+
 from database import get_connection
 
 
@@ -53,9 +55,16 @@ def init_database():
     - SERIAL = auto-incrementing integer in PostgreSQL
     """
     
-    print("🔧 Connecting to database...")
+
     conn = get_connection()
     cursor = conn.cursor()
+
+
+    if DATABASE_URL:
+        print("🔧 Using PostgreSQL database")
+
+    else:
+        print("🔧 Using SQLite database")
 
     print("📋 Creating tables...")
 
