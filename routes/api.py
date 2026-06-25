@@ -8,7 +8,7 @@ from database import get_db_connection
 # REMOVED: get_all_materials — /api/materials and /api/material-unit no longer fetch the full table
 # REMOVED: get_all_recipes — /api/recipes no longer fetches the full table
 # ADDED: get_material_by_name, get_material_names, get_recipe_names — targeted lookups used below
-from services.materials import get_material_by_name, get_material_names
+from services.materials import get_material_names, get_unit_and_dimension
 from services.lots import get_all_lots_for_material, get_lots_for_material
 from services.recipes import get_recipe_names, get_recipe, get_recipe_unit
 # ADDED: units-conversion-layer feature — base-unit labels for the lot-selection UI.
@@ -77,10 +77,13 @@ def api_material_unit():
     name = request.args.get('name', '').strip()
     if not name:
         return jsonify({'exists': False})
-    row = get_material_by_name(name)
+    # CHANGED: also return the material's dimension ('mass' or 'count') so the recipe
+    #          material-row UI can show a unit dropdown for mass materials (conversion) and a
+    #          fixed unit label for count materials (no conversion).
+    row = get_unit_and_dimension(name)
     if row is None:
         return jsonify({'exists': False})
-    return jsonify({'exists': True, 'unit': row[1]})
+    return jsonify({'exists': True, 'unit': row[0], 'dimension': row[1]})
 
 
 # looks up a recipe's product unit-of-measurement by name (used to show the product's unit

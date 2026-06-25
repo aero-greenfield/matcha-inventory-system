@@ -117,7 +117,7 @@ def get_active_lots_for_materials(material_ids):
     Ordered by received_date ASC (FIFO) within each material.
 
     returns: dict mapping material_id -> list of lot dicts, each with keys
-             lot_number, quantity, received_date, expiration_date.
+             lot_number, quantity, received_date, expiration_date, location, supplier.
              Materials with no active lots are simply absent from the dict.
     """
     # ADDED: guard empty input — an empty IN () list is a SQL syntax error.
@@ -132,7 +132,7 @@ def get_active_lots_for_materials(material_ids):
         #        (rewritten to ? for SQLite by db.execute), never interpolated values.
         placeholders = ', '.join(['%s'] * len(material_ids))
         db.execute(cursor, f"""
-        SELECT material_id, lot_number, quantity, received_date, expiration_date
+        SELECT material_id, lot_number, quantity, received_date, expiration_date, location, supplier
         FROM raw_material_lots
         WHERE material_id IN ({placeholders})
           AND quantity > 0 AND status = 'active'
@@ -142,12 +142,14 @@ def get_active_lots_for_materials(material_ids):
         result = cursor.fetchall()
 
         grouped = {}
-        for material_id, lot_number, quantity, received_date, expiration_date in result:
+        for material_id, lot_number, quantity, received_date, expiration_date, location, supplier in result:
             grouped.setdefault(material_id, []).append({
                 'lot_number': lot_number,
                 'quantity': quantity,
                 'received_date': received_date,
                 'expiration_date': expiration_date,
+                'location': location,
+                'supplier': supplier,
             })
         return grouped
 

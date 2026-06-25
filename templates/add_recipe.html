@@ -25,10 +25,36 @@
             </div>
         </div>
 
-        <div class="form-group" style="max-width:320px;">
-            <label>Product Unit of Measurement *</label>
-            <input type="text" name="product_unit" required placeholder="e.g., lbs, g, bottle">
-            <small style="color:var(--text-muted);display:block;margin-top:4px;">What one unit of this product is (used to label quantities on batches).</small>
+        {# units-conversion-layer feature — declare whether the product is tracked by Weight or
+           Count, exactly like the Add Material page. Weight -> pick a mass unit (quantities
+           convert); Count -> free label (no conversion). Only the active unit control is enabled,
+           so exactly one `product_unit` value is submitted. The chosen dimension is also what a
+           mix/component batch gives the housemade material it produces. #}
+        <div class="form-row" style="max-width:480px;">
+            <div class="form-group">
+                <label>Tracked by *</label>
+                <div style="display:flex;gap:16px;align-items:center;">
+                    <label style="margin:0;font-weight:400;display:flex;align-items:center;gap:6px;">
+                        <input type="radio" name="product_dimension" value="mass" checked style="width:auto;" onclick="puToggle()"> Weight
+                    </label>
+                    <label style="margin:0;font-weight:400;display:flex;align-items:center;gap:6px;">
+                        <input type="radio" name="product_dimension" value="count" style="width:auto;" onclick="puToggle()"> Count
+                    </label>
+                </div>
+            </div>
+            <div class="form-group">
+                <label>Product Unit *</label>
+                {# Weight: dropdown of mass units (kept in sync with services/units.MASS_UNITS) #}
+                <select id="product-unit-mass" name="product_unit">
+                    <option value="lb">lb</option>
+                    <option value="g">g</option>
+                    <option value="kg">kg</option>
+                    <option value="oz">oz</option>
+                </select>
+                {# Count: free-text label (e.g. bottle, tin). Disabled until Count is chosen. #}
+                <input id="product-unit-count" type="text" name="product_unit" placeholder="e.g. bottle, tin" disabled style="display:none;">
+                <small style="color:var(--text-muted);display:block;margin-top:4px;">What one unit of this product is (used to label quantities on batches).</small>
+            </div>
         </div>
 
         <p style="font-size:12px;font-weight:600;text-transform:uppercase;letter-spacing:.06em;color:var(--text-muted);margin:20px 0 12px;">Materials Required</p>
@@ -41,11 +67,11 @@
                 <div class="form-group">
                     <label>Quantity Needed *</label>
                     <input type="number" step="any" name="quantity_0" required placeholder="e.g., 10">
-                    <small class="material-unit" style="color:var(--text-muted);display:block;margin-top:4px;min-height:1em;"></small>
                 </div>
-                {# ADDED: units-conversion-layer feature — entry unit for this line. For mass
-                   materials the amount is converted from this unit to grams; for count materials
-                   the server ignores it (the amount is a plain count). #}
+                {# units-conversion-layer feature — entry unit for this line. For MASS materials
+                   the dropdown lets the user pick the unit and the amount is converted to grams.
+                   For COUNT materials there's no conversion, so JS hides the dropdown and shows
+                   the material's fixed unit label instead (the server ignores the entry unit). #}
                 <div class="form-group material-unit-select" style="max-width:90px;">
                     <label>Unit</label>
                     <select name="unit_0">
@@ -54,6 +80,7 @@
                         <option value="lb">lb</option>
                         <option value="oz">oz</option>
                     </select>
+                    <div class="material-unit-fixed" style="display:none;height:42px;line-height:42px;font-family:var(--font-mono);color:var(--text);"></div>
                 </div>
                 <button type="button" class="btn btn-danger" onclick="removeMaterial(0)" style="align-self:flex-end;padding:9px 12px;">&#x2715;</button>
             </div>
@@ -70,6 +97,20 @@
 <script>
 let materialCount = 1;
 
+// units-conversion-layer feature — show the mass dropdown OR the count text box depending on the
+// Weight/Count radio, and disable the hidden one so only one `product_unit` is submitted.
+function puToggle() {
+    var isMass = document.querySelector('input[name="product_dimension"]:checked').value === 'mass';
+    var massSel = document.getElementById('product-unit-mass');
+    var countInp = document.getElementById('product-unit-count');
+    massSel.style.display = isMass ? '' : 'none';
+    massSel.disabled = !isMass;
+    countInp.style.display = isMass ? 'none' : '';
+    countInp.disabled = isMass;
+    countInp.required = !isMass;
+}
+puToggle();
+
 function addMaterial() {
     const container = document.getElementById('materials-container');
     const newRow = document.createElement('div');
@@ -83,7 +124,6 @@ function addMaterial() {
         <div class="form-group">
             <label>Quantity Needed</label>
             <input type="number" step="any" name="quantity_${materialCount}" placeholder="e.g., 200">
-            <small class="material-unit" style="color:var(--text-muted);display:block;margin-top:4px;min-height:1em;"></small>
         </div>
         <div class="form-group material-unit-select" style="max-width:90px;">
             <label>Unit</label>
@@ -93,6 +133,7 @@ function addMaterial() {
                 <option value="lb">lb</option>
                 <option value="oz">oz</option>
             </select>
+            <div class="material-unit-fixed" style="display:none;height:42px;line-height:42px;font-family:var(--font-mono);color:var(--text);"></div>
         </div>
         <button type="button" class="btn btn-danger" onclick="removeMaterial(${materialCount})" style="align-self:flex-end;padding:9px 12px;">&#x2715;</button>
     `;
@@ -103,21 +144,38 @@ function addMaterial() {
     materialCount++;
 }
 
-// Auto-detect a material's unit of measurement and show it under the quantity field.
-// Reuses the existing /api/material-unit endpoint. Fires on 'change' (autocomplete
-// selection dispatches a change event; manual edits fire change on blur).
+// Switch the unit control based on the chosen material's dimension.
+// MASS materials -> show the unit dropdown (drives g/kg/lb/oz -> grams conversion).
+// COUNT materials -> hide the dropdown and show the material's fixed unit label (no conversion;
+// the server ignores the entry unit for counts). Uses the /api/material-unit endpoint, which
+// now returns { exists, unit, dimension }. Fires on 'change' (autocomplete selection dispatches
+// a change event; manual edits fire change on blur).
 function attachUnitDisplay(nameInput) {
     if (!nameInput) return;
-    var span = nameInput.closest('.material-row').querySelector('.material-unit');
+    var row = nameInput.closest('.material-row');
+    var select = row.querySelector('.material-unit-select select');
+    var fixed = row.querySelector('.material-unit-fixed');
+    function showMass() {
+        if (select) select.style.display = '';
+        if (fixed) { fixed.style.display = 'none'; fixed.textContent = ''; }
+    }
+    function showCount(unit) {
+        if (select) select.style.display = 'none';
+        if (fixed) { fixed.style.display = ''; fixed.textContent = unit || ''; }
+    }
     function update() {
         var name = nameInput.value.trim();
-        if (!name) { span.textContent = ''; return; }
+        if (!name) { showMass(); return; }
         fetch('/api/material-unit?name=' + encodeURIComponent(name), { credentials: 'include' })
             .then(function(r) { return r.json(); })
             .then(function(data) {
-                span.textContent = (data.exists && data.unit) ? ('Unit: ' + data.unit) : '';
+                if (data.exists && data.dimension === 'count') {
+                    showCount(data.unit);
+                } else {
+                    showMass();
+                }
             })
-            .catch(function() { span.textContent = ''; });
+            .catch(function() { showMass(); });
     }
     nameInput.addEventListener('change', update);
     return update;

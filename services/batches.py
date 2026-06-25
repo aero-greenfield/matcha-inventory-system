@@ -14,8 +14,13 @@ _BATCH_UPDATABLE_COLS = frozenset({"product_name", "quantity", "date_completed",
 #        and promote_planned_batches) and get_recipe (for deduction and promotion).
 #        They live in their own service modules now, so we import them explicitly.
 from services.materials import get_raw_material
-from services.recipes import get_recipe
+from services.recipes import get_recipe, get_recipe_unit_and_dimension
 from services.lots import exhaust_lot_if_depleted
+
+# ADDED: units-conversion-layer feature — mix batches store the produced housemade material's
+#        display unit/dimension from the recipe's product_unit and store the produced lot
+#        quantity in the canonical base unit (grams for mass) so finished-batch deduction lines up.
+from services import units
 
 # ADDED: promote_planned_batches calls log_action directly to record promotions.
 #        log_action moved to services.audit, so we import it here.
@@ -199,21 +204,32 @@ def add_to_batches(product_name, quantity, notes=None, batch_number=None, deduct
         # ALSO IF BATCH TYPE IS MIX, ADD THE MIXED PRODUCT TO RAW_MATERIALS WITH is_housemade = True, SO IT CAN BE USED IN FUTURE BATCHES.if not already in raw_materials,
         # otherwise if its already in raw_materials, just update the stock level by adding the quantity of the batch we just made.
         if batch_type == 'mix':
+            # The produced product is measured in the recipe's product_unit. Derive the
+            # housemade material's display unit + dimension from it (instead of hardcoding
+            # 'units'/NULL), and store the produced lot quantity in the canonical base unit
+            # (grams for mass) so a finished recipe consuming this component deducts cleanly.
+            product_unit, product_dimension = get_recipe_unit_and_dimension(product_name)
+            product_unit = product_unit or 'units'
+            # prefer the dimension the user declared on the recipe; fall back to inferring from
+            # the unit text for legacy recipes created before product_dimension existed (NULL).
+            dimension = product_dimension or units.dimension_of(product_unit)
+            lot_quantity = float(units.to_base(quantity, product_unit)) if dimension == 'mass' else quantity
+
             existing_mix = get_raw_material(product_name)
             if existing_mix:
                 mix_material_id = existing_mix[0]
             else:
                 db.execute(cursor, """
-                    INSERT INTO raw_materials (name, category, unit, reorder_level, is_housemade)
-                    VALUES (%s, %s, %s, %s, %s)
-                """, (product_name, 'Mix', 'units', 0, True))
+                    INSERT INTO raw_materials (name, category, unit, reorder_level, is_housemade, dimension)
+                    VALUES (%s, %s, %s, %s, %s, %s)
+                """, (product_name, 'Mix', product_unit, 0, True, dimension))
                 mix_material_id = db.get_last_insert_id(cursor)
 
             lot_number = f"MIX-BATCH-{batch_number}"
             db.execute(cursor, """
                 INSERT INTO raw_material_lots (lot_number, material_id, quantity, received_date, status)
                 VALUES (%s, %s, %s, %s, %s)
-            """, (lot_number, mix_material_id, quantity, datetime.now().strftime('%Y-%m-%d'), 'active'))
+            """, (lot_number, mix_material_id, lot_quantity, datetime.now().strftime('%Y-%m-%d'), 'active'))
             if cursor.rowcount == 0:
                 raise ValueError(f"Failed to create lot for mixed batch {batch_number}")
             
@@ -805,11 +821,18 @@ def promote_planned_batches():
                     existing_mix = get_raw_material(product_name)
                     if existing_mix:
                         mix_material_id = existing_mix[0]
+                        # mirror add_to_batches: store the produced lot in the base unit derived
+                        # from the recipe's product_unit + declared dimension (legacy NULL falls
+                        # back to inferring from the unit text) so it lines up with deduction.
+                        product_unit, product_dimension = get_recipe_unit_and_dimension(product_name)
+                        product_unit = product_unit or 'units'
+                        dimension = product_dimension or units.dimension_of(product_unit)
+                        lot_quantity = float(units.to_base(quantity, product_unit)) if dimension == 'mass' else quantity
                         lot_number = f"MIX-BATCH-{batch_number}"
                         db.execute(cursor, """
                             INSERT INTO raw_material_lots (lot_number, material_id, quantity, received_date, status)
                             VALUES (%s, %s, %s, %s, %s)
-                        """, (lot_number, mix_material_id, quantity, planned_completion_date, 'active'))
+                        """, (lot_number, mix_material_id, lot_quantity, planned_completion_date, 'active'))
                     else:
                         # if the mix product somehow isn't in raw_materials, log a warning but don't block promotion
                         logging.warning(f"Mix batch {batch_id}: could not find '{product_name}' in raw_materials to create lot.")

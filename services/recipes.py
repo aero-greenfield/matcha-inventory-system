@@ -57,6 +57,27 @@ def get_recipe_unit(name):
         db.close()
 
 
+def get_recipe_unit_and_dimension(name):
+    # ADDED: units-conversion-layer feature — fetch a recipe's product_unit AND its declared
+    #        product_dimension ('mass'/'count'). Used by batches.py when a mix/component batch
+    #        turns the recipe into a housemade material, so the material's dimension is taken
+    #        from what the user declared rather than guessed from the product_unit text.
+    #        Returns (product_unit, product_dimension); either may be None.
+    db = get_db_connection()
+    cursor = db.cursor()
+    try:
+        db.execute(cursor,
+            "SELECT product_unit, product_dimension FROM recipes WHERE LOWER(product_name) = LOWER(%s) LIMIT 1",
+            (name,))
+        row = cursor.fetchone()
+        return (row[0], row[1]) if row else (None, None)
+    except Exception as e:
+        logging.error(f"get_recipe_unit_and_dimension: {e}")
+        return (None, None)
+    finally:
+        db.close()
+
+
 def get_recipe(product_name):
     """
     Gets recipe from recipes, which refrences recipe materials
@@ -259,7 +280,7 @@ def get_all_recipes(page=None, per_page=50):
         db.close()
 
 
-def add_recipe(product_name, materials, notes=None, product_unit=None):
+def add_recipe(product_name, materials, notes=None, product_unit=None, product_dimension=None):
 
     db = get_db_connection()
     cursor = db.cursor()
@@ -284,9 +305,9 @@ def add_recipe(product_name, materials, notes=None, product_unit=None):
     try:
 
         db.execute(cursor,"""
-        INSERT INTO recipes (product_name, notes, product_unit)
-        VALUES (%s, %s, %s)
-         """,(product_name, notes, product_unit))
+        INSERT INTO recipes (product_name, notes, product_unit, product_dimension)
+        VALUES (%s, %s, %s, %s)
+         """,(product_name, notes, product_unit, product_dimension))
         recipe_id = db.get_last_insert_id(cursor) # get recipe_id, able to add to recipe_materials
 
         # ISSUE: the loop below called get_raw_material(name) once per material — each call
@@ -427,6 +448,7 @@ def get_recipe_by_id(recipe_id):
        r.product_name,
        r.notes,
        r.product_unit,
+       r.product_dimension,
        rm.material_id,
        COALESCE(raw.name, rm.material_name) AS material_name,
        rm.quantity_needed,
@@ -453,7 +475,7 @@ def get_recipe_by_id(recipe_id):
         db.close()
 
 
-def update_recipe(recipe_id, product_name=None, materials=None, notes=None, product_unit=None):
+def update_recipe(recipe_id, product_name=None, materials=None, notes=None, product_unit=None, product_dimension=None):
     """
     changes a pre exisitng recipe
 
@@ -483,10 +505,11 @@ def update_recipe(recipe_id, product_name=None, materials=None, notes=None, prod
         db.execute(cursor,"""
         UPDATE recipes
         SET notes = %s,
-            product_unit = %s
+            product_unit = %s,
+            product_dimension = %s
         WHERE recipe_id = %s
 
-                """,(notes, product_unit, recipe_id,))
+                """,(notes, product_unit, product_dimension, recipe_id,))
 
         if product_name is not None:
             db.execute(cursor, """

@@ -427,9 +427,16 @@ def view_inventory():
     sort = request.args.get('sort')
     direction = request.args.get('dir', 'asc')
 
+    # CHANGED: default the materials page to stock high->low when the user hasn't picked a sort.
+    #          `sort`/`direction` stay None/asc so the Sort dropdown still shows "Default"; only
+    #          the order passed to the service changes. Other callers of get_all_materials keep
+    #          the service's own default.
+    effective_sort = sort or 'stock_level'
+    effective_dir = direction if sort else 'desc'
+
     # CHANGED: was get_all_materials() returning a plain df.
     #          Now returns (df, total) tuple; page= triggers LIMIT/OFFSET in the query.
-    df, total = get_all_materials(page=page, per_page=PER_PAGE, sort_by=sort, sort_dir=direction)
+    df, total = get_all_materials(page=page, per_page=PER_PAGE, sort_by=effective_sort, sort_dir=effective_dir)
 
     materials = df.to_dict(orient='records') if not df.empty else []
     # ADDED: compute total page count for pagination controls in the template
@@ -1175,8 +1182,12 @@ def batch_materials(batch_id):
     rows = get_batch_materials(batch_id)
     # ADDED: cost-of-material feature — expose cost_per_unit (r[6]) so batches.html can
     #        display it in the materials expansion panel per line item.
+    # CHANGED: units-conversion-layer feature — quantity_used is stored in the base unit
+    #          (grams for mass), so the expand panel was showing raw gram values. Convert it
+    #          back to the material's display unit via disp() (identity for count units) so it
+    #          shows e.g. "1" kg instead of "1000".
     materials = [
-        {'material_name': r[0], 'quantity_used': r[1], 'unit': r[2], 'batch_material_lot_id': r[3], 'lot_number': r[4], 'material_id': r[5], 'cost_per_unit': r[6]}
+        {'material_name': r[0], 'quantity_used': disp(r[1], r[2]), 'unit': r[2], 'batch_material_lot_id': r[3], 'lot_number': r[4], 'material_id': r[5], 'cost_per_unit': r[6]}
         for r in rows
     ]
     return jsonify(materials)
@@ -1857,6 +1868,19 @@ def recipe_qty_to_base(material_name, quantity, line_unit):
     return float(units.to_base(quantity, entry_unit)), entry_unit
 
 
+# ADDED: units-conversion-layer feature — validate the recipe's product dimension the same way
+#        the add-material route validates a material's dimension. Returns an error message
+#        string for the user, or None when valid. Mass products must use a recognized weight
+#        unit (so the housemade material they produce is convertible); count products are free.
+def _validate_product_dimension(product_dimension, product_unit):
+    if product_dimension not in ("mass", "count"):
+        return "Please choose whether the product is tracked by Weight or Count."
+    if product_dimension == "mass" and units.dimension_of(product_unit) != "mass":
+        return (f"'{product_unit}' is not a recognized weight unit. "
+                f"Use one of: {', '.join(units.MASS_UNITS)}.")
+    return None
+
+
 @app.route('/add-recipe', methods=['GET', 'POST'])
 @requires_auth
 def add_recipe_route():
@@ -1905,6 +1929,11 @@ def add_recipe_route():
 
         product_unit = product_unit.strip() if product_unit else None
 
+        # ADDED: units-conversion-layer feature — explicit Weight/Count for the product itself,
+        #        mirroring the add-material form. Declares (not guesses) the dimension a
+        #        mix/component batch will give the housemade material it produces.
+        product_dimension = (request.form.get('product_dimension') or '').strip()
+
         if not product_name:
             return render_template('error.html',
                 title="Invalid Input",
@@ -1916,6 +1945,14 @@ def add_recipe_route():
             return render_template('error.html',
                 title="Invalid Input",
                 message="Product unit of measurement cannot be blank.",
+                back_link=True, back_link_url="/add-recipe", back_link_label="Go back"
+                 ), 400
+
+        dim_error = _validate_product_dimension(product_dimension, product_unit)
+        if dim_error:
+            return render_template('error.html',
+                title="Invalid Input",
+                message=dim_error,
                 back_link=True, back_link_url="/add-recipe", back_link_label="Go back"
                  ), 400
     
@@ -1989,7 +2026,7 @@ def add_recipe_route():
         
         try:
             
-            result = add_recipe(product_name, materials, notes, product_unit=product_unit)
+            result = add_recipe(product_name, materials, notes, product_unit=product_unit, product_dimension=product_dimension)
             # materials is the list of dictionaries we build from form data. 
             if result:
                 #success
@@ -2084,6 +2121,11 @@ def edit_recipe(recipe_id):
     product_name = df['product_name'].iloc[0]
     notes = df['notes'].iloc[0]
     product_unit = df['product_unit'].iloc[0]
+    # ADDED: units-conversion-layer feature — declared Weight/Count for the product. Legacy
+    #        recipes have NULL here; infer from the unit so the form pre-selects sensibly.
+    product_dimension = df['product_dimension'].iloc[0]
+    if not product_dimension:
+        product_dimension = units.dimension_of(product_unit) if product_unit else 'mass'
 
     # Extract materials list — one dict per row.
     # ADDED: a recipe with no materials comes back from the LEFT JOIN as a single all-NULL
@@ -2109,6 +2151,7 @@ def edit_recipe(recipe_id):
         product_name=product_name,
         notes=notes,
         product_unit=product_unit,
+        product_dimension=product_dimension,
         materials=materials,
         msg=msg,
         err=err,
@@ -2142,6 +2185,9 @@ def update_recipe_route(recipe_id):
         product_unit = request.form.get('product_unit')  # required — what one unit of the product is
 
         product_unit = product_unit.strip() if product_unit else None
+
+        # ADDED: units-conversion-layer feature — explicit Weight/Count for the product itself.
+        product_dimension = (request.form.get('product_dimension') or '').strip()
 
         materials = [] # materials come in as indexed fields, so we have to parse same as recipe
         index = 0
@@ -2190,6 +2236,14 @@ def update_recipe_route(recipe_id):
             back_link=True, back_link_url=f"/edit-recipe/{recipe_id}", back_link_label="Go back"
         ), 400
 
+    dim_error = _validate_product_dimension(product_dimension, product_unit)
+    if dim_error:
+        return render_template('error.html',
+            title="Invalid Input",
+            message=dim_error,
+            back_link=True, back_link_url=f"/edit-recipe/{recipe_id}", back_link_label="Go back"
+        ), 400
+
     if not materials:
         return render_template('error.html',
             title="Invalid Input",
@@ -2197,7 +2251,7 @@ def update_recipe_route(recipe_id):
             back_link=True, back_link_url=f"/edit-recipe/{recipe_id}", back_link_label="Go back"
         ), 400
     
-    result = update_recipe(recipe_id, product_name=product_name, notes=notes, materials=materials, product_unit=product_unit)
+    result = update_recipe(recipe_id, product_name=product_name, notes=notes, materials=materials, product_unit=product_unit, product_dimension=product_dimension)
     
 
     if result:

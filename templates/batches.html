@@ -131,7 +131,11 @@
                 </tr>
                 <tr class="materials-row" id="materials-{{ row['batch_id'] }}" style="display:none;">
                     {# CHANGED: cost-of-material feature — colspan 6→7. #}
-                    <td colspan="7"><div class="materials-detail">Loading...</div></td>
+                    <td colspan="7">
+                        {# batch notes — shown here so they're visible without opening the manage page. #}
+                        {% if row['notes'] %}<div class="batch-notes" style="margin-bottom:10px;font-size:13px;color:var(--text-muted);"><strong style="color:var(--text);">Notes:</strong> {{ row['notes'] }}</div>{% endif %}
+                        <div class="materials-detail">Loading...</div>
+                    </td>
                 </tr>
                 {% endfor %}
                 {% endif %}
@@ -160,7 +164,11 @@
                 </tr>
                 <tr class="materials-row" id="materials-{{ row['batch_id'] }}" style="display:none;">
                     {# CHANGED: cost-of-material feature — colspan 6→7. #}
-                    <td colspan="7"><div class="materials-detail">Loading...</div></td>
+                    <td colspan="7">
+                        {# batch notes — shown here so they're visible without opening the manage page. #}
+                        {% if row['notes'] %}<div class="batch-notes" style="margin-bottom:10px;font-size:13px;color:var(--text-muted);"><strong style="color:var(--text);">Notes:</strong> {{ row['notes'] }}</div>{% endif %}
+                        <div class="materials-detail">Loading...</div>
+                    </td>
                 </tr>
                 {% endfor %}
                 {% endif %}
@@ -236,7 +244,11 @@
                     </td>
                 </tr>
                 <tr class="materials-row" id="materials-{{ row['batch_id'] }}" style="display:none;">
-                    <td colspan="6"><div class="materials-detail">Loading...</div></td>
+                    <td colspan="6">
+                        {# batch notes — shown here so they're visible without opening the manage page. #}
+                        {% if row['notes'] %}<div class="batch-notes" style="margin-bottom:10px;font-size:13px;color:var(--text-muted);"><strong style="color:var(--text);">Notes:</strong> {{ row['notes'] }}</div>{% endif %}
+                        <div class="materials-detail">Loading...</div>
+                    </td>
                 </tr>
                 {% endfor %}
                 {% endif %}
@@ -267,7 +279,11 @@
                     </td>
                 </tr>
                 <tr class="materials-row" id="materials-{{ row['batch_id'] }}" style="display:none;">
-                    <td colspan="6"><div class="materials-detail">Loading...</div></td>
+                    <td colspan="6">
+                        {# batch notes — shown here so they're visible without opening the manage page. #}
+                        {% if row['notes'] %}<div class="batch-notes" style="margin-bottom:10px;font-size:13px;color:var(--text-muted);"><strong style="color:var(--text);">Notes:</strong> {{ row['notes'] }}</div>{% endif %}
+                        <div class="materials-detail">Loading...</div>
+                    </td>
                 </tr>
                 {% endfor %}
                 {% endif %}

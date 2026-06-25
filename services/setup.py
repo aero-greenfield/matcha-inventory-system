@@ -75,11 +75,22 @@ def create_database():
                    recipe_id INTEGER PRIMARY KEY AUTOINCREMENT,
                    product_name TEXT NOT NULL,
                    notes TEXT,
-                   product_unit TEXT
+                   product_unit TEXT,
+                   -- ADDED: units-conversion-layer feature — explicit 'mass' or 'count' for the
+                   -- product itself (mirrors raw_materials.dimension). Used when a mix/component
+                   -- batch turns this recipe into a housemade material, so the material's
+                   -- dimension is declared rather than guessed from the product_unit text.
+                   product_dimension TEXT
 
 
                    )
                    """)
+
+    # ADDED: units-conversion-layer feature — additive migration for pre-existing SQLite DBs.
+    cursor.execute("PRAGMA table_info(recipes)")
+    _recipe_cols = {row[1] for row in cursor.fetchall()}
+    if "product_dimension" not in _recipe_cols:
+        cursor.execute("ALTER TABLE recipes ADD COLUMN product_dimension TEXT")
 
     cursor.execute("""
     CREATE TABLE IF NOT EXISTS recipe_materials(

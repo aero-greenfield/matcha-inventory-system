@@ -91,6 +91,8 @@
                                     <th class="num">Quantity</th>
                                     <th>Received</th>
                                     <th>Expiration</th>
+                                    <th>Location</th>
+                                    <th>Supplier</th>
                                 </tr>
                             </thead>
                             <tbody>
@@ -101,6 +103,8 @@
                                     <td class="num">{{ lot.quantity | disp_full(row.unit) }} <span style="color:var(--text-faint);font-size:12px;">{{ row.unit }}</span></td>
                                     <td class="mono">{{ lot.received_date | dash }}</td>
                                     <td class="mono">{{ lot.expiration_date | dash }}</td>
+                                    <td>{{ lot.location | dash }}</td>
+                                    <td>{{ lot.supplier | dash }}</td>
                                 </tr>
                                 {% endfor %}
                             </tbody>
@@ -148,6 +152,7 @@
         <a href="/manage-materials" class="btn btn-secondary">Manage Materials</a>
         <a href="/manage-lots" class="btn btn-secondary">Manage Lots</a>
         <a href="/export/inventory-excel" class="btn btn-secondary">&#8595; Export Excel</a>
+        <a href="/receive-lot" class="btn btn-primary">+ Receive Lot</a>
         <a href="/add-material" class="btn btn-primary">+ Add Material</a>
     </div>
 </div>

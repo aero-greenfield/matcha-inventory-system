@@ -157,23 +157,27 @@ def init_database():
    
     if DATABASE_URL:
 
-        cursor.execute(""" 
-        CREATE TABLE IF NOT EXISTS recipes( 
+        cursor.execute("""
+        CREATE TABLE IF NOT EXISTS recipes(
             recipe_id SERIAL PRIMARY KEY,
             product_name TEXT NOT NULL,
             notes TEXT,
-            product_unit TEXT
+            product_unit TEXT,
+            -- ADDED: units-conversion-layer feature — explicit 'mass' or 'count' for the product.
+            product_dimension TEXT
         )
-        """) 
+        """)
     else:
-        cursor.execute(""" 
-        CREATE TABLE IF NOT EXISTS recipes( 
+        cursor.execute("""
+        CREATE TABLE IF NOT EXISTS recipes(
             recipe_id INTEGER PRIMARY KEY AUTOINCREMENT,
             product_name TEXT NOT NULL,
             notes TEXT,
-            product_unit TEXT
+            product_unit TEXT,
+            -- ADDED: units-conversion-layer feature — explicit 'mass' or 'count' for the product.
+            product_dimension TEXT
         )
-        """) 
+        """)
     print("  ✅ recipes table created")
     
    # ======================================== 

@@ -24,6 +24,8 @@
                 <th>Qty Remaining</th>
                 <th>Received Date</th>
                 <th>Expiry Date</th>
+                <th>Location</th>
+                <th>Supplier</th>
                 <th>Status</th>
                 <th></th>
             </tr>
@@ -37,6 +39,8 @@
                 <td>{{ row.quantity | disp_full(row.unit) }} {{ row.unit }}</td>
                 <td>{{ row.received_date or '' }}</td>
                 <td>{{ row.expiration_date or '—' }}</td>
+                <td>{{ row.location | dash }}</td>
+                <td>{{ row.supplier | dash }}</td>
                 <td>
                     <span class="badge {% if row.status == 'active' %}badge-in-stock{% else %}badge-out{% endif %}">
                         {{ row.status }}
