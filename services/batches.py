@@ -124,7 +124,8 @@ def add_to_batches(product_name, quantity, notes=None, batch_number=None, deduct
             for _, row in recipe_df.iterrows():
                 material_id = row['material_id']
                 material_name = row['material_name']
-                required_amount = row['quantity_needed'] * quantity
+                # float() guards against Decimal (PostgreSQL numeric) * float (quantity) TypeError
+                required_amount = float(row['quantity_needed']) * quantity
                 # get recipe mats
 
 
@@ -213,7 +214,9 @@ def add_to_batches(product_name, quantity, notes=None, batch_number=None, deduct
             # prefer the dimension the user declared on the recipe; fall back to inferring from
             # the unit text for legacy recipes created before product_dimension existed (NULL).
             dimension = product_dimension or units.dimension_of(product_unit)
-            lot_quantity = float(units.to_base(quantity, product_unit)) if dimension == 'mass' else quantity
+            # round() after float() keeps the stored grams clean (0.1 mg resolution) —
+            # the float() cast of an exact Decimal is what can reintroduce binary noise.
+            lot_quantity = round(float(units.to_base(quantity, product_unit)), 4) if dimension == 'mass' else quantity
 
             existing_mix = get_raw_material(product_name)
             if existing_mix:
@@ -827,7 +830,9 @@ def promote_planned_batches():
                         product_unit, product_dimension = get_recipe_unit_and_dimension(product_name)
                         product_unit = product_unit or 'units'
                         dimension = product_dimension or units.dimension_of(product_unit)
-                        lot_quantity = float(units.to_base(quantity, product_unit)) if dimension == 'mass' else quantity
+                        # round() after float() keeps the stored grams clean (0.1 mg resolution) —
+            # the float() cast of an exact Decimal is what can reintroduce binary noise.
+            lot_quantity = round(float(units.to_base(quantity, product_unit)), 4) if dimension == 'mass' else quantity
                         lot_number = f"MIX-BATCH-{batch_number}"
                         db.execute(cursor, """
                             INSERT INTO raw_material_lots (lot_number, material_id, quantity, received_date, status)
@@ -868,7 +873,8 @@ def promote_planned_batches():
                 for _, row in recipe_df.iterrows():
                     material_id = row['material_id']
                     material_name = row['material_name']
-                    required = row['quantity_needed'] * quantity
+                    # float() guards against Decimal (PostgreSQL numeric) * float (quantity) TypeError
+                    required = float(row['quantity_needed']) * quantity
 
                     if stored_lot_selections is not None:
                         # --- user-picked lots path: validate stored selections same as add_to_batches ---

@@ -170,7 +170,8 @@ def check_negative_stock(product_name, quantity):
               AND (expiration_date IS NULL OR expiration_date > %s)
             GROUP BY material_id
         """, (*material_ids, date_now))
-        stock_map = {row[0]: row[1] for row in cursor.fetchall()}  # ADDED: {material_id: stock}
+        # float() coerces Decimal (PostgreSQL numeric) → float so it mixes with the float `quantity`
+        stock_map = {row[0]: float(row[1]) for row in cursor.fetchall()}  # ADDED: {material_id: stock}
     except Exception as e:
         import logging as _log
         _log.error(f"check_negative_stock: batch stock query failed: {e}")
@@ -182,7 +183,8 @@ def check_negative_stock(product_name, quantity):
     for _, row in recipe_df.iterrows():
         material_name = row['material_name']
         material_id = row['material_id']
-        required_amount = row['quantity_needed'] * quantity
+        # float() guards against Decimal (PostgreSQL numeric) * float (quantity) TypeError
+        required_amount = float(row['quantity_needed']) * quantity
 
         # REMOVED: get_material_stock_from_lots(material_id) — opened a new connection each iteration
         # current_stock = get_material_stock_from_lots(material_id)
