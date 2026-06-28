@@ -44,11 +44,10 @@ def create_database():
     if "is_organic" not in _rm_cols:
         cursor.execute("ALTER TABLE raw_materials ADD COLUMN is_organic BOOLEAN DEFAULT FALSE")
 
-    # Shipments migration — add shipment_id FK to existing batches tables.
-    cursor.execute("PRAGMA table_info(batches)")
-    _b_cols = {row[1] for row in cursor.fetchall()}
-    if "shipment_id" not in _b_cols:
-        cursor.execute("ALTER TABLE batches ADD COLUMN shipment_id INTEGER DEFAULT NULL REFERENCES shipments(shipment_id)")
+    # Shipments migration (add shipment_id FK to existing batches tables) lives further down,
+    # after CREATE TABLE batches — see the guarded ALTER near the index-creation block. It must
+    # not run here: on a fresh DB the batches table doesn't exist yet, so a copy here threw
+    # "no such table: batches" before the table was created.
 
     #raw material lots.
 

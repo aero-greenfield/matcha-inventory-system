@@ -65,7 +65,7 @@
                 </div>
                 <div class="form-group">
                     <label>Quantity Needed *</label>
-                    <input type="number" step="any" name="quantity_{{ loop.index0 }}" value="{{ mat.quantity_needed }}" required>
+                    <input type="number" step="any" name="quantity_{{ loop.index0 }}" value="{{ mat.quantity_needed | fmt_num }}" required>
                 </div>
                 {# units-conversion-layer feature — entry unit, pre-set to the unit this line was
                    originally entered in. For MASS materials the dropdown is shown; for COUNT

@@ -25,6 +25,7 @@ from flask import Flask, json, request, redirect, url_for, jsonify, send_file, r
 
 import os  # Operating system functions (file paths, environment variables)
 import math  # ADDED: math.ceil for computing total_pages in paginated routes
+from decimal import Decimal, ROUND_HALF_UP, InvalidOperation  # ADDED: Decimal-based display formatting (kills float spew, keeps precision)
 from datetime import datetime  # For timestamps in exports
 
 from flask_wtf.csrf import CSRFProtect # security necesity. 
@@ -147,27 +148,28 @@ def _is_empty(value):
 
 
 @app.template_filter("fmt_num")
-def fmt_num(value, places=3):
-    """Round a number and strip float noise / trailing zeros.
+def fmt_num(value, places=6):
+    """Format a number for display: exact, no float spew, trailing zeros stripped.
     Usage: {{ qty | fmt_num }}  ->  48.980000000000004 becomes "48.98"; 5.0 becomes "5".
 
-    Precision contract (see UI-REVIEW.md P1-1): preserve up to 15 decimal places
-    (the boss enters extreme-precision values), strip trailing zeros, and clean up
-    the common float-arithmetic noise (16th-17th digit). Rare noise at the ~15th
-    place can still slip through; the durable fix is Decimal/NUMERIC storage, not
-    this display filter. Never lower `places` below 15 without re-deciding the
-    contract — doing so silently truncates real entered data."""
+    Precision contract: work in Decimal end-to-end. Values reach here either as an
+    exact Decimal (from units.from_base / a NUMERIC column) or as a float (SQLite REAL
+    / PG DOUBLE PRECISION columns); a stray float is routed through str() first, which
+    yields Python's clean shortest repr (str(3.4568999999999999) == "3.4569"), so the
+    IEEE-754 noise never appears. We then quantize to `places` decimals — this caps
+    genuinely-long results (e.g. grams->lb division) without the old force-formatting
+    that EXPANDED float noise. `places=6` is lossless for lb display; raise it if a
+    future column needs finer precision, but never drop back to a float round-trip."""
     if _is_empty(value):
         return EMPTY_DISPLAY
     try:
-        num = round(float(value), places)
-    except (TypeError, ValueError):
+        d = value if isinstance(value, Decimal) else Decimal(str(value))
+        d = d.quantize(Decimal(1).scaleb(-places), rounding=ROUND_HALF_UP)
+        # normalize() strips trailing zeros; format(..., 'f') forces plain notation
+        # (normalize() alone can emit scientific notation like 1E+3 for round numbers).
+        return format(d.normalize(), 'f')
+    except (InvalidOperation, TypeError, ValueError):
         return str(value)
-    # format with fixed places, then drop trailing zeros and any dangling dot
-    text = f"{num:.{places}f}"
-    if "." in text:
-        text = text.rstrip("0").rstrip(".")
-    return text
 
 
 # ADDED: table-redesign feature — `qty` rounds a quantity to 2 dp for display.
@@ -178,17 +180,18 @@ def fmt_num(value, places=3):
 def qty(value):
     """Round a quantity to 2 dp for display, trimming float noise and trailing zeros.
     Usage: {{ row.stock_level | qty }}  ->  48.980000000000004 becomes "48.98"; 5.0 becomes "5".
-    Returns the em dash for None/nan/empty."""
+    Returns the em dash for None/nan/empty.
+
+    Decimal-based like fmt_num (no float round-trip): a stray float is cleaned via
+    str() before quantizing, so no IEEE-754 spew leaks into the 2-dp cells."""
     if _is_empty(value):
         return EMPTY_DISPLAY
     try:
-        num = round(float(value), 2)
-    except (TypeError, ValueError):
+        d = value if isinstance(value, Decimal) else Decimal(str(value))
+        d = d.quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
+        return format(d.normalize(), 'f')
+    except (InvalidOperation, TypeError, ValueError):
         return str(value)
-    text = f"{num:.2f}"
-    if "." in text:
-        text = text.rstrip("0").rstrip(".")
-    return text
 
 
 @app.template_filter("dash")
@@ -1795,7 +1798,9 @@ def view_recipes():
             line_qty = row['quantity']
             line_unit = row['unit']
             if line_qty not in ('', None) and line_unit:
-                line_qty = float(units.from_base(line_qty, line_unit))
+                # Keep the exact Decimal from from_base; fmt_num formats it in the template.
+                # (No float() — that round-trip is what re-introduced the display spew.)
+                line_qty = units.from_base(line_qty, line_unit)
             recipe['materials'].append({
                 'material_name': row['material_name'],
                 'quantity': line_qty,
@@ -2141,7 +2146,9 @@ def edit_recipe(recipe_id):
         entry_unit = m.get('unit') or 'g'
         m['unit'] = entry_unit
         if m.get('quantity_needed') is not None:
-            m['quantity_needed'] = float(units.from_base(m['quantity_needed'], entry_unit))
+            # Keep the exact Decimal (no float() round-trip); the edit form runs it through
+            # fmt_num so a long division tail shows the clean original value.
+            m['quantity_needed'] = units.from_base(m['quantity_needed'], entry_unit)
 
     msg = request.args.get('msg', '')
     err = request.args.get('err', '')

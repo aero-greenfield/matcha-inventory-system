@@ -831,8 +831,8 @@ def promote_planned_batches():
                         product_unit = product_unit or 'units'
                         dimension = product_dimension or units.dimension_of(product_unit)
                         # round() after float() keeps the stored grams clean (0.1 mg resolution) —
-            # the float() cast of an exact Decimal is what can reintroduce binary noise.
-            lot_quantity = round(float(units.to_base(quantity, product_unit)), 4) if dimension == 'mass' else quantity
+                        # the float() cast of an exact Decimal is what can reintroduce binary noise.
+                        lot_quantity = round(float(units.to_base(quantity, product_unit)), 4) if dimension == 'mass' else quantity
                         lot_number = f"MIX-BATCH-{batch_number}"
                         db.execute(cursor, """
                             INSERT INTO raw_material_lots (lot_number, material_id, quantity, received_date, status)
