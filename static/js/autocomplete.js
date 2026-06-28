@@ -26,10 +26,23 @@ function attachAutocomplete(input, fetchFn) {
         dropdown.className = 'autocomplete-dropdown';
         _activeDropdown = dropdown;
 
-        items.slice(0, 10).forEach((name, i) => {
+        items.slice(0, 10).forEach((raw, i) => {
+            // Items may be plain strings (materials) or {name, badge} objects (recipes).
+            const name = (typeof raw === 'string') ? raw : raw.name;
+            const badge = (typeof raw === 'string') ? null : raw.badge;
             const item = document.createElement('div');
             item.className = 'autocomplete-item';
-            item.textContent = name;
+            // store the selectable value so keyboard/Enter selection ignores the badge text
+            item.dataset.value = name;
+            const nameSpan = document.createElement('span');
+            nameSpan.textContent = name;
+            item.appendChild(nameSpan);
+            if (badge) {
+                const badgeSpan = document.createElement('span');
+                badgeSpan.className = 'badge badge-' + (badge === 'Component' ? 'mix' : 'finished');
+                badgeSpan.textContent = badge;
+                item.appendChild(badgeSpan);
+            }
             item.addEventListener('mousedown', (e) => {
                 e.preventDefault(); // prevent blur firing before click
                 input.value = name;
@@ -101,8 +114,9 @@ function attachAutocomplete(input, fetchFn) {
         } else if (e.key === 'Enter') {
             if (highlightedIndex >= 0 && items[highlightedIndex]) {
                 e.preventDefault();
-                input.value = items[highlightedIndex].textContent;
+                input.value = items[highlightedIndex].dataset.value;
                 closeDropdown();
+                input.dispatchEvent(new Event('change'));
             }
         } else if (e.key === 'Escape') {
             closeDropdown();
@@ -128,5 +142,9 @@ async function fetchMaterials(q = '') {
 
 async function fetchRecipes(q = '') {
     const res = await fetch('/api/recipes?q=' + encodeURIComponent(q), { credentials: 'include' });
-    return res.json();
+    const rows = await res.json();
+    // /api/recipes returns [{name, batch_type}]; map to {name, badge} for the dropdown.
+    return rows.map(function(r) {
+        return { name: r.name, badge: r.batch_type === 'mix' ? 'Component' : 'Finished' };
+    });
 }

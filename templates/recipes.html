@@ -86,6 +86,8 @@
         <summary>
             <span class="recipe-chevron">&#9654;</span>
             <span class="recipe-name">{{ recipe.name }}</span>
+            {# batch-type-on-recipe feature — type badge next to the product name. #}
+            <span class="badge badge-{{ 'mix' if recipe.batch_type == 'mix' else 'finished' }}">{{ 'Component' if recipe.batch_type == 'mix' else 'Finished' }}</span>
             <span class="recipe-unit mono">{{ recipe.product_unit or '—' }}</span>
         </summary>
         <div class="recipe-materials">

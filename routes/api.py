@@ -10,7 +10,7 @@ from database import get_db_connection
 # ADDED: get_material_by_name, get_material_names, get_recipe_names — targeted lookups used below
 from services.materials import get_material_names, get_unit_and_dimension
 from services.lots import get_all_lots_for_material, get_lots_for_material
-from services.recipes import get_recipe_names, get_recipe, get_recipe_unit
+from services.recipes import get_recipe_names, get_recipe, get_recipe_unit, get_recipe_batch_type
 # ADDED: units-conversion-layer feature — base-unit labels for the lot-selection UI.
 from services import units
 
@@ -95,7 +95,11 @@ def api_recipe_unit():
     if not name:
         return jsonify({'exists': False})
     unit = get_recipe_unit(name)
-    return jsonify({'exists': unit is not None, 'unit': unit or ''})
+    # ADDED: batch-type-on-recipe feature — also return the recipe's batch type so the
+    #        create-batch page can show it read-only and adapt its fields (Planned date +
+    #        housemade warning only apply to 'finished' batches).
+    batch_type = get_recipe_batch_type(name)
+    return jsonify({'exists': unit is not None, 'unit': unit or '', 'batch_type': batch_type or ''})
 
 
 

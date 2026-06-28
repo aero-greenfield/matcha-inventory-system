@@ -42,7 +42,14 @@
             </div>
             <div class="form-group">
                 <label>Location</label>
-                <input type="text" name="location" value="{{ lot[0].location or '' }}">
+                <select name="location">
+                    <option value="" {% if not lot[0].location %}selected{% endif %}>—</option>
+                    <option value="B" {% if lot[0].location == 'B' %}selected{% endif %}>B</option>
+                    <option value="F" {% if lot[0].location == 'F' %}selected{% endif %}>F</option>
+                    {% if lot[0].location and lot[0].location not in ['B', 'F'] %}
+                    <option value="{{ lot[0].location }}" selected>{{ lot[0].location }}</option>
+                    {% endif %}
+                </select>
             </div>
         </div>
         <div class="form-row">

@@ -21,15 +21,16 @@ from datetime import datetime
 
 def get_recipe_names(q=""):
     # ADDED: lightweight name-search for the /api/recipes autocomplete endpoint.
-    #        Returns up to 50 distinct recipe names matching the search string.
+    #        Returns up to 50 recipes matching the search string as {name, batch_type} dicts,
+    #        so the autocomplete dropdown can show a type badge next to each product name.
     #        Filtering happens in SQL, not by fetching the full recipes table into Python.
     db = get_db_connection()
     cursor = db.cursor()
     try:
         db.execute(cursor,
-            "SELECT DISTINCT product_name FROM recipes WHERE LOWER(product_name) LIKE LOWER(%s) ORDER BY product_name LIMIT 50",
+            "SELECT product_name, batch_type FROM recipes WHERE LOWER(product_name) LIKE LOWER(%s) ORDER BY product_name LIMIT 50",
             (f"%{q}%",))
-        return [row[0] for row in cursor.fetchall()]
+        return [{'name': row[0], 'batch_type': row[1] or 'finished'} for row in cursor.fetchall()]
     except Exception as e:
         logging.error(f"get_recipe_names: {e}")
         return []
@@ -52,6 +53,26 @@ def get_recipe_unit(name):
         return row[0] if row else None
     except Exception as e:
         logging.error(f"get_recipe_unit: {e}")
+        return None
+    finally:
+        db.close()
+
+
+def get_recipe_batch_type(name):
+    # ADDED: batch-type-on-recipe feature — look up the batch type a recipe produces
+    #        ('finished' or 'mix') by product name. The create-batch route uses this so the
+    #        operator no longer picks the type per batch — it's resolved from the recipe.
+    #        Single indexed SELECT, mirroring get_recipe_unit. Returns None if no recipe.
+    db = get_db_connection()
+    cursor = db.cursor()
+    try:
+        db.execute(cursor,
+            "SELECT batch_type FROM recipes WHERE LOWER(product_name) = LOWER(%s) LIMIT 1",
+            (name,))
+        row = cursor.fetchone()
+        return row[0] if row else None
+    except Exception as e:
+        logging.error(f"get_recipe_batch_type: {e}")
         return None
     finally:
         db.close()
@@ -222,7 +243,7 @@ def get_all_recipes(page=None, per_page=50):
     """
     db = get_db_connection()
     cursor = db.cursor()
-    columns = ['recipe_product_name', 'notes', 'product_unit', 'material_name', 'quantity', 'unit']
+    columns = ['recipe_product_name', 'notes', 'product_unit', 'batch_type', 'material_name', 'quantity', 'unit']
 
     try:
         # CHANGED: INNER JOIN -> LEFT JOIN so a recipe still appears even when it has no
@@ -230,7 +251,7 @@ def get_all_recipes(page=None, per_page=50):
         #          such recipes were counted by "COUNT(*) FROM recipes" (the header total)
         #          but silently dropped from the table — the count and the list disagreed.
         full_query = """
-        SELECT r.product_name AS recipe_product_name, r.notes, r.product_unit,
+        SELECT r.product_name AS recipe_product_name, r.notes, r.product_unit, r.batch_type,
                raw.name AS material_name, rm.quantity_needed AS quantity,
                -- CHANGED: units-conversion-layer feature — show the unit the line was entered
                -- in (recipe_materials.unit), falling back to the material's unit for old rows.
@@ -256,7 +277,7 @@ def get_all_recipes(page=None, per_page=50):
         # ADDED: paginate at the recipe level using a subquery so no recipe is split across pages.
         #        Inner SELECT gets the recipe_ids for this page; outer JOIN fetches all their ingredients.
         paginated_query = """
-        SELECT r.product_name AS recipe_product_name, r.notes, r.product_unit,
+        SELECT r.product_name AS recipe_product_name, r.notes, r.product_unit, r.batch_type,
                raw.name AS material_name, rm.quantity_needed AS quantity,
                -- CHANGED: units-conversion-layer feature — show the unit the line was entered
                -- in (recipe_materials.unit), falling back to the material's unit for old rows.
@@ -282,7 +303,7 @@ def get_all_recipes(page=None, per_page=50):
         db.close()
 
 
-def add_recipe(product_name, materials, notes=None, product_unit=None, product_dimension=None):
+def add_recipe(product_name, materials, notes=None, product_unit=None, product_dimension=None, batch_type='finished'):
 
     db = get_db_connection()
     cursor = db.cursor()
@@ -307,9 +328,9 @@ def add_recipe(product_name, materials, notes=None, product_unit=None, product_d
     try:
 
         db.execute(cursor,"""
-        INSERT INTO recipes (product_name, notes, product_unit, product_dimension)
-        VALUES (%s, %s, %s, %s)
-         """,(product_name, notes, product_unit, product_dimension))
+        INSERT INTO recipes (product_name, notes, product_unit, product_dimension, batch_type)
+        VALUES (%s, %s, %s, %s, %s)
+         """,(product_name, notes, product_unit, product_dimension, batch_type))
         recipe_id = db.get_last_insert_id(cursor) # get recipe_id, able to add to recipe_materials
 
         # ISSUE: the loop below called get_raw_material(name) once per material — each call
@@ -392,14 +413,14 @@ def get_all_recipes_with_id(page=None, per_page=50):
 
     db = get_db_connection()
     cursor = db.cursor()
-    columns = ['recipe_id', 'product_name', 'notes']
+    columns = ['recipe_id', 'product_name', 'notes', 'batch_type']
 
     try:
         # CHANGED: dropped the INNER JOINs to recipe_materials/raw_materials. They excluded
         #          recipes with no valid materials, which meant a broken recipe couldn't be
         #          listed here to be edited or deleted. The manage page needs EVERY recipe.
         base_query = """
-        SELECT r.recipe_id, r.product_name, r.notes
+        SELECT r.recipe_id, r.product_name, r.notes, r.batch_type
         FROM recipes r
         ORDER BY r.product_name ASC
         """
@@ -451,6 +472,7 @@ def get_recipe_by_id(recipe_id):
        r.notes,
        r.product_unit,
        r.product_dimension,
+       r.batch_type,
        rm.material_id,
        COALESCE(raw.name, rm.material_name) AS material_name,
        rm.quantity_needed,
@@ -477,7 +499,7 @@ def get_recipe_by_id(recipe_id):
         db.close()
 
 
-def update_recipe(recipe_id, product_name=None, materials=None, notes=None, product_unit=None, product_dimension=None):
+def update_recipe(recipe_id, product_name=None, materials=None, notes=None, product_unit=None, product_dimension=None, batch_type=None):
     """
     changes a pre exisitng recipe
 
@@ -508,10 +530,11 @@ def update_recipe(recipe_id, product_name=None, materials=None, notes=None, prod
         UPDATE recipes
         SET notes = %s,
             product_unit = %s,
-            product_dimension = %s
+            product_dimension = %s,
+            batch_type = %s
         WHERE recipe_id = %s
 
-                """,(notes, product_unit, product_dimension, recipe_id,))
+                """,(notes, product_unit, product_dimension, batch_type, recipe_id,))
 
         if product_name is not None:
             db.execute(cursor, """

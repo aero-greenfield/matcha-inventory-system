@@ -79,7 +79,14 @@ def create_database():
                    -- product itself (mirrors raw_materials.dimension). Used when a mix/component
                    -- batch turns this recipe into a housemade material, so the material's
                    -- dimension is declared rather than guessed from the product_unit text.
-                   product_dimension TEXT
+                   product_dimension TEXT,
+
+                   -- ADDED: batch-type-on-recipe feature — the type of batch this recipe produces:
+                   -- 'finished' (a sellable end product) or 'mix' (a house-made component that
+                   -- becomes a raw material). Chosen on the recipe form; batch creation reads it
+                   -- so the operator no longer picks the type per batch. Replaces the old
+                   -- per-batch 'standard'/'mix'/'finished' choice ('standard' folded into 'finished').
+                   batch_type TEXT DEFAULT 'finished'
 
 
                    )
@@ -90,6 +97,9 @@ def create_database():
     _recipe_cols = {row[1] for row in cursor.fetchall()}
     if "product_dimension" not in _recipe_cols:
         cursor.execute("ALTER TABLE recipes ADD COLUMN product_dimension TEXT")
+    # ADDED: batch-type-on-recipe feature — additive migration for pre-existing SQLite DBs.
+    if "batch_type" not in _recipe_cols:
+        cursor.execute("ALTER TABLE recipes ADD COLUMN batch_type TEXT DEFAULT 'finished'")
 
     cursor.execute("""
     CREATE TABLE IF NOT EXISTS recipe_materials(

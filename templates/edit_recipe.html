@@ -55,6 +55,17 @@
             </div>
         </div>
 
+        {# batch-type-on-recipe feature — pre-selected from the recipe's stored batch_type. #}
+        <div class="form-group">
+            <label>Batch Type *</label>
+            <div style="display:flex;gap:8px;margin-top:4px;">
+                <button type="button" class="batch-type-btn{% if batch_type != 'mix' %} active{% endif %}" data-type="finished" style="padding:7px 18px;border:1px solid var(--border);border-radius:6px;background:{% if batch_type != 'mix' %}var(--accent);color:#fff{% else %}#fff;color:var(--text){% endif %};font-size:13px;font-weight:600;cursor:pointer;">Finished</button>
+                <button type="button" class="batch-type-btn{% if batch_type == 'mix' %} active{% endif %}" data-type="mix" style="padding:7px 18px;border:1px solid var(--border);border-radius:6px;background:{% if batch_type == 'mix' %}var(--accent);color:#fff{% else %}#fff;color:var(--text){% endif %};font-size:13px;font-weight:600;cursor:pointer;">Component</button>
+            </div>
+            <small style="color:var(--text-muted);display:block;margin-top:4px;">Finished = a sellable product. Component = a house-made ingredient used in other batches.</small>
+        </div>
+        <input type="hidden" id="batch_type" name="batch_type" value="{{ 'mix' if batch_type == 'mix' else 'finished' }}">
+
         <p style="font-size:12px;font-weight:600;text-transform:uppercase;letter-spacing:.06em;color:var(--text-muted);margin:20px 0 12px;">Materials Required</p>
         <div id="materials-container">
             {% for mat in materials %}
@@ -202,12 +213,34 @@ function removeMaterial(index) {
     if (row) row.remove();
 }
 
+// batch-type-on-recipe feature — toggle the Finished/Component buttons and write the
+// selected value to the hidden batch_type input.
+function attachBatchTypeButtons() {
+    var hidden = document.getElementById('batch_type');
+    var btns = document.querySelectorAll('.batch-type-btn');
+    btns.forEach(function(btn) {
+        btn.addEventListener('click', function() {
+            btns.forEach(function(b) {
+                b.style.background = '#fff';
+                b.style.color = 'var(--text)';
+                b.style.borderColor = 'var(--border)';
+                b.classList.remove('active');
+            });
+            this.style.background = 'var(--accent)';
+            this.style.color = '#fff';
+            this.classList.add('active');
+            hidden.value = this.dataset.type;
+        });
+    });
+}
+
 document.addEventListener('DOMContentLoaded', () => {
     document.querySelectorAll('[name^="material_name_"]').forEach(input => {
         attachAutocomplete(input, fetchMaterials);
         const update = attachUnitDisplay(input);
         if (update) update(); // populate unit for prefilled rows on load
     });
+    attachBatchTypeButtons();
 });
 </script>
 

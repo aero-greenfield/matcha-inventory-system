@@ -24,20 +24,20 @@
             <label for="expiration_date">Expiration Date <span style="color:#888">(optional)</span></label>
             <input type="date" id="expiration_date" name="expiration_date" value="">
         </div>
-        <div class="form-group" style="max-width:300px;">
+        {# batch-type-on-recipe feature — the Planned Completion Date only applies to Finished
+           batches (Component batches deduct immediately), so it's hidden until a Finished recipe
+           is selected. #}
+        <div class="form-group" id="planned-date-group" style="max-width:300px;display:none;">
             <label for="planned_completion_date">Planned Completion Date <span style="color:#888">(optional — creates a Planned batch)</span></label>
             <input type="date" id="planned_completion_date" name="planned_completion_date" value="">
             <small style="color:var(--text-muted);display:block;margin-top:4px;">If set, the batch will be created with Planned status and transition to Ready automatically on this date.</small>
         </div>
+        {# batch-type-on-recipe feature — the type is now read from the recipe, not chosen here.
+           It's shown read-only once a product is selected. #}
         <div class="form-group">
             <label>Batch Type</label>
-            <div style="display:flex;gap:8px;margin-top:4px;">
-                <button type="button" class="batch-type-btn active" data-type="standard" style="padding:7px 18px;border:1px solid var(--border);border-radius:6px;background:var(--accent);color:#fff;font-size:13px;font-weight:600;cursor:pointer;">Standard</button>
-                <button type="button" class="batch-type-btn" data-type="mix" style="padding:7px 18px;border:1px solid var(--border);border-radius:6px;background:#fff;color:var(--text);font-size:13px;font-weight:600;cursor:pointer;">Component</button>
-                <button type="button" class="batch-type-btn" data-type="finished" style="padding:7px 18px;border:1px solid var(--border);border-radius:6px;background:#fff;color:var(--text);font-size:13px;font-weight:600;cursor:pointer;">Finished</button>
-            </div>
+            <div id="batch-type-display" style="font-family:var(--font-mono);color:var(--text-muted);font-size:13px;margin-top:4px;">Select a product to see its type.</div>
         </div>
-        <input type="hidden" id="batch_type" name="batch_type" value="standard">
         <div id="mix-stock-warning" style="display:none; margin-bottom:16px; padding:12px 16px; background:#fefce8; border:1px solid #fde68a; border-radius:8px; font-size:13px; color:#92400e;">
             <strong>Housemade material stock:</strong>
             <ul style="margin:6px 0 0 16px; padding:0;">
@@ -67,38 +67,42 @@ document.addEventListener('DOMContentLoaded', () => {
     // Independent of lot selection so it appears as soon as a product is chosen.
     var productNameInput = document.querySelector('[name="product_name"]');
     var productUnitHint = document.getElementById('product-unit-hint');
+    // batch-type-on-recipe feature — the type is read from the recipe, shown read-only, and drives
+    // which fields are visible: Planned Completion Date + the housemade warning only apply to
+    // Finished batches (Component batches deduct immediately and produce a house-made material).
+    var typeDisplay = document.getElementById('batch-type-display');
+    var plannedGroup = document.getElementById('planned-date-group');
+    var plannedInput = document.getElementById('planned_completion_date');
+    var mixWarning = document.getElementById('mix-stock-warning');
+
+    function applyBatchType(batchType) {
+        var isFinished = batchType === 'finished';
+        var isComponent = batchType === 'mix';
+        if (isFinished) {
+            typeDisplay.textContent = 'Finished — a sellable product.';
+        } else if (isComponent) {
+            typeDisplay.textContent = 'Component — a house-made ingredient.';
+        } else {
+            typeDisplay.textContent = 'Select a product to see its type.';
+        }
+        plannedGroup.style.display = isFinished ? '' : 'none';
+        if (!isFinished) plannedInput.value = '';
+        mixWarning.style.display = isFinished ? 'block' : 'none';
+    }
+
     function loadProductUnit() {
         var name = productNameInput.value.trim();
-        if (!name) { productUnitHint.textContent = ''; return; }
+        if (!name) { productUnitHint.textContent = ''; applyBatchType(''); return; }
         fetch('/api/recipe-unit?name=' + encodeURIComponent(name), { credentials: 'include' })
             .then(function(r) { return r.json(); })
             .then(function(data) {
                 productUnitHint.textContent = (data.exists && data.unit) ? ('Unit: ' + data.unit) : '';
+                applyBatchType(data.batch_type || '');
             })
-            .catch(function() { productUnitHint.textContent = ''; });
+            .catch(function() { productUnitHint.textContent = ''; applyBatchType(''); });
     }
     productNameInput.addEventListener('change', loadProductUnit);
     productNameInput.addEventListener('blur', loadProductUnit);
-
-    var batchTypeInput = document.getElementById('batch_type');
-    var mixWarning = document.getElementById('mix-stock-warning');
-    var btns = document.querySelectorAll('.batch-type-btn');
-
-    btns.forEach(function(btn) {
-        btn.addEventListener('click', function() {
-            btns.forEach(function(b) {
-                b.style.background = '#fff';
-                b.style.color = 'var(--text)';
-                b.style.borderColor = 'var(--border)';
-                b.classList.remove('active');
-            });
-            this.style.background = 'var(--accent)';
-            this.style.color = '#fff';
-            this.classList.add('active');
-            batchTypeInput.value = this.dataset.type;
-            mixWarning.style.display = this.dataset.type === 'finished' ? 'block' : 'none';
-        });
-    });
 
     // --- Lot selection ---
     var productInput = document.querySelector('[name="product_name"]');

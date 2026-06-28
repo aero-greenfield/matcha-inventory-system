@@ -168,10 +168,27 @@ def add_to_batches(product_name, quantity, notes=None, batch_number=None, deduct
                         raise ValueError(f"Lot ID {lot_id} for material {material_name} not found or is not active/expired.")
 
                     available_qty = lot_row[0] #got  our quantity for lot
-                    
+
                     #quantity validation
-                    if available_qty < qty: # available quanitity must be greater than qty user wants from said lot
-                        raise ValueError(f"Insufficient quantity in lot {lot_id} for material {material_name}. Required: {required_amount}, Available: {available_qty}")
+                    # Compare with a small tolerance (matching the sum check above). The UI
+                    # auto-fills a lot to *exactly* its available quantity when one lot can't
+                    # cover the whole recipe need, and that value round-trips through a JS float.
+                    # A strict `available_qty < qty` would then reject the lot you have exactly
+                    # enough of, because float(qty) can land a sub-ULP above the stored Decimal.
+                    #
+                    # FUTURE (optional cleanup): this epsilon is the pragmatic fix. The principled
+                    # one is to thread decimal.Decimal end-to-end (coerce form/JSON/DB values via
+                    # Decimal(str(x)) at every boundary, do arithmetic in Decimal, and write the
+                    # absolute new quantity instead of `SET quantity = quantity - %s`). Then the
+                    # comparison is exact and no tolerance is needed. Scoped out for now; the 1e-6
+                    # is safe (0.001 mg) for any realistic quantity. Same note applies to the
+                    # promotion path's per-lot check in promote_planned_batches.
+                    if float(available_qty) + 1e-6 < float(qty): # available must cover qty user wants from said lot
+                        raise ValueError(f"Insufficient quantity in lot {lot_id} for material {material_name}. Requested: {qty}, Available: {available_qty}")
+
+                    # If the request is within tolerance of the whole lot, deduct the lot
+                    # exactly so we never leave a tiny negative residual from float drift.
+                    deduct_qty = available_qty if float(qty) >= float(available_qty) else qty
 
                     cost_per_unit = lot_row[1] # got our cost per unit for lot, will need it for batch_materials log
 
@@ -182,7 +199,7 @@ def add_to_batches(product_name, quantity, notes=None, batch_number=None, deduct
                         UPDATE raw_material_lots
                         SET quantity = quantity - %s
                         WHERE lot_id = %s
-                    """, (qty, lot_id))
+                    """, (deduct_qty, lot_id))
                     #deduction
 
                     if cursor.rowcount == 0:
@@ -195,8 +212,8 @@ def add_to_batches(product_name, quantity, notes=None, batch_number=None, deduct
                     db.execute(cursor, """
                         INSERT INTO batch_materials (batch_id, material_id, lot_id, quantity_used, cost_per_unit)
                         VALUES (%s, %s, %s, %s, %s)
-                    """, (batch_id, material_id, lot_id, qty, cost_per_unit))
-                    #log into batch_materials
+                    """, (batch_id, material_id, lot_id, deduct_qty, cost_per_unit))
+                    #log into batch_materials (record what was actually deducted)
 
                     #validaiton and deduciton done for lot
 
@@ -907,13 +924,21 @@ def promote_planned_batches():
                             if not lot_row:
                                 failure_reason = f"Lot {lot_id} for '{material_name}' not found, inactive, or expired."
                                 break
-                            if lot_row[0] < qty:
+                            # tolerant compare (mirrors add_to_batches): a lot auto-filled to its
+                            # exact available qty round-trips through a JS float and can land a
+                            # sub-ULP above the stored Decimal — don't reject what's exactly enough.
+                            # See the Decimal-end-to-end FUTURE note in add_to_batches for the
+                            # principled fix that would remove this epsilon.
+                            if float(lot_row[0]) + 1e-6 < float(qty):
                                 failure_reason = (
                                     f"Lot {lot_id} for '{material_name}' has insufficient quantity "
                                     f"(need {qty}, have {lot_row[0]})."
                                 )
                                 break
-                            allocations.append((lot_id, qty, lot_row[1]))
+                            # clamp to the whole lot when within tolerance so we don't leave a
+                            # tiny negative residual from float drift
+                            take = lot_row[0] if float(qty) >= float(lot_row[0]) else qty
+                            allocations.append((lot_id, take, lot_row[1]))
 
                         if failure_reason:
                             break  # stop checking other materials

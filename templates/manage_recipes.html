@@ -27,7 +27,10 @@
             {% for row in recipes %}
             <tr>
                 <td>{{ row.recipe_id }}</td>
-                <td><strong>{{ row.product_name }}</strong></td>
+                <td><strong>{{ row.product_name }}</strong>
+                    {# batch-type-on-recipe feature — type badge next to the product name. #}
+                    <span class="badge badge-{{ 'mix' if row.batch_type == 'mix' else 'finished' }}" style="margin-left:8px;">{{ 'Component' if row.batch_type == 'mix' else 'Finished' }}</span>
+                </td>
                 <td style="color:var(--text-muted);">{{ row.notes or '' }}</td>
                 <td style="white-space:nowrap;">
                     <a href="/edit-recipe/{{ row.recipe_id | int }}" class="btn btn-secondary" style="padding:5px 12px;font-size:12px;">Edit</a>

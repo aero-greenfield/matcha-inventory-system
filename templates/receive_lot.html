@@ -46,7 +46,11 @@
             </div>
             <div class="form-group">
                 <label>Location (optional)</label>
-                <input type="text" name="location" value="{{ location }}">
+                <select name="location">
+                    <option value="" {% if not location %}selected{% endif %}>—</option>
+                    <option value="B" {% if location == 'B' %}selected{% endif %}>B</option>
+                    <option value="F" {% if location == 'F' %}selected{% endif %}>F</option>
+                </select>
             </div>
         </div>
         <div class="form-row">

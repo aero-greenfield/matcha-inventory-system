@@ -63,7 +63,7 @@ from services.lots import (
 from services.recipes import (
     add_recipe, get_all_recipes, get_all_recipes_with_id,
     get_recipe_by_id, update_recipe, delete_recipe_by_id,
-    check_negative_stock,
+    check_negative_stock, get_recipe_batch_type,
 )
 from services.batches import (
     add_to_batches, get_batches, get_batches_shipped, get_batches_planned,
@@ -1307,12 +1307,21 @@ def create_batch():
         notes = notes.strip() if notes else None
         expiration_date = request.form.get('expiration_date', '').strip() or None
         planned_completion_date = request.form.get('planned_completion_date', '').strip() or None
-        batch_type = request.form.get('batch_type', 'standard').strip()
         # Text validation
         if not product_name:
             return render_template('error.html',
                 title="Invalid Input",
                 message="Product name cannot be blank.",
+                back_link=True, back_link_url="/create-batch", back_link_label="Go back to Create Batch"
+            ), 400
+
+        # CHANGED: batch-type-on-recipe feature — the batch type is no longer chosen on this form.
+        #          It's an intrinsic property of the recipe, so resolve it from the recipe here.
+        batch_type = get_recipe_batch_type(product_name)
+        if batch_type not in ('mix', 'finished'):
+            return render_template('error.html',
+                title="Invalid Input",
+                message="No recipe found for this product, or it has no batch type set. Create the recipe first.",
                 back_link=True, back_link_url="/create-batch", back_link_label="Go back to Create Batch"
             ), 400
 
@@ -1370,15 +1379,6 @@ def create_batch():
                     back_link=True, back_link_url="/create-batch", back_link_label="Go back to Create Batch"
                 ), 400
         
-        # batch type validation:
-        if batch_type not in ('standard', 'mix', 'finished'):
-            return render_template('error.html',
-                title="Invalid Input",
-                message="Invalid batch type. Must be standard, mix, or finished.",
-                back_link=True, back_link_url="/create-batch", back_link_label="Go back to Create Batch"
-            ), 400
-
-
         #LOT SELECTION PARSING:
         lot_selections_raw = request.form.get('lot_selection', '').strip()# get the raw string from the form
         lot_selections = None
@@ -1416,7 +1416,8 @@ def create_batch():
                         'batch_number': batch_number,
                         'expiration_date': expiration_date or '',
                         'planned_completion_date': planned_completion_date or '',
-                        'batch_type': batch_type,
+                        # batch-type-on-recipe feature — type is re-resolved from the recipe on the
+                        # re-POST, so it no longer needs to round-trip through this confirm form.
                         'lot_selections': lot_selections_raw, # raw JSON string, must be string because
                         #confirm_negative_stock.html needs to pass back an GTML form hidden input (whcih only holds strings).
                     }
@@ -1788,6 +1789,8 @@ def view_recipes():
                 'name': name,
                 'product_unit': row['product_unit'],
                 'notes': row['notes'],
+                # batch-type-on-recipe feature — for the type badge in the template.
+                'batch_type': row['batch_type'] or 'finished',
                 'materials': [],
             }
             by_name[name] = recipe
@@ -1939,10 +1942,20 @@ def add_recipe_route():
         #        mix/component batch will give the housemade material it produces.
         product_dimension = (request.form.get('product_dimension') or '').strip()
 
+        # ADDED: batch-type-on-recipe feature — the type of batch this recipe produces.
+        batch_type = (request.form.get('batch_type') or 'finished').strip()
+
         if not product_name:
             return render_template('error.html',
                 title="Invalid Input",
                 message="Product name cannot be blank.",
+                back_link=True, back_link_url="/add-recipe", back_link_label="Go back"
+                 ), 400
+
+        if batch_type not in ('mix', 'finished'):
+            return render_template('error.html',
+                title="Invalid Input",
+                message="Invalid batch type. Must be Finished or Component.",
                 back_link=True, back_link_url="/add-recipe", back_link_label="Go back"
                  ), 400
 
@@ -2031,7 +2044,7 @@ def add_recipe_route():
         
         try:
             
-            result = add_recipe(product_name, materials, notes, product_unit=product_unit, product_dimension=product_dimension)
+            result = add_recipe(product_name, materials, notes, product_unit=product_unit, product_dimension=product_dimension, batch_type=batch_type)
             # materials is the list of dictionaries we build from form data. 
             if result:
                 #success
@@ -2131,6 +2144,9 @@ def edit_recipe(recipe_id):
     product_dimension = df['product_dimension'].iloc[0]
     if not product_dimension:
         product_dimension = units.dimension_of(product_unit) if product_unit else 'mass'
+    # ADDED: batch-type-on-recipe feature — pre-select the type on the edit form. Legacy recipes
+    #        with NULL default to 'finished'.
+    batch_type = df['batch_type'].iloc[0] or 'finished'
 
     # Extract materials list — one dict per row.
     # ADDED: a recipe with no materials comes back from the LEFT JOIN as a single all-NULL
@@ -2159,6 +2175,7 @@ def edit_recipe(recipe_id):
         notes=notes,
         product_unit=product_unit,
         product_dimension=product_dimension,
+        batch_type=batch_type,
         materials=materials,
         msg=msg,
         err=err,
@@ -2195,6 +2212,15 @@ def update_recipe_route(recipe_id):
 
         # ADDED: units-conversion-layer feature — explicit Weight/Count for the product itself.
         product_dimension = (request.form.get('product_dimension') or '').strip()
+
+        # ADDED: batch-type-on-recipe feature — the type of batch this recipe produces.
+        batch_type = (request.form.get('batch_type') or 'finished').strip()
+        if batch_type not in ('mix', 'finished'):
+            return render_template('error.html',
+                title="Invalid Input",
+                message="Invalid batch type. Must be Finished or Component.",
+                back_link=True, back_link_url=f"/edit-recipe/{recipe_id}", back_link_label="Go back"
+            ), 400
 
         materials = [] # materials come in as indexed fields, so we have to parse same as recipe
         index = 0
@@ -2258,7 +2284,7 @@ def update_recipe_route(recipe_id):
             back_link=True, back_link_url=f"/edit-recipe/{recipe_id}", back_link_label="Go back"
         ), 400
     
-    result = update_recipe(recipe_id, product_name=product_name, notes=notes, materials=materials, product_unit=product_unit, product_dimension=product_dimension)
+    result = update_recipe(recipe_id, product_name=product_name, notes=notes, materials=materials, product_unit=product_unit, product_dimension=product_dimension, batch_type=batch_type)
     
 
     if result:

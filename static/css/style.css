@@ -756,7 +756,14 @@ h1 {
     cursor: pointer;
     font-size: 13.5px;
     color: var(--text);
+    /* batch-type-on-recipe feature — recipe items show a type badge on the right. */
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 10px;
 }
+/* smaller pill inside the autocomplete dropdown */
+.autocomplete-item .badge { padding: 1px 8px; font-size: 10.5px; }
 
 .autocomplete-item:hover,
 .autocomplete-item.highlighted {
