@@ -151,6 +151,45 @@ def test_mix_batch_creates_housemade_material_and_lot(make_material, make_lot, m
     assert cur.fetchone()[0] == 2
 
 
+def test_mix_lot_stored_full_precision(make_material, make_lot, make_recipe, db):
+    # lot-selection-unit fix: the produced mix lot must be stored at FULL precision grams, not
+    # round()ed to 4 dp. Rounding 1 lb (453.59237 g) to 4 dp gave 453.5924 g, which then read as
+    # "insufficient" for a recipe needing the exact produced amount.
+    from services import units
+    mid = make_material("Matcha")
+    lid = make_lot(mid, 1000)
+    make_recipe("Component", [{"material_name": "Matcha", "quantity_needed": 10}],
+                batch_type="mix", product_unit="lb", product_dimension="mass")
+    add_to_batches("Component", 1, batch_number="MX1", batch_type="mix",
+                   lot_selections={mid: [{"lot_id": lid, "qty": 10}]})
+    cur = db.cursor()
+    db.execute(cur, "SELECT quantity FROM raw_material_lots WHERE lot_number = %s", ("MIX-BATCH-MX1",))
+    stored = cur.fetchone()[0]
+    assert abs(float(stored) - float(units.to_base(1, "lb"))) < 1e-9  # 453.59237, not 453.5924
+
+
+def test_exactly_enough_mix_covers_requirement(make_material, make_lot, make_recipe, db):
+    # Regression for the reported bug: 176 lb of housemade mix on hand, a finished product needing
+    # 16 lb x 11 batches = 176 lb. The stored grams (rounded to 4 dp, as the old mix path wrote
+    # them) and the required grams differ by ~0.00002 g — below the 0.1 mg storage resolution but
+    # ABOVE the old 1e-6 comparison tolerance, so the batch was wrongly refused. With the aligned
+    # tolerance it now builds.
+    from services import units
+    def lb(x):
+        return float(units.to_base(x, "lb"))
+    mix = make_material("JasmineMix", is_housemade=True)
+    # the mix lot as the OLD code stored it: full grams rounded to 4 dp
+    lot = make_lot(mix, round(lb(176), 4))
+    make_recipe("FinishedTea",
+                [{"material_name": "JasmineMix", "quantity_needed": lb(16), "unit": "lb"}])
+    bid = add_to_batches("FinishedTea", 11, batch_number="F1",
+                         lot_selections={mix: [{"lot_id": lot, "qty": lb(16) * 11}]})
+    assert isinstance(bid, int)
+    # lot is driven to ~0 and exhausted (the tiny residual is below the exhaust threshold)
+    qty, status = _lot_qty(db, lot)
+    assert qty == 0 and status == "inactive"
+
+
 # --- planned promotion: stored lots --------------------------------------------------
 def test_planned_finished_defers_then_promotes_stored_lots(make_material, make_lot, make_recipe, db):
     mid = make_material("Matcha")

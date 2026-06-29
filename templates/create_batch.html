@@ -136,22 +136,26 @@ document.addEventListener('DOMContentLoaded', () => {
     function renderLotCards(batchQty) {
         lotCards.innerHTML = '';
         recipeMaterials.forEach(function(mat) {
-            var required = mat.quantity_needed * batchQty;
-            // CHANGED: units-conversion-layer feature — recipe amounts and lot quantities are
-            // stored in the base unit (grams for mass), so label them with base_unit ('g'),
-            // not the material's display unit. Batch deduction also works in this base unit.
-            var unit = mat.base_unit ? (' ' + mat.base_unit) : '';
+            // CHANGED: lot-selection-unit fix — recipe amounts and lot quantities are STORED in
+            // the base unit (grams for mass), but we DISPLAY and accept input in the unit the
+            // recipe line was entered in (display_unit, e.g. lb). factor = grams per 1 display
+            // unit. All math below stays in display units so coverage reads as "176 vs 176";
+            // the submit handler multiplies back by factor to send grams (backend unchanged).
+            var factor = mat.base_per_display || 1;
+            var required = mat.quantity_needed * batchQty / factor;
+            var unit = mat.display_unit ? (' ' + mat.display_unit) : '';
             var lots = availableLots[mat.material_id] || [];
-            // map lot_id -> available quantity, for auto-fill
+            // map lot_id -> available quantity (in display units), for auto-fill
             var lotAvail = {};
-            lots.forEach(function(l) { lotAvail[l.lot_id] = l.quantity; });
+            lots.forEach(function(l) { lotAvail[l.lot_id] = l.quantity / factor; });
             var card = document.createElement('div');
             card.style.cssText = 'border:1px solid var(--border);border-radius:8px;padding:12px 14px;margin-bottom:10px;';
             card.dataset.materialId = mat.material_id;
-            card.dataset.required = required;  // used by the submit-time coverage check
+            card.dataset.required = required;  // used by the submit-time coverage check (display units)
+            card.dataset.factor = factor;      // used to convert entered display-unit qty -> grams on submit
             var optHtml = '<option value="">-- select lot --</option>';
             lots.forEach(function(l) {
-                optHtml += '<option value="' + l.lot_id + '">' + l.lot_number + ' (' + l.quantity + unit + ' avail)</option>';
+                optHtml += '<option value="' + l.lot_id + '">' + l.lot_number + ' (' + (l.quantity / factor).toFixed(2) + unit + ' avail)</option>';
             });
             card.innerHTML =
                 '<div style="font-weight:600;font-size:13px;margin-bottom:6px;">' + mat.material_name +
@@ -179,10 +183,10 @@ document.addEventListener('DOMContentLoaded', () => {
                     remainingEl.textContent = '✓ covered';
                     remainingEl.style.color = '#16a34a';
                 } else if (remaining > 0) {
-                    remainingEl.textContent = 'remaining: ' + remaining + unit;
+                    remainingEl.textContent = 'remaining: ' + remaining.toFixed(2) + unit;
                     remainingEl.style.color = 'var(--text-muted)';
                 } else {
-                    remainingEl.textContent = 'over by ' + Math.abs(remaining) + unit;
+                    remainingEl.textContent = 'over by ' + Math.abs(remaining).toFixed(2) + unit;
                     remainingEl.style.color = '#dc2626';
                 }
             }
@@ -262,12 +266,13 @@ document.addEventListener('DOMContentLoaded', () => {
         var anyIncomplete = false;
         document.querySelectorAll('#lot-material-cards > div').forEach(function(card) {
             var matId = card.dataset.materialId;
-            var required = parseFloat(card.dataset.required) || 0;
+            var required = parseFloat(card.dataset.required) || 0;  // display units
+            var factor = parseFloat(card.dataset.factor) || 1;       // grams per display unit
             var errEl = card.querySelector('.lot-error');
             var entries = [];
             var seen = {};
             var dup = false;
-            var total = 0;
+            var total = 0;  // display units, for the coverage check
             card.querySelectorAll('.lot-rows > div').forEach(function(row) {
                 var lotId = parseInt(row.querySelector('select').value);
                 var qty = parseFloat(row.querySelector('input[type="number"]').value);
@@ -275,7 +280,8 @@ document.addEventListener('DOMContentLoaded', () => {
                     if (seen[lotId]) { dup = true; }
                     seen[lotId] = true;
                     total += qty;
-                    entries.push({lot_id: lotId, qty: qty});
+                    // Backend deducts in the base unit (grams), so convert the display-unit qty back.
+                    entries.push({lot_id: lotId, qty: qty * factor});
                 }
             });
             // Duplicate lots always make the selection invalid, planned or not.
@@ -302,7 +308,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 errEl.style.display = 'block';
                 valid = false;
             } else if (total + 1e-6 < required) {
-                errEl.textContent = 'Selected lots cover only ' + total + ' of ' + required +
+                errEl.textContent = 'Selected lots cover only ' + total.toFixed(2) + ' of ' + required.toFixed(2) +
                     ' needed — cover the full amount before creating the batch.';
                 errEl.style.display = 'block';
                 valid = false;

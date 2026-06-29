@@ -127,9 +127,19 @@ def api_recipe_materials(product_name):
     if df is None or df.empty:
         return jsonify([])
     rows = df.to_dict(orient='records')
-    # ADDED: units-conversion-layer feature — quantity_needed and lot quantities are stored in
-    #        the base unit (grams for mass). Tell the create-batch UI which label to show for
-    #        those amounts: 'g' for mass materials, the material's own unit for counts.
+    # CHANGED: lot-selection-unit fix — quantity_needed and lot quantities are stored in the base
+    #          unit (grams for mass), but the warehouse thinks in the unit the recipe line was
+    #          entered in (e.g. lb). Tell the create-batch UI which unit to DISPLAY in and the
+    #          factor to convert stored grams <-> that display unit, so the lot picker shows lbs.
+    #          The submission still converts back to grams client-side, so the backend protocol
+    #          is unchanged.
     for r in rows:
-        r['base_unit'] = units.MASS_BASE if r.get('dimension') == 'mass' else (r.get('unit') or '')
+        if r.get('dimension') == 'mass':
+            display_unit = r.get('line_unit') or units.MASS_BASE
+            r['display_unit'] = display_unit
+            r['base_per_display'] = float(units.to_base(1, display_unit))
+        else:
+            # count units never convert (a 'tin' is a 'tin'); display in the material's own unit.
+            r['display_unit'] = r.get('unit') or ''
+            r['base_per_display'] = 1.0
     return jsonify(rows)

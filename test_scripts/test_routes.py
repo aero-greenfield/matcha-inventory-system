@@ -72,6 +72,37 @@ def test_api_available_lots_invalid_id(client, auth):
     assert resp.status_code == 400
 
 
+def test_api_recipe_materials_reports_entry_unit(client, auth, make_material, make_recipe):
+    # lot-selection-unit fix: a recipe line entered in lb must tell the create-batch UI to
+    # DISPLAY in lb (display_unit) and how to convert stored grams <-> lb (base_per_display),
+    # not hardcode grams. quantity_needed stays in grams (the base unit).
+    from services import units
+    make_material("JasmineMix", is_housemade=True)
+    make_recipe(
+        "FinishedTea",
+        [{"material_name": "JasmineMix", "quantity_needed": float(units.to_base(16, "lb")), "unit": "lb"}],
+    )
+    rows = client.get("/api/recipe-materials/FinishedTea", headers=auth).get_json()
+    assert len(rows) == 1
+    row = rows[0]
+    assert row["display_unit"] == "lb"
+    assert row["base_per_display"] == pytest.approx(453.59237)
+    assert row["quantity_needed"] == pytest.approx(float(units.to_base(16, "lb")))
+
+
+def test_api_recipe_materials_count_uses_material_unit(client, auth, make_material, make_recipe):
+    # count materials never convert: display in the material's own unit, factor 1.
+    make_material("Tins", unit="tin", dimension="count")
+    make_recipe(
+        "GiftSet",
+        [{"material_name": "Tins", "quantity_needed": 3, "unit": "tin"}],
+        product_unit="set", product_dimension="count",
+    )
+    rows = client.get("/api/recipe-materials/GiftSet", headers=auth).get_json()
+    assert rows[0]["display_unit"] == "tin"
+    assert rows[0]["base_per_display"] == 1.0
+
+
 # --- POST /add-material --------------------------------------------------------------
 def _material_form(**over):
     form = {

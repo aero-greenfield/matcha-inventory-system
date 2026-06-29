@@ -34,6 +34,14 @@ _UNSET = object()  # sentinel for optional fields that can be explicitly set to 
 #        It's only read/written by get_batches(), so it moves here.
 _last_promote_time = 0
 
+# ADDED: lot-selection-unit fix — tolerance for "is there enough stock?" comparisons.
+# Mass quantities are stored at 0.1 mg (4-dp gram) resolution, so a comparison epsilon TIGHTER
+# than that resolution wrongly rejects stock that is, in reality, exactly enough (e.g. 176 lb of
+# mix vs an 11x16 lb requirement that differed by ~0.00002 g). 1e-3 g (1 mg) sits safely above
+# the storage resolution yet is negligible for any realistic quantity. Use this for every
+# coverage/per-lot "have >= need" check instead of a hardcoded 1e-6.
+_QTY_EPSILON_G = 1e-3
+
 
 # ========================
 # BATCHES FUNCTIONS
@@ -53,9 +61,12 @@ def _create_housemade_lot(db, cursor, product_name, quantity, batch_number, rece
     # prefer the dimension the user declared on the recipe; fall back to inferring from the unit
     # text for legacy recipes created before product_dimension existed (NULL).
     dimension = product_dimension or units.dimension_of(product_unit)
-    # round() after float() keeps the stored grams clean (0.1 mg resolution) — the float() cast
-    # of an exact Decimal is what can reintroduce binary noise.
-    lot_quantity = round(float(units.to_base(quantity, product_unit)), 4) if dimension == 'mass' else quantity
+    # CHANGED: lot-selection-unit fix — store the produced mass at full precision (like regular
+    # lot receipts in app.py do), NOT round()ed to 4 dp. Rounding here threw away up to ~0.00005 g,
+    # which made a recipe needing the exact produced amount (e.g. 11x16 lb == 176 lb of mix) read
+    # as "insufficient". Display is handled by the disp/disp_full filters, so no float spew leaks
+    # to the UI. Counts are stored as-is.
+    lot_quantity = float(units.to_base(quantity, product_unit)) if dimension == 'mass' else quantity
 
     existing_mix = get_raw_material(product_name)
     if existing_mix:
@@ -186,7 +197,7 @@ def add_to_batches(product_name, quantity, notes=None, batch_number=None, deduct
                 # negative-stock warning page: it skips the coverage requirement so a batch can be
                 # created even when the selected lots don't fully cover the recipe (stock goes negative).
                 material_sum = sum(lot['qty'] for lot in lot_list) # sum up the total quantity from the lots for this material
-                if not allow_negative and abs(material_sum - required_amount) > 1e-6: # if the sum of the lots is less than the required amount, raise error before doing any deduction
+                if not allow_negative and abs(material_sum - required_amount) > _QTY_EPSILON_G: # if the sum of the lots is less than the required amount, raise error before doing any deduction
                         raise ValueError(f"Total quantity from selected lots for material {material_name} is insufficient. Required: {required_amount}")
 
 
@@ -225,7 +236,7 @@ def add_to_batches(product_name, quantity, notes=None, batch_number=None, deduct
                     # comparison is exact and no tolerance is needed. Scoped out for now; the 1e-6
                     # is safe (0.001 mg) for any realistic quantity. Same note applies to the
                     # promotion path's per-lot check in promote_planned_batches.
-                    if not allow_negative and float(available_qty) + 1e-6 < float(qty): # available must cover qty user wants from said lot
+                    if not allow_negative and float(available_qty) + _QTY_EPSILON_G < float(qty): # available must cover qty user wants from said lot
                         raise ValueError(f"Insufficient quantity in lot {lot_id} for material {material_name}. Requested: {qty}, Available: {available_qty}")
 
                     if allow_negative:
@@ -913,7 +924,7 @@ def promote_planned_batches():
 
                         # total qty across stored lots must equal required (mirrors add_to_batches sum check)
                         material_sum = sum(lot['qty'] for lot in lot_list)
-                        if abs(material_sum - required) > 1e-6:
+                        if abs(material_sum - required) > _QTY_EPSILON_G:
                             failure_reason = (
                                 f"Stored lot quantities for '{material_name}' don't match required "
                                 f"(stored: {material_sum}, required: {required})"
@@ -939,7 +950,7 @@ def promote_planned_batches():
                             # sub-ULP above the stored Decimal — don't reject what's exactly enough.
                             # See the Decimal-end-to-end FUTURE note in add_to_batches for the
                             # principled fix that would remove this epsilon.
-                            if float(lot_row[0]) + 1e-6 < float(qty):
+                            if float(lot_row[0]) + _QTY_EPSILON_G < float(qty):
                                 failure_reason = (
                                     f"Lot {lot_id} for '{material_name}' has insufficient quantity "
                                     f"(need {qty}, have {lot_row[0]})."
@@ -977,7 +988,7 @@ def promote_planned_batches():
                             allocations.append((lot_id, take, cost))
                             remaining -= take
 
-                        if remaining > 1e-6:
+                        if remaining > _QTY_EPSILON_G:
                             available = required - remaining
                             failure_reason = (
                                 f"Insufficient lot stock: {material_name} "
@@ -1274,7 +1285,7 @@ def check_batch_materials_stock(batch_id, new_quantities: dict, lot_selections: 
                         SELECT quantity FROM raw_material_lots WHERE lot_id = %s
                     """, (lot_id,))
                     lot_row = cursor.fetchone()
-                    if not lot_row or lot_row[0] < delta:
+                    if not lot_row or float(lot_row[0]) + _QTY_EPSILON_G < float(delta):
                         logging.warning(f"Lot {lot_id} has insufficient quantity for material {material_id}: need {delta}, have {lot_row[0] if lot_row else 0}")
                         return False
                 else:
@@ -1282,7 +1293,7 @@ def check_batch_materials_stock(batch_id, new_quantities: dict, lot_selections: 
                         SELECT COALESCE(SUM(quantity), 0) FROM raw_material_lots WHERE material_id = %s
                     """, (material_id,))
                     total = cursor.fetchone()[0]
-                    if total < delta:
+                    if float(total) + _QTY_EPSILON_G < float(delta):
                         logging.warning(f"Insufficient total lot stock for material {material_id}: need {delta}, have {total}")
                         return False
 

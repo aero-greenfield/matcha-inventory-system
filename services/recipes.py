@@ -132,6 +132,7 @@ def get_recipe(product_name):
         raw.name AS material_name,
         rm.quantity_needed,
         raw.unit AS unit,
+        rm.unit AS line_unit,
         raw.dimension AS dimension
         FROM recipes r
         JOIN recipe_materials rm ON r.recipe_id = rm.recipe_id
