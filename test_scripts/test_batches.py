@@ -13,7 +13,7 @@ import pytest
 from services.batches import (
     add_to_batches, promote_planned_batches, delete_batch, get_batch_materials,
     get_batch_materials_for_reallocation, adjust_batch_material, check_batch_materials_stock,
-    get_batch_by_id,
+    get_batch_by_id, get_batches, get_batches_planned, get_all_batches_with_id,
 )
 from services.lots import get_material_stock_from_lots
 from services.materials import get_raw_material
@@ -262,3 +262,45 @@ def test_check_batch_materials_stock_dry_run(make_material, make_lot, make_recip
     # 10 left in lot: bumping usage to 15 (needs 5 more) is fine; to 1000 is not
     assert check_batch_materials_stock(bid, {mid: 15}) is True
     assert check_batch_materials_stock(bid, {mid: 1000}) is False
+
+
+# --- list / read queries (the per-page rendering paths) ------------------------------
+def test_get_batches_exposes_derived_columns(make_material, make_lot, make_recipe):
+    mid = make_material("Matcha", is_organic=True, is_edible=True)
+    lid = make_lot(mid, 100, cost_per_unit=3)
+    make_recipe("Latte", [{"material_name": "Matcha", "quantity_needed": 10}], product_unit="g")
+    bid = add_to_batches("Latte", 2, batch_number="L1",
+                         lot_selections={mid: [{"lot_id": lid, "qty": 20}]})
+    df, total = get_batches(page=1, per_page=50)
+    row = df[df["batch_id"] == bid].iloc[0]
+    assert total == 1
+    assert row["batch_cost"] == pytest.approx(20 * 3)   # quantity_used * cost_per_unit
+    assert row["remaining"] == 2                          # produced, nothing shipped yet
+    assert row["product_unit"] == "g"
+    assert int(row["is_organic"]) == 1                    # only organic edible material used
+
+
+def test_get_batches_planned_includes_failure_reason(make_material, make_lot, make_recipe):
+    mid = make_material("Matcha")
+    make_lot(mid, 5)
+    make_recipe("Latte", [{"material_name": "Matcha", "quantity_needed": 10}])
+    bid = add_to_batches("Latte", 1, batch_number="L2", planned_completion_date=PAST,
+                         batch_type="finished", lot_selections=None)
+    promote_planned_batches()  # fails -> stays planned with a reason
+    df, total = get_batches_planned(page=1, per_page=50)
+    row = df[df["batch_id"] == bid].iloc[0]
+    assert total == 1
+    assert row["promotion_failure_reason"]
+
+
+def test_get_all_batches_with_id_lists_every_status(make_material, make_lot, make_recipe):
+    mid = make_material("Matcha")
+    lid = make_lot(mid, 100)
+    make_recipe("Latte", [{"material_name": "Matcha", "quantity_needed": 10}])
+    add_to_batches("Latte", 1, batch_number="R1",
+                   lot_selections={mid: [{"lot_id": lid, "qty": 10}]})
+    add_to_batches("Latte", 1, batch_number="PL1", planned_completion_date="2999-01-01",
+                   batch_type="finished", lot_selections=None)
+    df, total = get_all_batches_with_id(page=1, per_page=50)
+    assert total == 2
+    assert set(df["batch_number"]) == {"R1", "PL1"}

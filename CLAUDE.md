@@ -19,9 +19,11 @@ python app.py
 # Production server (also how the Dockerfile/Procfile launch it)
 gunicorn app:app --bind 0.0.0.0:8000 --workers 2
 
-# Tests — run directly against the local SQLite DB, no server needed.
-# Creates/cleans up its own Test* rows. Prints a PASS/FAIL/WARNING summary.
-python test_scripts/run_tests.py
+# Tests — pytest suite in test_scripts/. Runs against an isolated throwaway SQLite DB
+# (SQLITE_PATH temp file, built per session, wiped per test) — never touches data/inventory.db.
+python -m pytest test_scripts -q
+# With coverage:
+python -m pytest test_scripts --cov=services --cov=routes --cov-report=term-missing
 ```
 
 Required env vars (`.env` locally): `SECRET_KEY`, `AUTH_USERNAME`, `AUTH_PASSWORD`, and `DATABASE_URL` (blank → SQLite at `data/inventory.db`; set → PostgreSQL). The app refuses to start without `SECRET_KEY` (raises) or auth vars (asserts in [auth.py](auth.py)).
@@ -64,9 +66,26 @@ Every mutating action calls `log_action(...)` ([services/audit.py](services/audi
 - Don't surface raw exception text to users — log it server-side and show a generic message (see the `create_batch` ValueError handling for the pattern).
 - Excel exports go through `export_to_excel()` in [helper_functions.py](helper_functions.py) and land in `exports/`.
 
+## Tests
+
+`test_scripts/` is a pytest suite (`conftest.py` + `test_*.py`), one file per domain
+(units, materials, lots, recipes, batches, shipments) plus `test_routes.py` for HTTP/API
+integration through the Flask test client. `conftest.py` sets the env vars the app needs at
+import, points the DB at an isolated temp SQLite file via `SQLITE_PATH`, builds the schema
+once per session, and wipes every table between tests. Factory fixtures (`make_material`,
+`make_lot`, `make_recipe`) seed data through the services layer; the `client`/`auth` fixtures
+give an authenticated test client with CSRF + rate limiting disabled. Quantities in tests are
+in base units (grams for mass) since that's how the services store them.
+
+**Known gap:** tests run on SQLite; production is PostgreSQL. The suite verifies app logic, not
+Postgres-specific behavior (Decimal return types, `LASTVAL()`, the connection pool). There is
+no CI — run the suite locally before deploying.
+
 ## Caveat
 
-The [README.md](README.md) and `test_scripts/` reference an `inventory_app.py` and a root `cli.py` that no longer exist — that code was refactored into `services/`. Trust the `services/` modules over those references; some test scripts importing `inventory_app` may be stale.
+The [README.md](README.md) references an `inventory_app.py` and a root `cli.py` that no longer
+exist — that code was refactored into `services/`. Trust the `services/` modules over those
+references.
 
 ## Current design state (audit)
 
