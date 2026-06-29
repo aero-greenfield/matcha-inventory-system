@@ -488,6 +488,17 @@ def delete_batch(batch_id, materials_to_reallocate=None, reallocate=False):
 
         product_name, quantity, batch_type, mix_lot_id = row
 
+        # A shipped batch is referenced by shipment_batches; deleting it would
+        # orphan the shipment (and is blocked by the FK on PostgreSQL). Refuse
+        # explicitly so the route can tell the user why, instead of the generic
+        # "may not exist" message from a swallowed FK error.
+        db.execute(cursor, """
+            SELECT 1 FROM shipment_batches WHERE batch_id = %s LIMIT 1
+        """, (batch_id,))
+        if cursor.fetchone():
+            logging.info(f"Batch ID {batch_id} is referenced by a shipment; refusing to delete.")
+            return "shipped"
+
 
 
 

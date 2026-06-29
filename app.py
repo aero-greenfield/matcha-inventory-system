@@ -1735,6 +1735,11 @@ def delete_batch_route(batch_id):
 
 
     result = delete_batch(batch_id, materials_to_reallocate, reallocate=bool(materials_to_reallocate))
+    if result == "shipped":
+        return render_template('error.html',
+            title="Delete Failed",
+            message="This batch can't be deleted because it's still part of a shipment. Remove it from the shipment first, then delete the batch.",
+        ), 409
     if not result:
         return render_template('error.html',
             title="Delete Failed",
