@@ -1,5 +1,6 @@
 from database import get_db_connection
 from services.audit import log_action
+from services import units
 from datetime import datetime
 import logging
 import pandas as pd
@@ -271,6 +272,56 @@ def get_shipment_details():
 
     except Exception as e:
         logging.error(f"Error getting shipment details for export: {e}")
+        return pd.DataFrame()
+
+    finally:
+        db.close()
+
+
+def get_shipment_materials(shipment_id):
+    """
+    One row per (batch, material, lot) consumed by the batches on this shipment — the
+    "Materials & Lots" sheet of the per-shipment manifest export.
+
+    WHY this exists: the manifest's first sheet is batch-level (what shipped). This sheet drills
+    into the lot-level traceability for those batches — which lot of which material went into
+    each shipped batch, and the cost recorded at deduction time. Joins out from shipment_batches
+    -> batches -> batch_materials -> raw_materials / raw_material_lots.
+
+    NOTE on quantity: bm.quantity_used is stored in the BASE unit (grams for mass). We convert it
+    back to the material's display unit with units.from_base — same conversion the `disp` filter
+    uses in the UI — so the export reads e.g. "1" kg, not "1000" g. Planned batches have no
+    batch_materials rows (deduction deferred), so they simply contribute no rows here.
+
+    Columns: batch_number, product_name, material_name, lot_number, quantity_used, unit, cost_per_unit.
+    """
+    db = get_db_connection()
+    cursor = db.cursor()
+    columns = ['batch_number', 'product_name', 'material_name', 'lot_number',
+               'quantity_used', 'unit', 'cost_per_unit']
+    try:
+        db.execute(cursor, """
+            SELECT b.batch_number, b.product_name, rm.name AS material_name,
+                   rml.lot_number, bm.quantity_used, rm.unit, bm.cost_per_unit
+            FROM shipment_batches sb
+            JOIN batches b ON sb.batch_id = b.batch_id
+            JOIN batch_materials bm ON bm.batch_id = b.batch_id
+            JOIN raw_materials rm ON bm.material_id = rm.material_id
+            JOIN raw_material_lots rml ON bm.lot_id = rml.lot_id
+            WHERE sb.shipment_id = %s
+            ORDER BY b.batch_id ASC, rm.name ASC
+        """, (shipment_id,))
+        rows = []
+        for r in cursor.fetchall():
+            try:
+                qty_disp = units.from_base(r[4], r[5])
+            except (TypeError, ValueError):
+                qty_disp = r[4]
+            rows.append((r[0], r[1], r[2], r[3], qty_disp, r[5], r[6]))
+        return pd.DataFrame(rows, columns=columns)
+
+    except Exception as e:
+        logging.error(f"Error getting shipment materials for export: {e}")
         return pd.DataFrame()
 
     finally:

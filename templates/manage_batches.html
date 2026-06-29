@@ -5,6 +5,45 @@
 {% block extra_styles %}
 <style>
 .badge-planned { background: #dbeafe; color: #1d4ed8; border-radius: 4px; padding: 2px 8px; font-size: 12px; font-weight: 600; }
+/* Materials + lots inside the row drawer — same inner-table styling as the Batches view. */
+.materials-detail {
+    flex-basis: 100%;
+    margin-top: 8px;
+    border-top: 1px solid var(--border);
+    padding-top: 12px;
+}
+.materials-detail .materials-label {
+    display: block;
+    font-size: 11px;
+    font-weight: 600;
+    color: var(--text-muted);
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    margin-bottom: 6px;
+}
+.materials-inner-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 13px;
+}
+.materials-inner-table th {
+    padding: 7px 12px;
+    text-align: left;
+    font-size: 11px;
+    font-weight: 600;
+    color: var(--text-muted);
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    border-bottom: 1px solid var(--border);
+}
+.materials-inner-table td {
+    padding: 7px 12px;
+    color: var(--text);
+    border-bottom: 1px solid #e2f2ec;
+}
+.materials-inner-table tbody tr:last-child td {
+    border-bottom: none;
+}
 </style>
 {% endblock %}
 
@@ -103,6 +142,12 @@
                                 <button type="submit" class="btn btn-danger" style="padding:6px 14px;font-size:13px;">Delete</button>
                             </form>
                         </div>
+                        {# Materials + lots — lazy-loaded from the shared /batches/<id>/materials endpoint
+                           when the drawer first opens. Planned batches have no recorded materials. #}
+                        <div class="materials-detail" data-batch-id="{{ row.batch_id | int }}">
+                            <span class="materials-label">Materials</span>
+                            <div class="materials-body">Loading…</div>
+                        </div>
                     </div>
                 </td>
             </tr>
@@ -132,5 +177,43 @@
     {% endif %}
 </nav>
 {% endif %}
+
+{# The drawer toggle itself is handled by static/js/expand-row.js; here we only lazy-load the
+   materials table the first time a row is opened, reusing the shared materials endpoint. #}
+<script>
+document.querySelectorAll('.expandable-row').forEach(function (row) {
+    function loadMaterials() {
+        var drawer = row.nextElementSibling;
+        if (!drawer || !drawer.classList.contains('detail-row')) return;
+        var container = drawer.querySelector('.materials-detail');
+        if (!container || container.dataset.loaded) return;
+        container.dataset.loaded = 'true';
+        var body = container.querySelector('.materials-body');
+        fetch('/batches/' + container.dataset.batchId + '/materials')
+            .then(function (r) { return r.json(); })
+            .then(function (materials) {
+                if (!materials.length) {
+                    body.innerHTML = '<em>No materials recorded for this batch.</em>';
+                    return;
+                }
+                var html = '<table class="materials-inner-table"><thead><tr><th>Material</th><th>Lot #</th><th>Quantity Used</th><th>Unit</th><th>Cost/Unit</th></tr></thead><tbody>';
+                materials.forEach(function (m) {
+                    var cpu = (m.cost_per_unit != null && m.cost_per_unit > 0) ? '$' + parseFloat(m.cost_per_unit).toFixed(2) : '—';
+                    html += '<tr><td>' + m.material_name + '</td><td>' + m.lot_number + '</td><td>' + m.quantity_used + '</td><td>' + m.unit + '</td><td>' + cpu + '</td></tr>';
+                });
+                html += '</tbody></table>';
+                body.innerHTML = html;
+            })
+            .catch(function () {
+                body.innerHTML = '<em>Failed to load materials.</em>';
+                container.dataset.loaded = '';
+            });
+    }
+    row.addEventListener('click', loadMaterials);
+    row.addEventListener('keydown', function (e) {
+        if (e.key === 'Enter' || e.key === ' ') loadMaterials();
+    });
+});
+</script>
 
 {% endblock %}

@@ -78,6 +78,8 @@ from services.shipments import (
     # ADDED: excel-exports feature — summary (one row/shipment) + detail (one row/split) queries
     #        for the shipments workbook.
     get_shipments_summary, get_shipment_details,
+    # ADDED: materials-on-shipments — lot-level traceability sheet for the per-shipment manifest.
+    get_shipment_materials,
 )
 
 
@@ -2798,8 +2800,12 @@ def export_shipment_manifest(shipment_id):
         return "Shipment not found", 404
     if not data['batches']:
         return "No batches in this shipment to export", 400
-    df = pd.DataFrame(data['batches'])
-    filepath = export_to_excel(df, f"shipment-{shipment_id}")
+    # One workbook, two tabs: batch-level manifest + lot-level materials traceability.
+    # (export_multi_sheet_to_excel skips the materials sheet if it comes back empty.)
+    batches_df = pd.DataFrame(data['batches'])
+    materials_df = get_shipment_materials(shipment_id)
+    filepath = export_multi_sheet_to_excel(
+        {'Batches': batches_df, 'Materials & Lots': materials_df}, f"shipment-{shipment_id}")
     return send_file(filepath, as_attachment=True, download_name=os.path.basename(filepath))
 
 
