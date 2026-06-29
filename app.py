@@ -126,6 +126,11 @@ app.config['SESSION_COOKIE_SAMESITE'] = 'Lax'
 csrf = CSRFProtect(app)
 app.register_blueprint(api_bp)
 
+# Negative stock is blocked for users right now (a cluster of negative-quantity bugs).
+# Flip to True to restore the "Proceed Anyway" override (confirm_negative_stock.html +
+# add_to_batches(allow_negative=True)). All that code is intact, just gated off.
+ALLOW_NEGATIVE_STOCK_OVERRIDE = False
+
 
 # =======================
 # JINJA TEMPLATE FILTERS
@@ -1366,7 +1371,7 @@ def create_batch():
         if planned_completion_date:
             try:
                 pcd = datetime.strptime(planned_completion_date, '%Y-%m-%d') #valid date
-                if pcd.date() < datetime.now().date(): # planned date cant be in the past
+                if pcd.date() < datetime.now().date(): # planned date can be today or later, just not the past
                     return render_template('error.html',
                         title="Invalid Input",
                         message="Planned completion date cannot be in the past.",
@@ -1401,27 +1406,35 @@ def create_batch():
 
 
         # see if its okay that batch creation makes stock go negative. 
-        defer_deduction = (batch_type == 'finished' and bool(planned_completion_date)) 
-        confirm_negative = request.form.get('confirm_negative') == '1'
+        defer_deduction = (batch_type in ('finished', 'mix') and bool(planned_completion_date))
+        # Gated off: the override can never be true while ALLOW_NEGATIVE_STOCK_OVERRIDE is False,
+        # so add_to_batches always runs with allow_negative=False (its per-lot check is the backstop).
+        confirm_negative = ALLOW_NEGATIVE_STOCK_OVERRIDE and request.form.get('confirm_negative') == '1'
 
         if not defer_deduction and not confirm_negative:
             negative_materials = check_negative_stock(product_name, quantity)
             if negative_materials:
-                return render_template('confirm_negative_stock.html',
+                if ALLOW_NEGATIVE_STOCK_OVERRIDE:
+                    # Override enabled — show the confirmable warning with a "Proceed Anyway" path.
+                    return render_template('confirm_negative_stock.html',
+                        negative_materials=negative_materials,
+                        form_data={
+                            'product_name': product_name,
+                            'quantity': quantity,
+                            'notes': notes or '',
+                            'batch_number': batch_number,
+                            'expiration_date': expiration_date or '',
+                            'planned_completion_date': planned_completion_date or '',
+                            # batch-type-on-recipe feature — type is re-resolved from the recipe on the
+                            # re-POST, so it no longer needs to round-trip through this confirm form.
+                            'lot_selections': lot_selections_raw, # raw JSON string, must be string because
+                            #confirm_negative_stock.html needs to pass back an GTML form hidden input (whcih only holds strings).
+                        }
+                    )
+                # Override disabled (current) — hard block: show the shortfall and stop. No proceed.
+                return render_template('insufficient_stock.html',
                     negative_materials=negative_materials,
-                    form_data={
-                        'product_name': product_name,
-                        'quantity': quantity,
-                        'notes': notes or '',
-                        'batch_number': batch_number,
-                        'expiration_date': expiration_date or '',
-                        'planned_completion_date': planned_completion_date or '',
-                        # batch-type-on-recipe feature — type is re-resolved from the recipe on the
-                        # re-POST, so it no longer needs to round-trip through this confirm form.
-                        'lot_selections': lot_selections_raw, # raw JSON string, must be string because
-                        #confirm_negative_stock.html needs to pass back an GTML form hidden input (whcih only holds strings).
-                    }
-                )
+                    product_name=product_name), 400
 
         # call function
         try:
@@ -2391,9 +2404,11 @@ def edit_lot(lot_id):
         if lot[0].get('quantity') is not None:
             lot[0]['quantity'] = float(units.from_base(lot[0]['quantity'], lot_unit))
         if lot[0].get('cost_per_unit') is not None:
-            # CHANGED: was units.to_base — cost is stored per base unit; convert it back to
-            #          the display unit (mirrors the quantity line above) for the edit form.
-            lot[0]['cost_per_unit'] = float(units.from_base(lot[0]['cost_per_unit'], lot_unit))
+            # Cost is stored as $/base-unit and converts the OPPOSITE way to quantity:
+            # display $/unit -> stored $/g via from_base (divide) on the write path, so
+            # stored -> display must MULTIPLY by the factor, i.e. to_base. (Using from_base
+            # here was the bug that rendered e.g. $50/lb as ~$0.0002/lb.)
+            lot[0]['cost_per_unit'] = float(units.to_base(lot[0]['cost_per_unit'], lot_unit))
 
     lot_batches = get_batches_for_lot(lot_id)
 
@@ -2700,7 +2715,9 @@ def edit_shipment(shipment_id):
         if bid in candidates:
             # picker remaining already subtracts this shipment's allocation → add it back for the cap
             candidates[bid]['max_qty'] = (candidates[bid]['current_qty'] or 0) + (b['remaining'] or 0)
-        else:
+        elif (b['remaining'] or 0) > 0:
+            # Only offer batches that still have unshipped quantity. Fully-shipped batches
+            # (remaining 0/None) that aren't already on this shipment are not addable.
             candidates[bid] = {
                 'batch_id': bid,
                 'batch_number': b['batch_number'],

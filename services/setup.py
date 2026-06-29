@@ -7,7 +7,10 @@
 def create_database():
     """Creates database with raw_materials, recipes, and ready_to_ship tables"""
     import sqlite3
-    conn = sqlite3.connect('data/inventory.db')
+    import os
+    # SQLITE_PATH lets tests build the schema in an isolated throwaway DB; defaults to the
+    # real local file (matches database.get_connection) so dev behaviour is unchanged.
+    conn = sqlite3.connect(os.getenv('SQLITE_PATH', 'data/inventory.db'))
     cursor = conn.cursor()
 
     #Raw Materials
@@ -75,17 +78,9 @@ def create_database():
                    product_name TEXT NOT NULL,
                    notes TEXT,
                    product_unit TEXT,
-                   -- ADDED: units-conversion-layer feature — explicit 'mass' or 'count' for the
-                   -- product itself (mirrors raw_materials.dimension). Used when a mix/component
-                   -- batch turns this recipe into a housemade material, so the material's
-                   -- dimension is declared rather than guessed from the product_unit text.
+    
                    product_dimension TEXT,
 
-                   -- ADDED: batch-type-on-recipe feature — the type of batch this recipe produces:
-                   -- 'finished' (a sellable end product) or 'mix' (a house-made component that
-                   -- becomes a raw material). Chosen on the recipe form; batch creation reads it
-                   -- so the operator no longer picks the type per batch. Replaces the old
-                   -- per-batch 'standard'/'mix'/'finished' choice ('standard' folded into 'finished').
                    batch_type TEXT DEFAULT 'finished'
 
 
@@ -217,7 +212,8 @@ def create_database():
 def upgrade_schema():
     """Adds indexes and missing columns to an existing SQLite database. Safe to run on a fresh DB."""
     import sqlite3
-    conn = sqlite3.connect('data/inventory.db')
+    import os
+    conn = sqlite3.connect(os.getenv('SQLITE_PATH', 'data/inventory.db'))
     cursor = conn.cursor()
     cursor.execute("CREATE INDEX IF NOT EXISTS idx_rml_material_id  ON raw_material_lots(material_id)")
     cursor.execute("CREATE INDEX IF NOT EXISTS idx_rm_name_lower     ON raw_materials(LOWER(name))")

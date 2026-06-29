@@ -34,9 +34,9 @@
             <tr>
                 <td><strong>{{ row.name }}</strong></td>
                 <td>{{ row.category }}</td>
-                <td>{{ row.stock_level }}</td>
+                <td>{{ row.stock_level | disp(row.unit) }}</td>
                 <td>{{ row.unit }}</td>
-                <td>{{ row.reorder_level }}</td>
+                <td>{{ row.reorder_level | disp(row.unit) }}</td>
                 <td>
                     {% if row.stock_level == 0 %}
                         <span class="badge badge-out">Out of Stock</span>

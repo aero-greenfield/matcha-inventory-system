@@ -90,7 +90,9 @@ def get_connection():
        # ========================================
        # LOCAL MODE: Use SQLite
        # ========================================
-       return sqlite3.connect('data/inventory.db')
+       # SQLITE_PATH lets tests point at an isolated throwaway DB. Defaults to the real
+       # local file so dev/prod behaviour is unchanged when the var is unset.
+       return sqlite3.connect(os.getenv('SQLITE_PATH', 'data/inventory.db'))
 
 
 # ============================================================
@@ -129,7 +131,11 @@ class DatabaseConnection:
             raw_connection: Either sqlite3.Connection or psycopg2.Connection
         """
         self.conn = raw_connection
-        self.is_postgres = DATABASE_URL is not None 
+        # bool(), not `is not None`: a blank DATABASE_URL= in .env (which CLAUDE.md tells local
+        # users to set) loads as an empty string, not None. The connection picker below uses
+        # truthiness (`if DATABASE_URL:`), so this must too — otherwise we'd open a SQLite
+        # connection but run queries through the Postgres %s path → `near "%": syntax error`.
+        self.is_postgres = bool(DATABASE_URL)
 
 
     def cursor(self):

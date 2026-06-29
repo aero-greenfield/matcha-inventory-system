@@ -39,6 +39,43 @@ _last_promote_time = 0
 # BATCHES FUNCTIONS
 # ========================
 
+def _create_housemade_lot(db, cursor, product_name, quantity, batch_number, received_date):
+    """Create (or reuse) the house-made raw_material for a mix/Component product and insert a
+    lot for the produced quantity. Shared by add_to_batches (immediate mix) and
+    promote_planned_batches (deferred Planned mix) so both create the material + lot identically.
+
+    The produced lot quantity is stored in the canonical base unit (grams for mass) — derived
+    from the recipe's product_unit + declared dimension — so a finished recipe consuming this
+    component deducts cleanly. Returns the new lot_id.
+    """
+    product_unit, product_dimension = get_recipe_unit_and_dimension(product_name)
+    product_unit = product_unit or 'units'
+    # prefer the dimension the user declared on the recipe; fall back to inferring from the unit
+    # text for legacy recipes created before product_dimension existed (NULL).
+    dimension = product_dimension or units.dimension_of(product_unit)
+    # round() after float() keeps the stored grams clean (0.1 mg resolution) — the float() cast
+    # of an exact Decimal is what can reintroduce binary noise.
+    lot_quantity = round(float(units.to_base(quantity, product_unit)), 4) if dimension == 'mass' else quantity
+
+    existing_mix = get_raw_material(product_name)
+    if existing_mix:
+        mix_material_id = existing_mix[0]
+    else:
+        db.execute(cursor, """
+            INSERT INTO raw_materials (name, category, unit, reorder_level, is_housemade, dimension)
+            VALUES (%s, %s, %s, %s, %s, %s)
+        """, (product_name, 'Mix', product_unit, 0, True, dimension))
+        mix_material_id = db.get_last_insert_id(cursor)
+
+    lot_number = f"MIX-BATCH-{batch_number}"
+    db.execute(cursor, """
+        INSERT INTO raw_material_lots (lot_number, material_id, quantity, received_date, status)
+        VALUES (%s, %s, %s, %s, %s)
+    """, (lot_number, mix_material_id, lot_quantity, received_date, 'active'))
+    if cursor.rowcount == 0:
+        raise ValueError(f"Failed to create lot for mixed batch {batch_number}")
+    return db.get_last_insert_id(cursor)
+
 def add_to_batches(product_name, quantity, notes=None, batch_number=None, deduct_resources=True, expiration_date=None, planned_completion_date=None, batch_type='standard', allow_negative=False, lot_selections=None):
     """
     adds batch to ready to ship, but asks user if they want to deduct from resources, or just add it.
@@ -91,9 +128,11 @@ def add_to_batches(product_name, quantity, notes=None, batch_number=None, deduct
 
 
         # Auto-derive whether to defer deduction.
-        # finished + Planned = skip deduction now, will deduct at promotion time.
-        # mix and standard always deduct immediately, regardless of status.
-        defer_deduction = (batch_type == 'finished' and status == 'Planned')
+        # finished/mix + Planned = skip deduction now, will deduct at promotion time.
+        # standard always deducts immediately, regardless of status.
+        # A deferred mix (Planned Component) also defers creating its house-made output lot —
+        # both the input deduction and the output lot happen at promotion (see promote_planned_batches).
+        defer_deduction = (batch_type in ('finished', 'mix') and status == 'Planned')
 
 
         # serialize lot_selections to JSON for deferred finished batches so promote_planned_batches
@@ -143,8 +182,11 @@ def add_to_batches(product_name, quantity, notes=None, batch_number=None, deduct
 
 
                 #validate total sum of lots selected matches neededamount for recipe
+                # allow_negative is the user's confirmed "proceed anyway" override from the
+                # negative-stock warning page: it skips the coverage requirement so a batch can be
+                # created even when the selected lots don't fully cover the recipe (stock goes negative).
                 material_sum = sum(lot['qty'] for lot in lot_list) # sum up the total quantity from the lots for this material
-                if abs(material_sum - required_amount) > 1e-6: # if the sum of the lots is less than the required amount, raise error before doing any deduction
+                if not allow_negative and abs(material_sum - required_amount) > 1e-6: # if the sum of the lots is less than the required amount, raise error before doing any deduction
                         raise ValueError(f"Total quantity from selected lots for material {material_name} is insufficient. Required: {required_amount}")
 
 
@@ -183,12 +225,17 @@ def add_to_batches(product_name, quantity, notes=None, batch_number=None, deduct
                     # comparison is exact and no tolerance is needed. Scoped out for now; the 1e-6
                     # is safe (0.001 mg) for any realistic quantity. Same note applies to the
                     # promotion path's per-lot check in promote_planned_batches.
-                    if float(available_qty) + 1e-6 < float(qty): # available must cover qty user wants from said lot
+                    if not allow_negative and float(available_qty) + 1e-6 < float(qty): # available must cover qty user wants from said lot
                         raise ValueError(f"Insufficient quantity in lot {lot_id} for material {material_name}. Requested: {qty}, Available: {available_qty}")
 
-                    # If the request is within tolerance of the whole lot, deduct the lot
-                    # exactly so we never leave a tiny negative residual from float drift.
-                    deduct_qty = available_qty if float(qty) >= float(available_qty) else qty
+                    if allow_negative:
+                        # Confirmed override: deduct exactly what the user asked for, even past the
+                        # lot's available quantity (the lot is allowed to go negative).
+                        deduct_qty = qty
+                    else:
+                        # If the request is within tolerance of the whole lot, deduct the lot
+                        # exactly so we never leave a tiny negative residual from float drift.
+                        deduct_qty = available_qty if float(qty) >= float(available_qty) else qty
 
                     cost_per_unit = lot_row[1] # got our cost per unit for lot, will need it for batch_materials log
 
@@ -221,40 +268,12 @@ def add_to_batches(product_name, quantity, notes=None, batch_number=None, deduct
 
         # ALSO IF BATCH TYPE IS MIX, ADD THE MIXED PRODUCT TO RAW_MATERIALS WITH is_housemade = True, SO IT CAN BE USED IN FUTURE BATCHES.if not already in raw_materials,
         # otherwise if its already in raw_materials, just update the stock level by adding the quantity of the batch we just made.
-        if batch_type == 'mix':
-            # The produced product is measured in the recipe's product_unit. Derive the
-            # housemade material's display unit + dimension from it (instead of hardcoding
-            # 'units'/NULL), and store the produced lot quantity in the canonical base unit
-            # (grams for mass) so a finished recipe consuming this component deducts cleanly.
-            product_unit, product_dimension = get_recipe_unit_and_dimension(product_name)
-            product_unit = product_unit or 'units'
-            # prefer the dimension the user declared on the recipe; fall back to inferring from
-            # the unit text for legacy recipes created before product_dimension existed (NULL).
-            dimension = product_dimension or units.dimension_of(product_unit)
-            # round() after float() keeps the stored grams clean (0.1 mg resolution) —
-            # the float() cast of an exact Decimal is what can reintroduce binary noise.
-            lot_quantity = round(float(units.to_base(quantity, product_unit)), 4) if dimension == 'mass' else quantity
-
-            existing_mix = get_raw_material(product_name)
-            if existing_mix:
-                mix_material_id = existing_mix[0]
-            else:
-                db.execute(cursor, """
-                    INSERT INTO raw_materials (name, category, unit, reorder_level, is_housemade, dimension)
-                    VALUES (%s, %s, %s, %s, %s, %s)
-                """, (product_name, 'Mix', product_unit, 0, True, dimension))
-                mix_material_id = db.get_last_insert_id(cursor)
-
-            lot_number = f"MIX-BATCH-{batch_number}"
-            db.execute(cursor, """
-                INSERT INTO raw_material_lots (lot_number, material_id, quantity, received_date, status)
-                VALUES (%s, %s, %s, %s, %s)
-            """, (lot_number, mix_material_id, lot_quantity, datetime.now().strftime('%Y-%m-%d'), 'active'))
-            if cursor.rowcount == 0:
-                raise ValueError(f"Failed to create lot for mixed batch {batch_number}")
-            
-            #get lot_id for mixed batch itself. 
-            mix_lot_id = db.get_last_insert_id(cursor)
+        # A deferred mix (Planned Component) skips this — promote_planned_batches creates the output
+        # lot at promotion time, alongside the deferred input deduction.
+        if batch_type == 'mix' and not defer_deduction:
+            mix_lot_id = _create_housemade_lot(
+                db, cursor, product_name, quantity, batch_number,
+                datetime.now().strftime('%Y-%m-%d'))
             db.execute(cursor, """
                 UPDATE batches SET mix_lot_id = %s WHERE batch_id = %s
             """, (mix_lot_id, batch_id))
@@ -819,8 +838,8 @@ def promote_planned_batches():
 
         for batch_id, batch_number, product_name, quantity, batch_type, planned_completion_date, planned_lot_selections_json in overdue:
 
-            if batch_type in ('standard', 'mix'):
-                # standard and mix batches already had their raw_material_lots deducted at creation time,
+            if batch_type == 'standard':
+                # standard batches already had their raw_material_lots deducted at creation time,
                 # so all we need to do here is flip the status to Ready.
                 db.execute(cursor, """
                     UPDATE batches
@@ -834,38 +853,15 @@ def promote_planned_batches():
                 if cursor.rowcount == 0:
                     raise ValueError(f"Batch {batch_id} not found during promotion — nothing updated")
 
-                # mix batches also produce a housemade material that gets used in future batches.
-                # just like add_to_batches does at creation time for immediate mix batches, we insert
-                # a new lot into raw_material_lots so the produced quantity is trackable and deductable.
-                if batch_type == 'mix':
-                    existing_mix = get_raw_material(product_name)
-                    if existing_mix:
-                        mix_material_id = existing_mix[0]
-                        # mirror add_to_batches: store the produced lot in the base unit derived
-                        # from the recipe's product_unit + declared dimension (legacy NULL falls
-                        # back to inferring from the unit text) so it lines up with deduction.
-                        product_unit, product_dimension = get_recipe_unit_and_dimension(product_name)
-                        product_unit = product_unit or 'units'
-                        dimension = product_dimension or units.dimension_of(product_unit)
-                        # round() after float() keeps the stored grams clean (0.1 mg resolution) —
-                        # the float() cast of an exact Decimal is what can reintroduce binary noise.
-                        lot_quantity = round(float(units.to_base(quantity, product_unit)), 4) if dimension == 'mass' else quantity
-                        lot_number = f"MIX-BATCH-{batch_number}"
-                        db.execute(cursor, """
-                            INSERT INTO raw_material_lots (lot_number, material_id, quantity, received_date, status)
-                            VALUES (%s, %s, %s, %s, %s)
-                        """, (lot_number, mix_material_id, lot_quantity, planned_completion_date, 'active'))
-                    else:
-                        # if the mix product somehow isn't in raw_materials, log a warning but don't block promotion
-                        logging.warning(f"Mix batch {batch_id}: could not find '{product_name}' in raw_materials to create lot.")
-
                 log_action('planned_batch_promoted',
                            f"batch_id={batch_id}, product={product_name}, type={batch_type}")
 
-            # finished batches deferred their deduction at creation time (defer_deduction=True in add_to_batches).
-            # now at promotion time we do the actual lot-level deduction, mirroring add_to_batches' lot logic.
+            # finished AND mix batches deferred their input deduction at creation time
+            # (defer_deduction=True in add_to_batches). Now at promotion we do the actual lot-level
+            # deduction, mirroring add_to_batches' lot logic. A mix batch ADDITIONALLY produces its
+            # house-made output lot here (deferred from creation too).
 
-            elif batch_type == 'finished':
+            elif batch_type in ('finished', 'mix'):
                 recipe_df = get_recipe(product_name)
                 if recipe_df is None or recipe_df.empty:
                     db.execute(cursor, """
@@ -1011,6 +1007,17 @@ def promote_planned_batches():
                                 VALUES (%s, %s, %s, %s, %s)
                             """, (batch_id, material_id, lot_id, take, cost))
 
+                    # A mix (Component) batch also produces its house-made output lot — deferred
+                    # from creation along with the input deduction. Create it now (and the
+                    # raw_materials row if this product is new), then record it on the batch.
+                    if batch_type == 'mix':
+                        mix_lot_id = _create_housemade_lot(
+                            db, cursor, product_name, quantity, batch_number,
+                            planned_completion_date)
+                        db.execute(cursor, """
+                            UPDATE batches SET mix_lot_id = %s WHERE batch_id = %s
+                        """, (mix_lot_id, batch_id))
+
                     # all deductions succeeded — flip batch to Ready
                     db.execute(cursor, """
                         UPDATE batches
@@ -1024,7 +1031,7 @@ def promote_planned_batches():
                         raise ValueError(f"Batch {batch_id} not found during promotion — nothing updated")
 
                     log_action('planned_batch_promoted',
-                               f"batch_id={batch_id}, product={product_name}, type=finished")
+                               f"batch_id={batch_id}, product={product_name}, type={batch_type}")
 
         db.commit()
 

@@ -18,3 +18,7 @@ flask-wtf>=1.2.0
 
 # ADDED: rate limiting to prevent brute-force attacks on Basic Auth endpoints
 flask-limiter>=3.5.0
+
+# Tests (pytest suite under test_scripts/; run: python -m pytest test_scripts -q)
+pytest>=8.0.0
+pytest-cov>=5.0.0

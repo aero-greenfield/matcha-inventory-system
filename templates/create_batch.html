@@ -9,7 +9,7 @@
         <h1>New Batch</h1>
         <p class="page-subtitle">Create a new production batch</p>
     </div>
-    <a href="/manage-batches" class="btn btn-secondary">&#8592; Back</a>
+    <a href="/batches" class="btn btn-secondary">&#8592; Back</a>
 </div>
 
 <div class="form-card">
@@ -24,9 +24,8 @@
             <label for="expiration_date">Expiration Date <span style="color:#888">(optional)</span></label>
             <input type="date" id="expiration_date" name="expiration_date" value="">
         </div>
-        {# batch-type-on-recipe feature — the Planned Completion Date only applies to Finished
-           batches (Component batches deduct immediately), so it's hidden until a Finished recipe
-           is selected. #}
+        {# The Planned Completion Date applies to Finished and Component batches (both defer
+           their deduction to promotion time), so it's hidden until such a recipe is selected. #}
         <div class="form-group" id="planned-date-group" style="max-width:300px;display:none;">
             <label for="planned_completion_date">Planned Completion Date <span style="color:#888">(optional — creates a Planned batch)</span></label>
             <input type="date" id="planned_completion_date" name="planned_completion_date" value="">
@@ -85,8 +84,11 @@ document.addEventListener('DOMContentLoaded', () => {
         } else {
             typeDisplay.textContent = 'Select a product to see its type.';
         }
-        plannedGroup.style.display = isFinished ? '' : 'none';
-        if (!isFinished) plannedInput.value = '';
+        // Both Finished and Component batches can be Planned (deferred): inputs deduct and,
+        // for Component, the house-made lot is created at promotion time.
+        var canPlan = isFinished || isComponent;
+        plannedGroup.style.display = canPlan ? '' : 'none';
+        if (!canPlan) plannedInput.value = '';
         mixWarning.style.display = isFinished ? 'block' : 'none';
     }
 
@@ -146,6 +148,7 @@ document.addEventListener('DOMContentLoaded', () => {
             var card = document.createElement('div');
             card.style.cssText = 'border:1px solid var(--border);border-radius:8px;padding:12px 14px;margin-bottom:10px;';
             card.dataset.materialId = mat.material_id;
+            card.dataset.required = required;  // used by the submit-time coverage check
             var optHtml = '<option value="">-- select lot --</option>';
             lots.forEach(function(l) {
                 optHtml += '<option value="' + l.lot_id + '">' + l.lot_number + ' (' + l.quantity + unit + ' avail)</option>';
@@ -200,6 +203,23 @@ document.addEventListener('DOMContentLoaded', () => {
                 sel.addEventListener('change', function() {
                     var lotId = parseInt(sel.value);
                     if (!lotId) { updateRemaining(); return; }
+                    // Prevent the same lot being picked twice within this material card —
+                    // double-counting a lot would inflate the covered total.
+                    var dup = false;
+                    card.querySelectorAll('.lot-rows > div select').forEach(function(otherSel) {
+                        if (otherSel !== sel && parseInt(otherSel.value) === lotId) dup = true;
+                    });
+                    if (dup) {
+                        var dupErr = card.querySelector('.lot-error');
+                        dupErr.textContent = 'That lot is already selected for this material — pick a different lot.';
+                        dupErr.style.display = 'block';
+                        sel.value = '';
+                        qtyInput.value = '';
+                        qtyInput.dataset.autofilled = '';
+                        updateRemaining();
+                        return;
+                    }
+                    card.querySelector('.lot-error').style.display = 'none';
                     if (qtyInput.value !== '' && qtyInput.dataset.autofilled !== '1') {
                         updateRemaining();
                         return;
@@ -232,19 +252,58 @@ document.addEventListener('DOMContentLoaded', () => {
 
     document.querySelector('form').addEventListener('submit', function(e) {
         if (!recipeMaterials.length) return;
+        // A Planned batch (completion date set) defers its deduction: lots are picked later via
+        // FIFO at promotion time, so lot selection is OPTIONAL here and we never block on coverage.
+        // (Planning exists precisely for when you don't have the stock yet.) For an immediate batch
+        // we require each material to be fully covered before allowing submit.
+        var isPlanned = !!(plannedInput.value && plannedInput.value.trim());
         var selections = {};
         var valid = true;
+        var anyIncomplete = false;
         document.querySelectorAll('#lot-material-cards > div').forEach(function(card) {
             var matId = card.dataset.materialId;
+            var required = parseFloat(card.dataset.required) || 0;
             var errEl = card.querySelector('.lot-error');
             var entries = [];
+            var seen = {};
+            var dup = false;
+            var total = 0;
             card.querySelectorAll('.lot-rows > div').forEach(function(row) {
                 var lotId = parseInt(row.querySelector('select').value);
                 var qty = parseFloat(row.querySelector('input[type="number"]').value);
-                if (lotId && qty > 0) entries.push({lot_id: lotId, qty: qty});
+                if (lotId && qty > 0) {
+                    if (seen[lotId]) { dup = true; }
+                    seen[lotId] = true;
+                    total += qty;
+                    entries.push({lot_id: lotId, qty: qty});
+                }
             });
+            // Duplicate lots always make the selection invalid, planned or not.
+            if (dup) {
+                errEl.textContent = 'A lot is selected more than once for this material — remove the duplicate.';
+                errEl.style.display = 'block';
+                valid = false;
+                return;
+            }
+            if (isPlanned) {
+                // Optional: only send selections when this material is fully, validly covered;
+                // otherwise leave it out so promotion fills it FIFO. Never block.
+                errEl.style.display = 'none';
+                if (entries.length && total + 1e-6 >= required) {
+                    selections[matId] = entries;
+                } else {
+                    anyIncomplete = true;
+                }
+                return;
+            }
+            // Immediate batch: require at least one lot and full coverage.
             if (!entries.length) {
                 errEl.textContent = 'Select at least one lot.';
+                errEl.style.display = 'block';
+                valid = false;
+            } else if (total + 1e-6 < required) {
+                errEl.textContent = 'Selected lots cover only ' + total + ' of ' + required +
+                    ' needed — cover the full amount before creating the batch.';
                 errEl.style.display = 'block';
                 valid = false;
             } else {
@@ -253,6 +312,9 @@ document.addEventListener('DOMContentLoaded', () => {
             }
         });
         if (!valid) { e.preventDefault(); return; }
+        // For a planned batch, only pass selections if EVERY material was fully specified;
+        // a partial set would fail the exact-match check at promotion, so fall back to all-FIFO.
+        if (isPlanned && anyIncomplete) selections = {};
         lotHidden.value = JSON.stringify(selections);
     });
 

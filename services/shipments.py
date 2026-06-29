@@ -103,7 +103,10 @@ def create_shipment(lines, destination=None, notes=None):
                                  f"remaining quantity can be shipped.")
 
             #check remaining quantity of each batch
-            remaining = _batch_remaining(cursor, db, batch_id)
+            # float() the remaining: on PostgreSQL it comes back as Decimal (NUMERIC), and
+            # `Decimal + float` (remaining + _EPS) raises TypeError — which is what made
+            # shipping an exact remainder (e.g. 0.5) error out.
+            remaining = float(_batch_remaining(cursor, db, batch_id) or 0)
             if qty > remaining + _EPS:
                 raise ValueError(f"Batch {batch_id}: requested {qty} exceeds remaining {remaining}.")
             normalized[batch_id] = qty #add validated batch_id and quantity to the normalized dictionary
@@ -386,6 +389,8 @@ def update_shipment(shipment_id, destination=_UNSET, notes=_UNSET, lines=_UNSET)
                 remaining = _batch_remaining(cursor, db, batch_id, exclude_shipment_id=shipment_id)
                 if remaining is None:
                     raise ValueError(f"Batch {batch_id} not found.")
+                # float() the remaining — see the same Decimal+float TypeError note in create_shipment.
+                remaining = float(remaining)
                 if qty > remaining + _EPS:
                     raise ValueError(f"Batch {batch_id}: requested {qty} exceeds remaining {remaining}.")
 

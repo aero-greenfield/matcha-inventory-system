@@ -1,0 +1,44 @@
+{% extends "base.html" %}
+
+{% block title %}Not Enough Stock{% endblock %}
+
+{% block content %}
+
+<div class="page-header">
+    <div>
+        <h1>Not Enough Stock</h1>
+        <p class="page-subtitle">This batch can't be created — it would push some materials below zero</p>
+    </div>
+</div>
+
+<div class="alert alert-error">
+    <strong>Can't create this batch.</strong> There isn't enough stock for the material(s) below.
+    Restock them, or go back and reduce the batch quantity.
+</div>
+
+<div class="table-container" style="margin-bottom: 24px;">
+    <table class="data-table">
+        <thead>
+            <tr>
+                <th>Material</th>
+                <th>Current Stock</th>
+                <th>Required</th>
+                <th>Shortfall</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for m in negative_materials %}
+            <tr>
+                <td><strong>{{ m.material_name }}</strong></td>
+                <td>{{ m.current_stock }}</td>
+                <td>{{ m.required_amount }}</td>
+                <td style="color: var(--badge-out-text); font-weight: 600;">{{ m.required_amount - m.current_stock }}</td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+</div>
+
+<a href="/create-batch" class="btn btn-secondary">Go Back to Create Batch</a>
+
+{% endblock %}
