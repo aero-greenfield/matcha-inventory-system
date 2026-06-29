@@ -213,6 +213,22 @@ def test_delete_batch_reallocates_stock(make_material, make_lot, make_recipe, db
     assert get_batch_by_id(bid) is None
 
 
+def test_delete_batch_reallocation_reactivates_exhausted_lot(make_material, make_lot, make_recipe, db):
+    # A batch that fully depletes a lot leaves it quantity=0, status='inactive'.
+    # Deleting with reallocation must restore the quantity AND reactivate the lot,
+    # otherwise the stock counts but the lot is unusable in dropdowns/deduction.
+    mid = make_material("Matcha")
+    lid = make_lot(mid, 20)
+    make_recipe("Latte", [{"material_name": "Matcha", "quantity_needed": 20}])
+    bid = add_to_batches("Latte", 1, batch_number="D3",
+                         lot_selections={mid: [{"lot_id": lid, "qty": 20}]})
+    assert _lot_qty(db, lid) == (0, "inactive")  # exhausted
+
+    realloc = get_batch_materials_for_reallocation(bid)
+    assert delete_batch(bid, materials_to_reallocate=realloc, reallocate=True) is True
+    assert _lot_qty(db, lid) == (20, "active")  # restored and reactivated
+
+
 def test_delete_batch_without_reallocation_leaves_stock_deducted(make_material, make_lot, make_recipe, db):
     mid = make_material("Matcha")
     lid = make_lot(mid, 100)

@@ -172,9 +172,9 @@ def init_database():
             product_name TEXT NOT NULL,
             notes TEXT,
             product_unit TEXT,
-            -- ADDED: units-conversion-layer feature — explicit 'mass' or 'count' for the product.
+            
             product_dimension TEXT,
-            -- ADDED: batch-type-on-recipe feature — 'finished' or 'mix'; read at batch creation.
+           
             batch_type TEXT DEFAULT 'finished'
         )
         """)
@@ -185,9 +185,9 @@ def init_database():
             product_name TEXT NOT NULL,
             notes TEXT,
             product_unit TEXT,
-            -- ADDED: units-conversion-layer feature — explicit 'mass' or 'count' for the product.
+            
             product_dimension TEXT,
-            -- ADDED: batch-type-on-recipe feature — 'finished' or 'mix'; read at batch creation.
+           
             batch_type TEXT DEFAULT 'finished'
         )
         """)

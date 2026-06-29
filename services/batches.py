@@ -522,10 +522,13 @@ def delete_batch(batch_id, materials_to_reallocate=None, reallocate=False):
                     lot_number = rml_row[0] if rml_row else str(lot_id)
 
 
-                    #Reallocate
+                    #Reallocate — also reactivate the lot, since it may have been
+                    # marked inactive when the batch fully depleted it (exhaust_lot_if_depleted).
+                    # Without this the restored quantity counts toward stock level but the lot
+                    # stays unusable in dropdowns/deduction (which require status = 'active').
                     db.execute(cursor, """
                         UPDATE raw_material_lots
-                        SET quantity = quantity + %s
+                        SET quantity = quantity + %s, status = 'active'
                         WHERE lot_id = %s
                     """, (qty_to_restore, lot_id))
 
