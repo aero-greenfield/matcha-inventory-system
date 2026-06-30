@@ -23,11 +23,13 @@
 {# ADDED: table-redesign — one macro renders both the Raw and Housemade material tables
    (identical structure). 4-column scannable spine + an expandable per-row drawer holding
    reorder level, total cost, and the material's active lots (server-rendered as row.lots). #}
-{% macro material_table(rows) %}
+{% macro material_table(rows, offset=0) %}
 <div class="table-container" style="margin-bottom:32px;">
     <table class="data-table">
         <thead>
             <tr>
+                {# row-numbering feature — continuous # column (offset carries page position). #}
+                <th class="num">#</th>
                 <th>Name</th>
                 <th>Category</th>
                 <th class="num">Stock</th>
@@ -38,6 +40,7 @@
         <tbody>
             {% for row in rows %}
             <tr class="expandable-row" tabindex="0" aria-expanded="false">
+                <td class="num">{{ offset + loop.index }}</td>
                 <td>
                     <span style="font-weight:500;">{{ row.name }}</span>
                     {# Organic → neutral attribute tag. Not-edible → dark caution flag.
@@ -62,7 +65,7 @@
                 <td class="chev-cell"><i class="ti ti-chevron-down chev"></i></td>
             </tr>
             <tr class="detail-row">
-                <td colspan="5">
+                <td colspan="6">
                     <div class="drawer-flex">
                         <div class="drawer-pair">
                             <span class="drawer-label">Reorder level</span>
@@ -160,7 +163,7 @@
 <button type="button" class="section-toggle" data-section="raw-materials-section"><span class="caret">&#9660;</span> Raw Materials</button>
 <div id="raw-materials-section">
 {% if materials | rejectattr('is_housemade') | list %}
-{{ material_table(materials | rejectattr('is_housemade') | list) }}
+{{ material_table(materials | rejectattr('is_housemade') | list, offset) }}
 {% else %}
 <div class="table-container" style="padding:40px 24px;text-align:center;color:var(--text-muted);margin-bottom:32px;">
     <p>No raw materials in inventory. <a href="/add-material" style="color:var(--accent);">Add your first material</a></p>
@@ -171,7 +174,7 @@
 <button type="button" class="section-toggle" data-section="housemade-materials-section"><span class="caret">&#9660;</span> Housemade Materials</button>
 <div id="housemade-materials-section">
 {% if materials | selectattr('is_housemade', 'equalto', 1) | list %}
-{{ material_table(materials | selectattr('is_housemade', 'equalto', 1) | list) }}
+{{ material_table(materials | selectattr('is_housemade', 'equalto', 1) | list, offset) }}
 {% else %}
 <div class="table-container" style="padding:40px 24px;text-align:center;color:var(--text-muted);">
     <p>No housemade materials in inventory.</p>

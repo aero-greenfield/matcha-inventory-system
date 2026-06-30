@@ -190,6 +190,74 @@ def test_exactly_enough_mix_covers_requirement(make_material, make_lot, make_rec
     assert qty == 0 and status == "inactive"
 
 
+# --- organic propagation through a mix -----------------------------------------------
+def _material_flags(db, name):
+    cur = db.cursor()
+    db.execute(cur, "SELECT is_edible, is_organic FROM raw_materials WHERE name = %s", (name,))
+    row = cur.fetchone()
+    return (bool(row[0]), bool(row[1]))
+
+
+def _mix_lot_for(db, material_name):
+    cur = db.cursor()
+    db.execute(cur, """SELECT l.lot_id FROM raw_material_lots l
+                       JOIN raw_materials m ON l.material_id = m.material_id
+                       WHERE m.name = %s""", (material_name,))
+    return cur.fetchone()[0]
+
+
+def test_organic_mix_material_is_edible_and_organic(make_material, make_lot, make_recipe, db):
+    # (a) A Component made from an organic, edible input must yield a house-made material that is
+    #     BOTH edible and organic, so it shows the Organic tag on the inventory page.
+    mid = make_material("Matcha", is_organic=True, is_edible=True)
+    lid = make_lot(mid, 100)
+    make_recipe("OrgMix", [{"material_name": "Matcha", "quantity_needed": 10}],
+                batch_type="mix", product_unit="g", product_dimension="mass")
+    add_to_batches("OrgMix", 2, batch_number="OM1", batch_type="mix",
+                   lot_selections={mid: [{"lot_id": lid, "qty": 20}]})
+    is_edible, is_organic = _material_flags(db, "OrgMix")
+    assert is_organic is True
+    assert is_edible is True
+
+
+def test_finished_batch_organic_when_only_input_is_organic_mix(make_material, make_lot, make_recipe, db):
+    # (b) A finished batch whose only edible input is an organic mix must itself read as organic.
+    mid = make_material("Matcha", is_organic=True, is_edible=True)
+    lid = make_lot(mid, 1000)
+    make_recipe("OrgMix", [{"material_name": "Matcha", "quantity_needed": 1}],
+                batch_type="mix", product_unit="g", product_dimension="mass")
+    add_to_batches("OrgMix", 100, batch_number="OM2", batch_type="mix",
+                   lot_selections={mid: [{"lot_id": lid, "qty": 100}]})
+    mix_lot = _mix_lot_for(db, "OrgMix")
+    mix_mid = get_raw_material("OrgMix")[0]
+    make_recipe("FinishedTea", [{"material_name": "OrgMix", "quantity_needed": 10, "unit": "g"}])
+    fid = add_to_batches("FinishedTea", 1, batch_number="FT1",
+                         lot_selections={mix_mid: [{"lot_id": mix_lot, "qty": 10}]})
+    df, _ = get_batches(page=1, per_page=50)
+    row = df[df["batch_id"] == fid].iloc[0]
+    assert int(row["is_organic"]) == 1
+
+
+def test_get_batches_reports_mix_remaining_and_consumed_count(make_material, make_lot, make_recipe, db):
+    # mix-usage feature: after a finished batch draws from a Component's output lot, get_batches
+    # must report the lot's remaining quantity (base units) and how many batches consumed it.
+    mid = make_material("Matcha", is_organic=True, is_edible=True)
+    lid = make_lot(mid, 1000)
+    make_recipe("OrgMix", [{"material_name": "Matcha", "quantity_needed": 1}],
+                batch_type="mix", product_unit="g", product_dimension="mass")
+    mix_bid = add_to_batches("OrgMix", 100, batch_number="OM3", batch_type="mix",
+                             lot_selections={mid: [{"lot_id": lid, "qty": 100}]})
+    mix_lot = _mix_lot_for(db, "OrgMix")
+    mix_mid = get_raw_material("OrgMix")[0]
+    make_recipe("FinishedTea", [{"material_name": "OrgMix", "quantity_needed": 10, "unit": "g"}])
+    add_to_batches("FinishedTea", 1, batch_number="FT2",
+                   lot_selections={mix_mid: [{"lot_id": mix_lot, "qty": 10}]})
+    df, _ = get_batches(page=1, per_page=50)
+    mix_row = df[df["batch_id"] == mix_bid].iloc[0]
+    assert mix_row["mix_remaining"] == 90        # 100 g produced - 10 g consumed
+    assert mix_row["mix_consumed_count"] == 1
+
+
 # --- planned promotion: stored lots --------------------------------------------------
 def test_planned_finished_defers_then_promotes_stored_lots(make_material, make_lot, make_recipe, db):
     mid = make_material("Matcha")

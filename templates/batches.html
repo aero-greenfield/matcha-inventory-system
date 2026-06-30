@@ -95,6 +95,8 @@
         <table class="data-table">
             <thead>
                 <tr>
+                    {# row-numbering feature — continuous # across both groups, carried by ns counter. #}
+                    <th class="num">#</th>
                     <th>Batch #</th>
                     <th>Product</th>
                     <th>Type</th>
@@ -106,13 +108,16 @@
                 </tr>
             </thead>
             <tbody>
+                {# row-numbering feature — single counter spans the Standard and Component groups. #}
+                {% set ns = namespace(n=ready_offset) %}
 
                 {# ── Standard & Finished group ── #}
                 {% if ready_standard %}
-                {# CHANGED: cost-of-material feature — colspan 6→7 to match added Cost column. #}
-                <tr class="group-divider"><td colspan="7">Standard &amp; Finished</td></tr>
+                {# CHANGED: cost-of-material feature colspan 6→7, +1 for # column → 8. #}
+                <tr class="group-divider"><td colspan="8">Standard &amp; Finished</td></tr>
                 {% for row in ready_standard %}
                 <tr>
+                    <td class="num">{% set ns.n = ns.n + 1 %}{{ ns.n }}</td>
                     <td>{{ row['batch_number'] }}</td>
                     <td><strong>{{ row['product_name'] }}</strong></td>
                     <td><span class="badge badge-{{ row['batch_type'] or 'standard' }}">{{ row['batch_type'] or 'standard' }}</span>
@@ -130,8 +135,8 @@
                     </td>
                 </tr>
                 <tr class="materials-row" id="materials-{{ row['batch_id'] }}" style="display:none;">
-                    {# CHANGED: cost-of-material feature — colspan 6→7. #}
-                    <td colspan="7">
+                    {# CHANGED: cost-of-material colspan 6→7, +1 for # column → 8. #}
+                    <td colspan="8">
                         {# batch notes — shown here so they're visible without opening the manage page. #}
                         {% if row['notes'] %}<div class="batch-notes" style="margin-bottom:10px;font-size:13px;color:var(--text-muted);"><strong style="color:var(--text);">Notes:</strong> {{ row['notes'] }}</div>{% endif %}
                         <div class="materials-detail">Loading...</div>
@@ -142,19 +147,26 @@
 
                 {# ── Component group ── #}
                 {% if ready_mix %}
-                {# CHANGED: cost-of-material feature — colspan 6→7 to match added Cost column. #}
-                <tr class="group-divider"><td colspan="7">Component</td></tr>
+                {# CHANGED: cost-of-material colspan 6→7, +1 for # column → 8. #}
+                <tr class="group-divider"><td colspan="8">Component</td></tr>
                 {% for row in ready_mix %}
                 <tr>
+                    <td class="num">{% set ns.n = ns.n + 1 %}{{ ns.n }}</td>
                     <td>{{ row['batch_number'] }}</td>
                     <td><strong>{{ row['product_name'] }}</strong></td>
                     <td><span class="badge badge-mix">component</span>
                         {# ADDED: organic feature — derived label, shown only when all edible materials are organic. #}
                         {% if row['is_organic'] %}<span class="badge badge-organic">Organic</span>{% endif %}
-                        {# partial-batch shipments — flag batches with some quantity already shipped. #}
-                        {% if row['remaining'] < row['quantity'] %}<span class="badge badge-partial">Partially Shipped</span>{% endif %}</td>
-                    {# partial-batch shipments — show remaining available, with produced total when partly shipped. #}
-                    <td class="num">{{ row['remaining'] }}{% if row['remaining'] < row['quantity'] %}<span style="color:var(--text-faint);"> / {{ row['quantity'] }}</span>{% endif %}{% if row['product_unit'] %}<span style="color:var(--text-faint);font-weight:400;"> {{ row['product_unit'] }}</span>{% endif %}</td>
+                        {# mix-usage feature — Exhausted when the house-made output lot is depleted (sorted to
+                           the bottom in the route); otherwise show how many finished batches have drawn from it. #}
+                        {% if row['mix_remaining'] is not none and row['mix_remaining'] <= 0 %}
+                        <span class="badge badge-out">Exhausted</span>
+                        {% elif row['mix_consumed_count'] %}
+                        <span class="attr-tag">Used in {{ row['mix_consumed_count'] }} batch{{ '' if row['mix_consumed_count'] == 1 else 'es' }}</span>
+                        {% endif %}</td>
+                    {# mix-usage feature — Available shows the output lot remaining (what finished batches can
+                       still consume), not shipment-remaining. Falls back to shipment remaining if no lot/unit. #}
+                    <td class="num">{% if row['mix_remaining'] is not none %}{{ row['mix_remaining'] | fmt_num }}{% else %}{{ row['remaining'] }}{% endif %}{% if row['product_unit'] %}<span style="color:var(--text-faint);font-weight:400;"> {{ row['product_unit'] }}</span>{% endif %}</td>
                     <td>{{ row['date_completed'] or '—' }}</td>
                     {# ADDED: cost-of-material feature — show total batch cost or dash if no cost data. #}
                     <td>{% if row['batch_cost'] %}${{ '%.2f'|format(row['batch_cost']) }}{% else %}—{% endif %}</td>
@@ -163,8 +175,8 @@
                     </td>
                 </tr>
                 <tr class="materials-row" id="materials-{{ row['batch_id'] }}" style="display:none;">
-                    {# CHANGED: cost-of-material feature — colspan 6→7. #}
-                    <td colspan="7">
+                    {# CHANGED: cost-of-material colspan 6→7, +1 for # column → 8. #}
+                    <td colspan="8">
                         {# batch notes — shown here so they're visible without opening the manage page. #}
                         {% if row['notes'] %}<div class="batch-notes" style="margin-bottom:10px;font-size:13px;color:var(--text-muted);"><strong style="color:var(--text);">Notes:</strong> {{ row['notes'] }}</div>{% endif %}
                         <div class="materials-detail">Loading...</div>
@@ -208,6 +220,8 @@
         <table class="data-table">
             <thead>
                 <tr>
+                    {# row-numbering feature — continuous # across both groups. #}
+                    <th class="num">#</th>
                     <th>Batch #</th>
                     <th>Product</th>
                     <th>Type</th>
@@ -217,12 +231,15 @@
                 </tr>
             </thead>
             <tbody>
+                {# row-numbering feature — single counter spans both planned groups. #}
+                {% set pns = namespace(n=planned_offset) %}
 
                 {# ── Standard & Finished group ── #}
                 {% if planned_standard %}
-                <tr class="group-divider"><td colspan="6">Standard &amp; Finished</td></tr>
+                <tr class="group-divider"><td colspan="7">Standard &amp; Finished</td></tr>
                 {% for row in planned_standard %}
                 <tr{% if row['promotion_failure_reason'] %} class="row-failed-promotion"{% endif %}>
+                    <td class="num">{% set pns.n = pns.n + 1 %}{{ pns.n }}</td>
                     <td>{{ row['batch_number'] }}</td>
                     <td>
                         <strong>{{ row['product_name'] }}</strong>
@@ -244,7 +261,7 @@
                     </td>
                 </tr>
                 <tr class="materials-row" id="materials-{{ row['batch_id'] }}" style="display:none;">
-                    <td colspan="6">
+                    <td colspan="7">
                         {# batch notes — shown here so they're visible without opening the manage page. #}
                         {% if row['notes'] %}<div class="batch-notes" style="margin-bottom:10px;font-size:13px;color:var(--text-muted);"><strong style="color:var(--text);">Notes:</strong> {{ row['notes'] }}</div>{% endif %}
                         <div class="materials-detail">Loading...</div>
@@ -255,9 +272,10 @@
 
                 {# ── Component group ── #}
                 {% if planned_mix %}
-                <tr class="group-divider"><td colspan="6">Component</td></tr>
+                <tr class="group-divider"><td colspan="7">Component</td></tr>
                 {% for row in planned_mix %}
                 <tr{% if row['promotion_failure_reason'] %} class="row-failed-promotion"{% endif %}>
+                    <td class="num">{% set pns.n = pns.n + 1 %}{{ pns.n }}</td>
                     <td>{{ row['batch_number'] }}</td>
                     <td>
                         <strong>{{ row['product_name'] }}</strong>
@@ -279,7 +297,7 @@
                     </td>
                 </tr>
                 <tr class="materials-row" id="materials-{{ row['batch_id'] }}" style="display:none;">
-                    <td colspan="6">
+                    <td colspan="7">
                         {# batch notes — shown here so they're visible without opening the manage page. #}
                         {% if row['notes'] %}<div class="batch-notes" style="margin-bottom:10px;font-size:13px;color:var(--text-muted);"><strong style="color:var(--text);">Notes:</strong> {{ row['notes'] }}</div>{% endif %}
                         <div class="materials-detail">Loading...</div>

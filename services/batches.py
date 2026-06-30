@@ -107,15 +107,18 @@ def _create_housemade_lot(db, cursor, product_name, quantity, batch_number, rece
     existing_mix = get_raw_material(product_name)
     if existing_mix:
         mix_material_id = existing_mix[0]
-        # overwrite with the latest batch's organic value (per "update to latest batch")
+        # overwrite with the latest batch's organic value (per "update to latest batch").
+        # Also force is_edible TRUE: a house-made mix is a food product, and the organic flag
+        # only propagates to finished batches if the mix counts as an edible input. Re-making the
+        # component self-heals a stale is_edible (e.g. left FALSE on a row from before this logic).
         db.execute(cursor, """
-            UPDATE raw_materials SET is_organic = %s WHERE material_id = %s
-        """, (is_organic, mix_material_id))
+            UPDATE raw_materials SET is_organic = %s, is_edible = %s WHERE material_id = %s
+        """, (is_organic, True, mix_material_id))
     else:
         db.execute(cursor, """
-            INSERT INTO raw_materials (name, category, unit, reorder_level, is_housemade, is_organic, dimension)
-            VALUES (%s, %s, %s, %s, %s, %s, %s)
-        """, (product_name, 'Mix', product_unit, 0, True, is_organic, dimension))
+            INSERT INTO raw_materials (name, category, unit, reorder_level, is_housemade, is_edible, is_organic, dimension)
+            VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
+        """, (product_name, 'Mix', product_unit, 0, True, True, is_organic, dimension))
         mix_material_id = db.get_last_insert_id(cursor)
 
     lot_number = f"MIX-BATCH-{batch_number}"
@@ -368,7 +371,9 @@ def get_batches(page=None, per_page=50):
     # CHANGED: organic feature — added derived is_organic flag (see subquery below).
     # ADDED: cost-of-material feature — batch_cost column added to columns list.
     columns = ['batch_id', 'batch_number', 'product_name', 'batch_type', 'quantity',
-               'date_completed', 'notes', 'expiration_date', 'is_organic', 'batch_cost', 'remaining', 'product_unit']
+               'date_completed', 'notes', 'expiration_date', 'is_organic', 'batch_cost', 'remaining', 'product_unit',
+               # mix-usage feature — only meaningful for 'mix' rows (NULL otherwise, see subqueries below).
+               'mix_remaining', 'mix_consumed_count']
     # ADDED: organic feature — is_organic is a read-only derived property, NOT stored.
     #        A batch is organic when it used at least one edible material and every edible
     #        material it used is organic (non-edible materials are ignored). Computed via a
@@ -397,7 +402,14 @@ def get_batches(page=None, per_page=50):
            -- product unit-of-measurement, looked up from the matching recipe by name so the
            -- list can show the unit next to the quantity. NULL when no recipe matches.
            (SELECT product_unit FROM recipes
-            WHERE LOWER(recipes.product_name) = LOWER(batches.product_name) LIMIT 1) AS product_unit
+            WHERE LOWER(recipes.product_name) = LOWER(batches.product_name) LIMIT 1) AS product_unit,
+           -- mix-usage feature: for a Component (mix) batch, how much of its house-made output lot
+           -- is still on hand (in BASE units — the route converts to product_unit) and how many
+           -- finished batches have drawn from that lot. NULL for non-mix rows (mix_lot_id is NULL).
+           (SELECT quantity FROM raw_material_lots
+            WHERE raw_material_lots.lot_id = batches.mix_lot_id) AS mix_remaining,
+           (SELECT COUNT(DISTINCT bm.batch_id) FROM batch_materials bm
+            WHERE bm.lot_id = batches.mix_lot_id) AS mix_consumed_count
     FROM batches
     WHERE status IN ('Ready', 'Partially Shipped')
     ORDER BY batch_id DESC

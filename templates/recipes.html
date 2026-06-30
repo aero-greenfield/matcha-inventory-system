@@ -16,6 +16,13 @@
     </div>
 </div>
 
+{# recipe-filter feature — narrow to one recipe kind. Active filter shown as primary. #}
+<div style="display:flex;gap:8px;margin-bottom:16px;">
+    <a href="?kind=all" class="btn btn-{{ 'primary' if kind == 'all' else 'secondary' }}" style="padding:5px 14px;">All</a>
+    <a href="?kind=finished" class="btn btn-{{ 'primary' if kind == 'finished' else 'secondary' }}" style="padding:5px 14px;">Finished</a>
+    <a href="?kind=component" class="btn btn-{{ 'primary' if kind == 'component' else 'secondary' }}" style="padding:5px 14px;">Component</a>
+</div>
+
 {% if recipes %}
 <style>
     .recipe-list { display:flex; flex-direction:column; gap:8px; }
@@ -85,6 +92,8 @@
     <details class="recipe-row">
         <summary>
             <span class="recipe-chevron">&#9654;</span>
+            {# row-numbering feature — continuous # (offset carries page position). #}
+            <span class="mono" style="color:var(--text-faint);min-width:22px;">{{ offset + loop.index }}</span>
             <span class="recipe-name">{{ recipe.name }}</span>
             {# batch-type-on-recipe feature — type badge next to the product name. #}
             <span class="badge badge-{{ 'mix' if recipe.batch_type == 'mix' else 'finished' }}">{{ 'Component' if recipe.batch_type == 'mix' else 'Finished' }}</span>
@@ -135,13 +144,13 @@
 {% if total_pages > 1 %}
 <nav style="display:flex;align-items:center;gap:12px;margin-top:24px;font-size:14px;">
     {% if page > 1 %}
-        <a href="?page={{ page - 1 }}" class="btn btn-secondary" style="padding:5px 14px;">&#8592; Prev</a>
+        <a href="?page={{ page - 1 }}&kind={{ kind }}" class="btn btn-secondary" style="padding:5px 14px;">&#8592; Prev</a>
     {% else %}
         <span class="btn btn-secondary" style="padding:5px 14px;opacity:0.4;cursor:default;">&#8592; Prev</span>
     {% endif %}
     <span style="color:var(--text-muted);">Page {{ page }} of {{ total_pages }} &mdash; {{ total }} recipe(s)</span>
     {% if page < total_pages %}
-        <a href="?page={{ page + 1 }}" class="btn btn-secondary" style="padding:5px 14px;">Next &#8594;</a>
+        <a href="?page={{ page + 1 }}&kind={{ kind }}" class="btn btn-secondary" style="padding:5px 14px;">Next &#8594;</a>
     {% else %}
         <span class="btn btn-secondary" style="padding:5px 14px;opacity:0.4;cursor:default;">Next &#8594;</span>
     {% endif %}

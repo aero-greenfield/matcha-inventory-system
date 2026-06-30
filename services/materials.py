@@ -103,8 +103,11 @@ def get_all_materials(page=None, per_page=50, sort_by=None, sort_dir='asc'):
         #          "ORDER BY category, name").
         base_query = f"""
         SELECT rm.material_id, rm.name, rm.category,
-               SUM(CASE WHEN rm_lot.quantity > 0 AND (rm_lot.expiration_date IS NULL OR rm_lot.expiration_date > %s)
-                   THEN rm_lot.quantity ELSE 0 END) as stock_level,
+               -- COALESCE so a material with no active lots reports 0, not NULL. Without it the
+               -- LEFT JOIN yields SUM(NULL) → NULL, which slips past both `== 0` and `<= reorder`
+               -- in the status badge and falsely renders "In Stock". (total_cost below already does this.)
+               COALESCE(SUM(CASE WHEN rm_lot.quantity > 0 AND (rm_lot.expiration_date IS NULL OR rm_lot.expiration_date > %s)
+                   THEN rm_lot.quantity ELSE 0 END), 0) as stock_level,
                COALESCE(SUM(CASE WHEN rm_lot.quantity > 0 AND (rm_lot.expiration_date IS NULL OR rm_lot.expiration_date > %s)
                    THEN rm_lot.quantity * COALESCE(rm_lot.cost_per_unit, 0) ELSE 0 END), 0) as total_cost,
                rm.unit, rm.reorder_level, rm.is_housemade, rm.is_edible, rm.is_organic

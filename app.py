@@ -463,6 +463,8 @@ def view_inventory():
         materials=materials,
         count=len(df),
         page=page,
+        # row-numbering feature — page offset so the # column continues across pages (page 2 → 51+).
+        offset=(page - 1) * PER_PAGE,
         total_pages=total_pages,
         total=total,
         sort=sort,
@@ -501,9 +503,12 @@ def export_inventory_excel():
         # otherwise in stock. This mirrors the badge logic the inventory page computes inline,
         # but we bake it into a real column so the spreadsheet reader can sort/filter on it.
         def _material_status(row):
-            if row['stock_level'] == 0:
+            # Guard against NULL/NaN stock (no active lots) so a zero-stock material never
+            # slips past both checks into "In Stock" — mirrors the COALESCE in get_all_materials.
+            stock = row['stock_level'] or 0
+            if stock == 0:
                 return "Out of Stock"
-            if row['stock_level'] <= row['reorder_level']:
+            if stock <= row['reorder_level']:
                 return "Low Stock"
             return "In Stock"
         mats['Status'] = mats.apply(_material_status, axis=1)
@@ -1138,6 +1143,17 @@ def view_batches():
     ready_standard = [b for b in all_ready if b.get('batch_type') != 'mix']
     ready_mix      = [b for b in all_ready if b.get('batch_type') == 'mix']
 
+    # mix-usage feature: mix_remaining comes from the query in BASE units (grams for mass).
+    # Convert it to the batch's product_unit so the Component row shows the same unit as its
+    # produced quantity. Guard against missing unit / NULL remaining (non-recipe or non-mix rows).
+    for b in ready_mix:
+        rem = b.get('mix_remaining')
+        unit = b.get('product_unit')
+        if rem is not None and unit:
+            b['mix_remaining'] = float(units.from_base(rem, unit))
+    # Sort exhausted mixes (depleted output lot) to the bottom, keeping the existing order otherwise.
+    ready_mix.sort(key=lambda b: 1 if (b.get('mix_remaining') is not None and b['mix_remaining'] <= 0) else 0)
+
     all_planned    = planned_data.to_dict(orient='records') if not planned_data.empty else []
     planned_standard = [b for b in all_planned if b.get('batch_type') != 'mix']
     planned_mix      = [b for b in all_planned if b.get('batch_type') == 'mix']
@@ -1155,6 +1171,9 @@ def view_batches():
         ready_total_pages=ready_total_pages,
         planned_page=planned_page,
         planned_total_pages=planned_total_pages,
+        # row-numbering feature — per-tab page offsets so each tab's # continues across its pages.
+        ready_offset=(ready_page - 1) * PER_PAGE,
+        planned_offset=(planned_page - 1) * PER_PAGE,
         back_link=True, back_link_url="/", back_link_label="Back to Home"
 )
 
@@ -1777,13 +1796,21 @@ def view_recipes():
     PER_PAGE = 50
     page = min(max(1, int(request.args.get('page', 1))), MAX_PAGE)  # CHANGED: capped at MAX_PAGE to prevent large-OFFSET DoS
 
+    # recipe-filter feature — narrow the list to one recipe kind. 'component' = mix recipes,
+    # 'finished' = everything else, 'all' = no filter. Applied in-memory after grouping below.
+    kind = (request.args.get('kind') or 'all').lower()
+    if kind not in ('all', 'finished', 'component'):
+        kind = 'all'
+    # row-numbering feature — page offset so the # continues across pages.
+    offset = (page - 1) * PER_PAGE
+
     # CHANGED: get_all_recipes now returns (df, total). Pagination is at the recipe level
     #          (never splits a recipe across pages). total = total number of distinct recipes.
     df, total = get_all_recipes(page=page, per_page=PER_PAGE)
 
     if df.empty:
         return render_template("recipes.html",
-            recipes=[], recipe_count=0,
+            recipes=[], recipe_count=0, kind=kind, offset=offset,
             page=1, total_pages=1, total=0,
             back_link=True, back_link_url="/", back_link_label="Back to Home"
     )
@@ -1830,6 +1857,12 @@ def view_recipes():
                 'unit': line_unit,
             })
 
+    # recipe-filter feature — apply the kind filter to the grouped recipes for this page.
+    if kind == 'component':
+        recipes = [r for r in recipes if r['batch_type'] == 'mix']
+    elif kind == 'finished':
+        recipes = [r for r in recipes if r['batch_type'] != 'mix']
+
     # CHANGED: recipe_count now comes from the total returned by the service (all recipes),
     #          not nunique() on the current page (which would undercount when paginated).
     recipe_count = total
@@ -1840,6 +1873,8 @@ def view_recipes():
     return render_template("recipes.html",
         recipes=recipes,
         recipe_count=recipe_count,
+        kind=kind,
+        offset=offset,
         page=page,
         total_pages=total_pages,
         total=total,
@@ -2601,6 +2636,8 @@ def shipments_list():
     shipments = df.to_dict('records') if not df.empty else []
     return render_template('shipments.html',
         shipments=shipments,
+        # row-numbering feature — page offset so the # column continues across pages.
+        offset=(page - 1) * per_page,
         page=page,
         total_pages=total_pages,
         total=total or 0,

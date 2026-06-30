@@ -76,6 +76,15 @@ def test_stock_is_summed_from_active_non_expired_lots(make_material, make_lot):
     assert row["stock_level"] == 150
 
 
+def test_material_with_no_lots_reports_zero_stock(make_material):
+    # Regression: a material with no active lots must report stock_level 0, not NULL — a NULL
+    # slips past both the `== 0` and `<= reorder` checks and falsely renders "In Stock".
+    mid = make_material("Matcha")
+    df, _ = get_all_materials(page=None)
+    row = df[df["material_id"] == mid].iloc[0]
+    assert row["stock_level"] == 0
+
+
 def test_total_cost_aggregates_lot_cost(make_material, make_lot):
     mid = make_material("Matcha")
     make_lot(mid, 10, cost_per_unit=2)
