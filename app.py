@@ -322,6 +322,61 @@ limiter = Limiter(
 )
 # ========================
 
+# ========================
+# HEALTH CHECK
+# ========================
+# ADDED: lightweight liveness+DB probe for uptime monitoring (Render health check / UptimeRobot).
+# Unauthenticated and rate-limit-exempt so the monitor can hit it freely. GET-only, so CSRF
+# does not apply. Returns 200 only if a trivial query round-trips to the database, otherwise 503 —
+# this catches connection-pool exhaustion and Supabase outages, the failure modes that would
+# otherwise be invisible until a coworker calls.
+from database import get_db_connection
+
+@app.route('/health')
+@limiter.exempt
+def health_check():
+    db = None
+    try:
+        db = get_db_connection()
+        cursor = db.cursor()
+        db.execute(cursor, "SELECT 1")
+        cursor.fetchone()
+        return {"status": "ok"}, 200
+    except Exception as e:
+        logging.error(f"health check failed: {e}", exc_info=True)
+        return {"status": "error", "detail": "database unavailable"}, 503
+    finally:
+        if db is not None:
+            db.close()
+
+
+# ========================
+# ERROR HANDLERS
+# ========================
+# ADDED: friendly catch-all pages so an unhandled crash or a mistyped URL shows a usable page
+# instead of a bare stack trace / blank 500. The real error is logged server-side (with traceback
+# for 500s) so it shows up in Render logs; users only ever see a generic, non-technical message.
+
+@app.errorhandler(404)
+def handle_404(e):
+    return render_template('error.html',
+        title="Page Not Found",
+        message="That page doesn't exist. Use the menu on the left to get where you need to go.",
+        back_link=True, back_link_url="/", back_link_label="Back to Home"
+    ), 404
+
+
+@app.errorhandler(500)
+def handle_500(e):
+    logging.error(f"Unhandled 500 error: {e}", exc_info=True)
+    return render_template('error.html',
+        title="Something Went Wrong",
+        message="An unexpected error occurred. Please try again. If it keeps happening, take a "
+                "screenshot and contact whoever manages this system.",
+        back_link=True, back_link_url="/", back_link_label="Back to Home"
+    ), 500
+
+
 # ADDED: upper bound for ?page= query param.
 # Without this, ?page=99999999 generates a massive OFFSET query that stalls the database.
 MAX_PAGE = 10_000
@@ -1466,8 +1521,10 @@ def create_batch():
                 return redirect(url_for('view_batches'))
             else:
                 return render_template('error.html',
-                    title="Error",
-                    message="Failed to create batch. Check terminal for details.",
+                    title="Couldn't Create Batch",
+                    message="The batch couldn't be created. A lot you selected may have just changed "
+                            "(used up or expired) since you opened the form. Reload the Create Batch "
+                            "page and try again.",
                     back_link=True, back_link_url="/create-batch", back_link_label="Go back to Create Batch"
                 ), 500
 
@@ -1476,8 +1533,10 @@ def create_batch():
             # Log the real error server-side and show a safe generic message to the user.
             logging.warning(f"create_batch ValueError: {e}")
             return render_template('error.html',
-                title="Error",
-                message="Invalid input. Please check your selections and try again.",
+                title="Couldn't Create Batch",
+                message="Please check your selections and try again. A lot you picked may have "
+                        "expired or been used up since you opened the form — reload the Create "
+                        "Batch page so it shows current stock, then retry.",
                 back_link=True, back_link_url="/create-batch", back_link_label="Go back to Create Batch"
             ), 400
 

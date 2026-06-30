@@ -696,9 +696,11 @@ def get_all_batches_with_id(page=None, per_page=50):
     #          get_batches/get_batches_shipped). Planned batches have no batch_materials yet, so
     #          this yields 0 for them; the manage-batches template shows a dash for Planned rows.
     columns = ['batch_id', 'batch_number', 'product_name', 'quantity', 'date_completed',
-               'status', 'notes', 'date_shipped', 'expiration_date', 'planned_completion_date', 'batch_type', 'is_organic', 'product_unit']
+               'status', 'notes', 'date_shipped', 'expiration_date', 'planned_completion_date', 'batch_type',
+               'promotion_failure_reason', 'is_organic', 'product_unit']
     base_query = """
     SELECT batch_id, batch_number, product_name, quantity, date_completed, status, notes, date_shipped, expiration_date, planned_completion_date, batch_type,
+           promotion_failure_reason,
            (SELECT CASE
                      WHEN COUNT(CASE WHEN rm.is_edible THEN 1 END) > 0
                       AND COUNT(CASE WHEN rm.is_edible AND NOT rm.is_organic THEN 1 END) = 0

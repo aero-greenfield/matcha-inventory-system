@@ -5,6 +5,9 @@
 {% block extra_styles %}
 <style>
 .badge-planned { background: #dbeafe; color: #1d4ed8; border-radius: 4px; padding: 2px 8px; font-size: 12px; font-weight: 600; }
+/* Stuck Planned batch (failed auto-promotion). Reuses the tokenized out-of-stock palette —
+   "needs attention" is the same semantic weight as out-of-stock, not a new colour. */
+.badge-stuck { background: var(--badge-out-bg); color: var(--badge-out-text); border-radius: 4px; padding: 2px 8px; font-size: 12px; font-weight: 600; margin-left: 4px; cursor: help; }
 /* Materials + lots inside the row drawer — same inner-table styling as the Batches view. */
 .materials-detail {
     flex-basis: 100%;
@@ -92,6 +95,12 @@
                         <span class="badge badge-low">Ready</span>
                     {% elif row.status == 'Planned' %}
                         <span class="badge badge-planned">Planned</span>
+                        {# A Planned batch with a promotion_failure_reason tried to auto-promote and
+                           couldn't (usually insufficient stock or a missing recipe). Surface it so
+                           staff can tell "waiting for its date" from "stuck — needs attention." #}
+                        {% if row.promotion_failure_reason %}
+                            <span class="badge badge-stuck" title="{{ row.promotion_failure_reason }}">⚠ Needs attention</span>
+                        {% endif %}
                     {% else %}
                         {{ row.status | dash }}
                     {% endif %}
@@ -115,6 +124,15 @@
             <tr class="detail-row">
                 <td colspan="6">
                     <div class="drawer-flex">
+                        {# Stuck Planned batch — show the full reason in plain sight so staff know
+                           what to fix (e.g. receive more stock, restore a deleted recipe). It
+                           auto-promotes next time the Batches page loads once the cause is fixed. #}
+                        {% if row.status == 'Planned' and row.promotion_failure_reason %}
+                        <div class="drawer-pair" style="flex-basis:100%;">
+                            <span class="drawer-label" style="color:var(--badge-out-text);">Couldn't complete yet</span>
+                            <span class="drawer-value">{{ row.promotion_failure_reason }}</span>
+                        </div>
+                        {% endif %}
                         <div class="drawer-pair">
                             <span class="drawer-label">Notes</span>
                             <span class="drawer-value">{{ row.notes | dash }}</span>
