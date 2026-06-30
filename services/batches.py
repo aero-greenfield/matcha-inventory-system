@@ -43,11 +43,27 @@ _last_promote_time = 0
 _QTY_EPSILON_G = 1e-3
 
 
+def _covers(have, need):
+    """True if `have` is at least `need`, within the storage tolerance (_QTY_EPSILON_G).
+
+    Single source of truth for every "is there enough stock?" comparison. Hand-copying this
+    check is exactly how one site (check_batch_materials_stock) ended up with NO tolerance and
+    another with a too-tight 1e-6 — route them all through here so the epsilon is applied once.
+    """
+    return float(have) + _QTY_EPSILON_G >= float(need)
+
+
+def _quantities_match(a, b):
+    """True if two quantities are equal within the storage tolerance — used to confirm the
+    selected lots sum to the required amount (neither short nor over)."""
+    return abs(float(a) - float(b)) <= _QTY_EPSILON_G
+
+
 # ========================
 # BATCHES FUNCTIONS
 # ========================
 
-def _create_housemade_lot(db, cursor, product_name, quantity, batch_number, received_date):
+def _create_housemade_lot(db, cursor, product_name, quantity, batch_number, received_date, batch_id):
     """Create (or reuse) the house-made raw_material for a mix/Component product and insert a
     lot for the produced quantity. Shared by add_to_batches (immediate mix) and
     promote_planned_batches (deferred Planned mix) so both create the material + lot identically.
@@ -55,6 +71,12 @@ def _create_housemade_lot(db, cursor, product_name, quantity, batch_number, rece
     The produced lot quantity is stored in the canonical base unit (grams for mass) — derived
     from the recipe's product_unit + declared dimension — so a finished recipe consuming this
     component deducts cleanly. Returns the new lot_id.
+
+    The house-made material's is_organic is computed from the mix batch's own inputs (this
+    batch_id's batch_materials), using the SAME derivation get_batches() applies to display a
+    batch's organic flag. Storing it here is what lets organic-ness propagate one level up: a
+    finished batch consuming this material reads rm.is_organic on it. Reusing an existing
+    house-made material overwrites the flag with the latest batch's value.
     """
     product_unit, product_dimension = get_recipe_unit_and_dimension(product_name)
     product_unit = product_unit or 'units'
@@ -68,14 +90,32 @@ def _create_housemade_lot(db, cursor, product_name, quantity, batch_number, rece
     # to the UI. Counts are stored as-is.
     lot_quantity = float(units.to_base(quantity, product_unit)) if dimension == 'mass' else quantity
 
+    # Derive the mix's organic status from the inputs it just consumed — byte-identical to the
+    # batch organic expression in get_batches() (batches.py ~line 331) so the house-made material
+    # agrees with the mix batch's own displayed organic flag.
+    db.execute(cursor, """
+        SELECT CASE
+                 WHEN COUNT(CASE WHEN rm.is_edible THEN 1 END) > 0
+                  AND COUNT(CASE WHEN rm.is_edible AND NOT rm.is_organic THEN 1 END) = 0
+               THEN 1 ELSE 0 END
+        FROM batch_materials bm
+        JOIN raw_materials rm ON bm.material_id = rm.material_id
+        WHERE bm.batch_id = %s
+    """, (batch_id,))
+    is_organic = bool(cursor.fetchone()[0])
+
     existing_mix = get_raw_material(product_name)
     if existing_mix:
         mix_material_id = existing_mix[0]
+        # overwrite with the latest batch's organic value (per "update to latest batch")
+        db.execute(cursor, """
+            UPDATE raw_materials SET is_organic = %s WHERE material_id = %s
+        """, (is_organic, mix_material_id))
     else:
         db.execute(cursor, """
-            INSERT INTO raw_materials (name, category, unit, reorder_level, is_housemade, dimension)
-            VALUES (%s, %s, %s, %s, %s, %s)
-        """, (product_name, 'Mix', product_unit, 0, True, dimension))
+            INSERT INTO raw_materials (name, category, unit, reorder_level, is_housemade, is_organic, dimension)
+            VALUES (%s, %s, %s, %s, %s, %s, %s)
+        """, (product_name, 'Mix', product_unit, 0, True, is_organic, dimension))
         mix_material_id = db.get_last_insert_id(cursor)
 
     lot_number = f"MIX-BATCH-{batch_number}"
@@ -197,7 +237,7 @@ def add_to_batches(product_name, quantity, notes=None, batch_number=None, deduct
                 # negative-stock warning page: it skips the coverage requirement so a batch can be
                 # created even when the selected lots don't fully cover the recipe (stock goes negative).
                 material_sum = sum(lot['qty'] for lot in lot_list) # sum up the total quantity from the lots for this material
-                if not allow_negative and abs(material_sum - required_amount) > _QTY_EPSILON_G: # if the sum of the lots is less than the required amount, raise error before doing any deduction
+                if not allow_negative and not _quantities_match(material_sum, required_amount): # if the sum of the lots is less than the required amount, raise error before doing any deduction
                         raise ValueError(f"Total quantity from selected lots for material {material_name} is insufficient. Required: {required_amount}")
 
 
@@ -236,7 +276,7 @@ def add_to_batches(product_name, quantity, notes=None, batch_number=None, deduct
                     # comparison is exact and no tolerance is needed. Scoped out for now; the 1e-6
                     # is safe (0.001 mg) for any realistic quantity. Same note applies to the
                     # promotion path's per-lot check in promote_planned_batches.
-                    if not allow_negative and float(available_qty) + _QTY_EPSILON_G < float(qty): # available must cover qty user wants from said lot
+                    if not allow_negative and not _covers(available_qty, qty): # available must cover qty user wants from said lot
                         raise ValueError(f"Insufficient quantity in lot {lot_id} for material {material_name}. Requested: {qty}, Available: {available_qty}")
 
                     if allow_negative:
@@ -284,7 +324,7 @@ def add_to_batches(product_name, quantity, notes=None, batch_number=None, deduct
         if batch_type == 'mix' and not defer_deduction:
             mix_lot_id = _create_housemade_lot(
                 db, cursor, product_name, quantity, batch_number,
-                datetime.now().strftime('%Y-%m-%d'))
+                datetime.now().strftime('%Y-%m-%d'), batch_id)
             db.execute(cursor, """
                 UPDATE batches SET mix_lot_id = %s WHERE batch_id = %s
             """, (mix_lot_id, batch_id))
@@ -924,7 +964,7 @@ def promote_planned_batches():
 
                         # total qty across stored lots must equal required (mirrors add_to_batches sum check)
                         material_sum = sum(lot['qty'] for lot in lot_list)
-                        if abs(material_sum - required) > _QTY_EPSILON_G:
+                        if not _quantities_match(material_sum, required):
                             failure_reason = (
                                 f"Stored lot quantities for '{material_name}' don't match required "
                                 f"(stored: {material_sum}, required: {required})"
@@ -950,7 +990,7 @@ def promote_planned_batches():
                             # sub-ULP above the stored Decimal — don't reject what's exactly enough.
                             # See the Decimal-end-to-end FUTURE note in add_to_batches for the
                             # principled fix that would remove this epsilon.
-                            if float(lot_row[0]) + _QTY_EPSILON_G < float(qty):
+                            if not _covers(lot_row[0], qty):
                                 failure_reason = (
                                     f"Lot {lot_id} for '{material_name}' has insufficient quantity "
                                     f"(need {qty}, have {lot_row[0]})."
@@ -1038,7 +1078,7 @@ def promote_planned_batches():
                     if batch_type == 'mix':
                         mix_lot_id = _create_housemade_lot(
                             db, cursor, product_name, quantity, batch_number,
-                            planned_completion_date)
+                            planned_completion_date, batch_id)
                         db.execute(cursor, """
                             UPDATE batches SET mix_lot_id = %s WHERE batch_id = %s
                         """, (mix_lot_id, batch_id))
@@ -1285,7 +1325,7 @@ def check_batch_materials_stock(batch_id, new_quantities: dict, lot_selections: 
                         SELECT quantity FROM raw_material_lots WHERE lot_id = %s
                     """, (lot_id,))
                     lot_row = cursor.fetchone()
-                    if not lot_row or float(lot_row[0]) + _QTY_EPSILON_G < float(delta):
+                    if not lot_row or not _covers(lot_row[0], delta):
                         logging.warning(f"Lot {lot_id} has insufficient quantity for material {material_id}: need {delta}, have {lot_row[0] if lot_row else 0}")
                         return False
                 else:
@@ -1293,7 +1333,7 @@ def check_batch_materials_stock(batch_id, new_quantities: dict, lot_selections: 
                         SELECT COALESCE(SUM(quantity), 0) FROM raw_material_lots WHERE material_id = %s
                     """, (material_id,))
                     total = cursor.fetchone()[0]
-                    if float(total) + _QTY_EPSILON_G < float(delta):
+                    if not _covers(total, delta):
                         logging.warning(f"Insufficient total lot stock for material {material_id}: need {delta}, have {total}")
                         return False
 

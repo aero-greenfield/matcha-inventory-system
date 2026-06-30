@@ -103,3 +103,54 @@ def test_convert_across_dimensions_raises():
 def test_gram_based_deduction_stays_exact():
     remaining = units.to_base(1, "lb") - units.to_base(2, "g")
     assert remaining == Decimal("451.59237")
+
+
+# --- property-based: generalize the example tests above across the whole input space --
+# These guard the conversion layer (the root of the lot-selection precision bug) against
+# *classes* of error — a wrong factor, a broken alias, lost precision at the float boundary —
+# rather than the handful of nice values the example tests cover. Hypothesis generates the
+# awkward inputs (tiny, huge, many-decimal) automatically.
+from hypothesis import given, strategies as st  # noqa: E402
+
+_MASS_UNIT = st.sampled_from(units.MASS_UNITS)  # g, kg, lb, oz, mg
+# realistic positive quantities at the app's 4-dp mass resolution, bounded in magnitude
+_QTY = st.decimals(min_value=Decimal("0"), max_value=Decimal("1000000"),
+                   places=4, allow_nan=False, allow_infinity=False)
+
+
+@given(qty=_QTY, unit=_MASS_UNIT)
+def test_mass_round_trip_is_lossless(qty, unit):
+    # entry -> base (grams) -> back to entry unit reconstructs the original (within Decimal
+    # context rounding). A wrong factor or bad arithmetic would blow this bound wide open.
+    rt = units.from_base(units.to_base(qty, unit), unit)
+    assert abs(rt - qty) <= (abs(qty) + 1) * Decimal("1e-12")
+
+
+@given(qty=_QTY, pair=st.sampled_from([
+    ("lbs", "lb"), ("pound", "lb"), ("pounds", "lb"), ("#", "lb"),
+    ("grams", "g"), ("gram", "g"), ("gr", "g"),
+    ("kgs", "kg"), ("kilogram", "kg"),
+    ("ounce", "oz"), ("ounces", "oz"), ("milligram", "mg"),
+]))
+def test_aliases_convert_identically_to_canonical(qty, pair):
+    # every spelling variant must resolve to the same grams as its canonical key
+    alias, canon = pair
+    assert units.to_base(qty, alias) == units.to_base(qty, canon)
+
+
+@given(qty=_QTY, label=st.sampled_from(["tin", "sachet", "box", "each", "unit", "jar"]))
+def test_count_units_are_identity(qty, label):
+    # counts never convert: a 'tin' is a 'tin'. to_base/from_base must be the identity.
+    assert units.to_base(qty, label) == qty
+    assert units.from_base(qty, label) == qty
+
+
+@given(qty=st.floats(min_value=1e-3, max_value=1e6, allow_nan=False, allow_infinity=False),
+       unit=_MASS_UNIT)
+def test_float_storage_round_trip_within_tolerance(qty, unit):
+    # Production stores float(to_base(...)) in the DB and reads it back later. Model that
+    # float boundary and assert it doesn't drift meaningfully — this is the exact path whose
+    # precision mismatch caused the "exactly enough reads as insufficient" bug.
+    grams = float(units.to_base(qty, unit))
+    back = float(units.from_base(Decimal(str(grams)), unit))
+    assert abs(back - qty) <= max(qty, 1.0) * 1e-9

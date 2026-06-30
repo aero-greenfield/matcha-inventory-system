@@ -22,3 +22,5 @@ flask-limiter>=3.5.0
 # Tests (pytest suite under test_scripts/; run: python -m pytest test_scripts -q)
 pytest>=8.0.0
 pytest-cov>=5.0.0
+# property-based tests for the unit-conversion layer (test_units.py)
+hypothesis>=6.0.0
