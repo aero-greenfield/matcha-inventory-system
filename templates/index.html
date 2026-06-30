@@ -250,7 +250,7 @@ details.htu-section .htu-body {
             </thead>
             <tbody>
                 {% for item in low_stock_items %}
-                {% set status = 'out' if (item.stock_level is not none and item.stock_level <= 0) else 'low' %}
+                {% set status = item.stock_level | material_status(item.reorder_level) %}
                 <tr>
                     <td>{{ item.name }}</td>
                     <td>{{ item.stock_level }} {{ item.unit }}</td>

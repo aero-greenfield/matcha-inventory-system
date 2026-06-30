@@ -239,6 +239,17 @@ def test_inventory_zero_stock_shows_out_not_low(client, auth, make_material, mak
     assert '<span class="badge badge-low">Low Stock</span>' not in html
 
 
+def test_dashboard_zero_stock_shows_out_not_low(client, auth, make_material, make_lot):
+    # Same residual-vs-zero bug as the inventory page, but on the DASHBOARD ('/'), which
+    # previously used a raw `stock_level <= 0` check instead of the epsilon-aware
+    # material_status filter — so a 0.00004 g residual rendered as "Low" there alone.
+    mid = make_material("Trace", reorder_level=100)
+    make_lot(mid, 0.00004)  # float-deduction residual, displays as 0
+    html = client.get("/", headers=auth).get_data(as_text=True)
+    assert '<span class="badge badge-out">' in html
+    assert '<span class="badge badge-low">' not in html
+
+
 # --- batches page: component (mix) display ------------------------------------------
 def test_batches_page_shows_mix_prefix_and_original_total(client, auth, db,
                                                           make_material, make_lot, make_recipe):

@@ -5,6 +5,13 @@ import pandas as pd
 import logging
 from datetime import datetime
 
+# ADDED: component-material-on-recipe feature — creating a Component (mix) recipe now
+#        pre-creates its house-made raw_material (stock 0) so a finished recipe can reference
+#        the component BEFORE any Component batch has been produced. We derive the material's
+#        dimension from the recipe's declared product_dimension, falling back to inferring it
+#        from the product_unit text (same fallback _create_housemade_lot in batches.py uses).
+from services import units
+
 # ADDED: get_raw_material lives in services.materials. recipes.py calls it inside
 #        add_recipe, change_recipe, update_recipe, and check_negative_stock to
 #        validate that a material exists before inserting into recipe_materials.

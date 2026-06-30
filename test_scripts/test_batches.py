@@ -326,6 +326,27 @@ def test_planned_promotion_failure_keeps_planned_with_reason(make_material, make
     assert reason and "Insufficient" in reason
 
 
+def test_planned_promotion_failure_reports_insufficient_not_missing_selection(
+    make_material, make_lot, make_recipe, db
+):
+    # Regression: a planned batch can store lot selections that OMIT a material the
+    # create-batch UI couldn't auto-fill (no/insufficient active lots at creation). At
+    # promotion that material has no stored entry, so it must fall back to FIFO and report
+    # the REAL "Insufficient lot stock" reason — not the misleading "No stored lot selection".
+    mid = make_material("Matcha")
+    make_lot(mid, 5)  # only 5 g on hand, recipe needs 10
+    make_recipe("Latte", [{"material_name": "Matcha", "quantity_needed": 10}])
+    # non-None but empty: stored_lot_selections is a dict that doesn't contain `mid`
+    bid = add_to_batches("Latte", 1, batch_number="P4", planned_completion_date=PAST,
+                         batch_type="finished", lot_selections={})
+    promote_planned_batches()
+    status, reason = _batch_status(db, bid)
+    assert status == "Planned"
+    assert reason
+    assert "Insufficient" in reason
+    assert "no stored lot selection" not in reason.lower()
+
+
 # --- delete with reallocation --------------------------------------------------------
 def test_delete_batch_reallocates_stock(make_material, make_lot, make_recipe, db):
     mid = make_material("Matcha")

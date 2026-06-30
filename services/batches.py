@@ -980,13 +980,16 @@ def promote_planned_batches():
                     # float() guards against Decimal (PostgreSQL numeric) * float (quantity) TypeError
                     required = float(row['quantity_needed']) * quantity
 
-                    if stored_lot_selections is not None:
+                    # Use the user-picked lots only when this material actually HAS a stored
+                    # selection. A material can be absent from stored_lot_selections when the
+                    # create-batch UI couldn't auto-fill it (no/insufficient active lots at
+                    # creation) — in that case fall through to FIFO, which reports the real
+                    # "Insufficient lot stock" reason instead of a misleading "no stored lot
+                    # selection" message (and still succeeds if other lots can cover it).
+                    if stored_lot_selections is not None and stored_lot_selections.get(material_id) is not None:
                         # --- user-picked lots path: validate stored selections same as add_to_batches ---
 
-                        lot_list = stored_lot_selections.get(material_id) #
-                        if lot_list is None:
-                            failure_reason = f"No stored lot selection for material '{material_name}'"
-                            break
+                        lot_list = stored_lot_selections.get(material_id)
 
                         # total qty across stored lots must equal required (mirrors add_to_batches sum check)
                         material_sum = sum(lot['qty'] for lot in lot_list)
