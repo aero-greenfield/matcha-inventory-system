@@ -55,7 +55,7 @@
                 {% for row in batches %}
                 <tr>
                     <td><input type="checkbox" class="batch-select" name="batch_ids" value="{{ row['batch_id'] }}"></td>
-                    <td>{{ row['batch_number'] or '—' }}</td>
+                    <td>{{ row['batch_number'] | batch_no(row['batch_type']) if row['batch_number'] else '—' }}</td>
                     <td><strong>{{ row['product_name'] }}</strong></td>
                     <td>
                         <span class="badge badge-{{ row['batch_type'] or 'standard' }}">{{ row['batch_type'] or 'standard' }}</span>

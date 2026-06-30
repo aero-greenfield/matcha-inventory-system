@@ -62,8 +62,29 @@ def test_material_names_autocomplete(make_material):
     make_material("Matcha Ceremonial")
     make_material("Matcha Culinary")
     make_material("Sugar")
-    names = get_material_names("matcha")
-    assert set(names) == {"Matcha Ceremonial", "Matcha Culinary"}
+    rows = get_material_names("matcha")
+    assert {r["name"] for r in rows} == {"Matcha Ceremonial", "Matcha Culinary"}
+
+
+def test_material_names_flags_housemade(make_material):
+    # component-badge feature: get_material_names must report is_housemade so the autocomplete
+    # can show a "Component" pill for house-made materials.
+    make_material("Raw Matcha")
+    make_material("House Blend", is_housemade=True)
+    flags = {r["name"]: r["is_housemade"] for r in get_material_names("")}
+    assert flags["Raw Matcha"] is False
+    assert flags["House Blend"] is True
+
+
+def test_material_status_treats_near_zero_residual_as_out():
+    # Bug 6: float-deduction residual (sub-epsilon) must read "out", not "low". This single helper
+    # backs the inventory badge, the low-stock page, and the Excel export.
+    from app import material_status
+    assert material_status(0, 5) == "out"
+    assert material_status(0.0001, 5) == "out"   # residual that displays as 0
+    assert material_status(3, 5) == "low"         # 0 < x <= reorder
+    assert material_status(10, 5) == "in"
+    assert material_status(None, 5) == "out"      # no active lots
 
 
 def test_stock_is_summed_from_active_non_expired_lots(make_material, make_lot):

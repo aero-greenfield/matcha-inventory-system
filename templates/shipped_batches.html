@@ -89,7 +89,7 @@
         <tbody>
             {% for row in batches %}
             <tr>
-                <td>{{ row['batch_number'] }}</td>
+                <td>{{ row['batch_number'] | batch_no(row.get('batch_type')) }}</td>
                 <td><strong>{{ row['product_name'] }}</strong></td>
                 <td>
                     {% set btype = row.get('batch_type', '') %}

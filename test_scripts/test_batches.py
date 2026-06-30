@@ -258,6 +258,28 @@ def test_get_batches_reports_mix_remaining_and_consumed_count(make_material, mak
     assert mix_row["mix_consumed_count"] == 1
 
 
+def test_finished_batch_cost_includes_component_cost(make_material, make_lot, make_recipe, db):
+    # cost-of-component: a finished batch consuming a Component (mix) must include the mix's own
+    # production cost. The mix output lot is given cost_per_unit = (input cost) / produced qty, which
+    # the finished batch records into batch_materials and rolls into batch_cost. Previously the mix
+    # lot had a NULL cost, so the component contributed $0.
+    mid = make_material("Matcha")
+    lid = make_lot(mid, 1000, cost_per_unit=3)
+    make_recipe("Mix", [{"material_name": "Matcha", "quantity_needed": 1}],
+                batch_type="mix", product_unit="g", product_dimension="mass")
+    # 100 units consumes 100 g @ $3 = $300 to produce 100 g of mix -> $3/g on the output lot
+    add_to_batches("Mix", 100, batch_number="MC1", batch_type="mix",
+                   lot_selections={mid: [{"lot_id": lid, "qty": 100}]})
+    mix_lot = _mix_lot_for(db, "Mix")
+    mix_mid = get_raw_material("Mix")[0]
+    make_recipe("FinishedTea", [{"material_name": "Mix", "quantity_needed": 10, "unit": "g"}])
+    fid = add_to_batches("FinishedTea", 1, batch_number="FC1",
+                         lot_selections={mix_mid: [{"lot_id": mix_lot, "qty": 10}]})
+    df, _ = get_batches(page=1, per_page=50)
+    row = df[df["batch_id"] == fid].iloc[0]
+    assert row["batch_cost"] == pytest.approx(10 * 3)  # 10 g of mix @ $3/g = $30
+
+
 # --- planned promotion: stored lots --------------------------------------------------
 def test_planned_finished_defers_then_promotes_stored_lots(make_material, make_lot, make_recipe, db):
     mid = make_material("Matcha")

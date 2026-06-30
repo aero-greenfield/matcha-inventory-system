@@ -378,15 +378,18 @@ def get_unit_and_dimension(name):
 
 def get_material_names(q=""):
     # ADDED: lightweight name-search for the /api/materials autocomplete endpoint.
-    #        Returns up to 50 names matching the search string; filtering happens in SQL,
+    #        Returns up to 50 matches for the search string; filtering happens in SQL,
     #        not by fetching the full table into Python.
+    # CHANGED: component-badge feature — returns [{name, is_housemade}] (was a list of bare
+    #          names) so the autocomplete can flag house-made (Component) materials, mirroring
+    #          how /api/recipes flags mix recipes. is_housemade is coerced to a bool for clean JSON.
     db = get_db_connection()
     cursor = db.cursor()
     try:
         db.execute(cursor,
-            "SELECT name FROM raw_materials WHERE LOWER(name) LIKE LOWER(%s) ORDER BY name LIMIT 50",
+            "SELECT name, is_housemade FROM raw_materials WHERE LOWER(name) LIKE LOWER(%s) ORDER BY name LIMIT 50",
             (f"%{q}%",))
-        return [row[0] for row in cursor.fetchall()]
+        return [{"name": row[0], "is_housemade": bool(row[1])} for row in cursor.fetchall()]
     except Exception as e:
         logging.error(f"get_material_names: {e}")
         return []

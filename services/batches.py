@@ -121,11 +121,23 @@ def _create_housemade_lot(db, cursor, product_name, quantity, batch_number, rece
         """, (product_name, 'Mix', product_unit, 0, True, True, is_organic, dimension))
         mix_material_id = db.get_last_insert_id(cursor)
 
+    # cost-of-component feature — give the house-made lot a cost_per_unit so the component's cost
+    # rolls up into any finished batch that consumes it (the finished batch records this lot's
+    # cost_per_unit into batch_materials, which feeds the batch_cost subquery in get_batches).
+    # Basis: the mix's own input cost (what it consumed to be produced) ÷ produced base quantity.
+    # Without this the lot had a NULL cost and the component contributed $0 to finished costs.
+    db.execute(cursor, """
+        SELECT COALESCE(SUM(quantity_used * COALESCE(cost_per_unit, 0)), 0)
+        FROM batch_materials WHERE batch_id = %s
+    """, (batch_id,))
+    mix_input_cost = float(cursor.fetchone()[0] or 0)
+    cost_per_unit = (mix_input_cost / float(lot_quantity)) if lot_quantity else 0
+
     lot_number = f"MIX-BATCH-{batch_number}"
     db.execute(cursor, """
-        INSERT INTO raw_material_lots (lot_number, material_id, quantity, received_date, status)
-        VALUES (%s, %s, %s, %s, %s)
-    """, (lot_number, mix_material_id, lot_quantity, received_date, 'active'))
+        INSERT INTO raw_material_lots (lot_number, material_id, quantity, received_date, status, cost_per_unit)
+        VALUES (%s, %s, %s, %s, %s, %s)
+    """, (lot_number, mix_material_id, lot_quantity, received_date, 'active', cost_per_unit))
     if cursor.rowcount == 0:
         raise ValueError(f"Failed to create lot for mixed batch {batch_number}")
     return db.get_last_insert_id(cursor)

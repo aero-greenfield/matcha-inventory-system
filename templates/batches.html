@@ -152,7 +152,7 @@
                 {% for row in ready_mix %}
                 <tr>
                     <td class="num">{% set ns.n = ns.n + 1 %}{{ ns.n }}</td>
-                    <td>{{ row['batch_number'] }}</td>
+                    <td>{{ row['batch_number'] | batch_no(row['batch_type']) }}</td>
                     <td><strong>{{ row['product_name'] }}</strong></td>
                     <td><span class="badge badge-mix">component</span>
                         {# ADDED: organic feature — derived label, shown only when all edible materials are organic. #}
@@ -166,7 +166,7 @@
                         {% endif %}</td>
                     {# mix-usage feature — Available shows the output lot remaining (what finished batches can
                        still consume), not shipment-remaining. Falls back to shipment remaining if no lot/unit. #}
-                    <td class="num">{% if row['mix_remaining'] is not none %}{{ row['mix_remaining'] | fmt_num }}{% else %}{{ row['remaining'] }}{% endif %}{% if row['product_unit'] %}<span style="color:var(--text-faint);font-weight:400;"> {{ row['product_unit'] }}</span>{% endif %}</td>
+                    <td class="num">{% if row['mix_remaining'] is not none %}{{ row['mix_remaining'] | fmt_num }}{% if row['mix_remaining'] < row['quantity'] %}<span style="color:var(--text-faint);"> / {{ row['quantity'] }}</span>{% endif %}{% else %}{{ row['remaining'] }}{% endif %}{% if row['product_unit'] %}<span style="color:var(--text-faint);font-weight:400;"> {{ row['product_unit'] }}</span>{% endif %}</td>
                     <td>{{ row['date_completed'] or '—' }}</td>
                     {# ADDED: cost-of-material feature — show total batch cost or dash if no cost data. #}
                     <td>{% if row['batch_cost'] %}${{ '%.2f'|format(row['batch_cost']) }}{% else %}—{% endif %}</td>
@@ -276,7 +276,7 @@
                 {% for row in planned_mix %}
                 <tr{% if row['promotion_failure_reason'] %} class="row-failed-promotion"{% endif %}>
                     <td class="num">{% set pns.n = pns.n + 1 %}{{ pns.n }}</td>
-                    <td>{{ row['batch_number'] }}</td>
+                    <td>{{ row['batch_number'] | batch_no(row['batch_type']) }}</td>
                     <td>
                         <strong>{{ row['product_name'] }}</strong>
                         {% if row['promotion_failure_reason'] %}

@@ -54,9 +54,12 @@
                    `disp(row.unit)` converts it back to the display unit. #}
                 <td class="num">{{ row.stock_level | disp(row.unit) }} <span style="color:var(--text-faint);font-size:13px;">{{ row.unit }}</span></td>
                 <td>
-                    {% if row.stock_level == 0 %}
+                    {# Status via the shared material_status filter so a sub-epsilon residual
+                       (displays as 0) is "Out of Stock", not "Low Stock". #}
+                    {% set status = row.stock_level | material_status(row.reorder_level) %}
+                    {% if status == 'out' %}
                         <span class="badge badge-out">Out of Stock</span>
-                    {% elif row.stock_level <= row.reorder_level %}
+                    {% elif status == 'low' %}
                         <span class="badge badge-low">Low Stock</span>
                     {% else %}
                         <span class="badge badge-in-stock">In Stock</span>
@@ -163,7 +166,7 @@
 <button type="button" class="section-toggle" data-section="raw-materials-section"><span class="caret">&#9660;</span> Raw Materials</button>
 <div id="raw-materials-section">
 {% if materials | rejectattr('is_housemade') | list %}
-{{ material_table(materials | rejectattr('is_housemade') | list, offset) }}
+{{ material_table(materials | rejectattr('is_housemade') | list, offset_raw) }}
 {% else %}
 <div class="table-container" style="padding:40px 24px;text-align:center;color:var(--text-muted);margin-bottom:32px;">
     <p>No raw materials in inventory. <a href="/add-material" style="color:var(--accent);">Add your first material</a></p>
@@ -174,7 +177,7 @@
 <button type="button" class="section-toggle" data-section="housemade-materials-section"><span class="caret">&#9660;</span> Housemade Materials</button>
 <div id="housemade-materials-section">
 {% if materials | selectattr('is_housemade', 'equalto', 1) | list %}
-{{ material_table(materials | selectattr('is_housemade', 'equalto', 1) | list, offset) }}
+{{ material_table(materials | selectattr('is_housemade', 'equalto', 1) | list, offset_housemade) }}
 {% else %}
 <div class="table-container" style="padding:40px 24px;text-align:center;color:var(--text-muted);">
     <p>No housemade materials in inventory.</p>

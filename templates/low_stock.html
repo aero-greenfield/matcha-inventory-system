@@ -38,7 +38,8 @@
                 <td>{{ row.unit }}</td>
                 <td>{{ row.reorder_level | disp(row.unit) }}</td>
                 <td>
-                    {% if row.stock_level == 0 %}
+                    {# Shared material_status filter: sub-epsilon residual (displays as 0) is "out". #}
+                    {% if (row.stock_level | material_status(row.reorder_level)) == 'out' %}
                         <span class="badge badge-out">Out of Stock</span>
                     {% else %}
                         <span class="badge badge-low">Low Stock</span>

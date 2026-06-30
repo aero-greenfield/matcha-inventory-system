@@ -265,6 +265,48 @@ def fmt_date(value, fmt="%Y-%m-%d"):
         return str(value)
 
 
+# Sub-milligram residual left by float deductions (SET quantity = quantity - x) counts as zero
+# stock — mirrors the _QTY_EPSILON_G storage tolerance in services/batches.py. Without it a
+# material with e.g. 0.0001 g left fails `== 0`, falls into the reorder check, and shows
+# "Low Stock" while its displayed stock rounds to "0".
+_STOCK_EPSILON = 1e-3
+
+
+def material_status(stock_level, reorder_level):
+    """Derive an inventory status key ('out' | 'low' | 'in') from current stock vs reorder level.
+
+    Single source of truth for the inventory badge, the low-stock page, and the Excel export —
+    all of which previously hand-rolled `stock == 0` checks that float noise slipped past.
+    Stock and reorder are both in base units (grams for mass), so they compare directly."""
+    stock = stock_level or 0
+    try:
+        stock = float(stock)
+        reorder = float(reorder_level or 0)
+    except (TypeError, ValueError):
+        return "out"
+    if stock <= _STOCK_EPSILON:
+        return "out"
+    if stock <= reorder:
+        return "low"
+    return "in"
+
+
+# Expose material_status to templates so the inventory/low-stock badges share the export's logic.
+app.add_template_filter(material_status, "material_status")
+
+
+@app.template_filter("batch_no")
+def batch_no(number, batch_type=None):
+    """Display a batch number, prefixing component (mix) batches with MIX-BATCH- so the batch#
+    matches its house-made lot number (lots already use this prefix; see services/batches.py).
+    Display-only — the stored batch_number is unchanged. No-op for standard/finished batches."""
+    if _is_empty(number):
+        return EMPTY_DISPLAY
+    if batch_type == "mix":
+        return f"MIX-BATCH-{number}"
+    return number
+
+
 # WHAT IS 'app':
 # Think of 'app' as your web server. When you do @app.route('/inventory'),
 # you're telling this server "when someone visits /inventory, run this function"
@@ -507,6 +549,18 @@ def view_inventory():
     # ADDED: compute total page count for pagination controls in the template
     total_pages = math.ceil(total / PER_PAGE) if total else 1
 
+    # row-numbering fix — the page splits into two tables (Raw / Housemade) AFTER pagination, so a
+    # single page offset can't keep both numbered continuously across pages. Compute a per-group
+    # offset = how many materials of that group appear before this page in the SAME ordering.
+    offset_raw = 0
+    offset_housemade = 0
+    if page > 1:
+        full_df, _ = get_all_materials(page=None, sort_by=effective_sort, sort_dir=effective_dir)
+        if not full_df.empty:
+            preceding = full_df.iloc[:(page - 1) * PER_PAGE]
+            offset_housemade = int(preceding['is_housemade'].fillna(0).astype(bool).sum())
+            offset_raw = len(preceding) - offset_housemade
+
     # ADDED: table-redesign feature — attach each material's active lots so the template
     #        can server-render them inside the per-row expand drawer (replaces the old
     #        per-row /api/lots AJAX). One bulk query for the whole page, then grouped.
@@ -518,8 +572,9 @@ def view_inventory():
         materials=materials,
         count=len(df),
         page=page,
-        # row-numbering feature — page offset so the # column continues across pages (page 2 → 51+).
-        offset=(page - 1) * PER_PAGE,
+        # row-numbering feature — per-group offsets so each table's # column continues across pages.
+        offset_raw=offset_raw,
+        offset_housemade=offset_housemade,
         total_pages=total_pages,
         total=total,
         sort=sort,
@@ -557,15 +612,11 @@ def export_inventory_excel():
         # Status is DERIVED here (not stored): out of stock first, then at/below reorder = low,
         # otherwise in stock. This mirrors the badge logic the inventory page computes inline,
         # but we bake it into a real column so the spreadsheet reader can sort/filter on it.
+        _STATUS_LABELS = {"out": "Out of Stock", "low": "Low Stock", "in": "In Stock"}
         def _material_status(row):
-            # Guard against NULL/NaN stock (no active lots) so a zero-stock material never
-            # slips past both checks into "In Stock" — mirrors the COALESCE in get_all_materials.
-            stock = row['stock_level'] or 0
-            if stock == 0:
-                return "Out of Stock"
-            if stock <= row['reorder_level']:
-                return "Low Stock"
-            return "In Stock"
+            # Reuse the shared material_status() helper so the export, the inventory badge, and
+            # the low-stock page agree — including treating sub-epsilon float residual as zero.
+            return _STATUS_LABELS[material_status(row['stock_level'], row['reorder_level'])]
         mats['Status'] = mats.apply(_material_status, axis=1)
 
         # Type comes from the is_housemade boolean. Housemade "materials" are intermediate

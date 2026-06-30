@@ -137,7 +137,12 @@ function attachAutocomplete(input, fetchFn) {
 
 async function fetchMaterials(q = '') {
     const res = await fetch('/api/materials?q=' + encodeURIComponent(q), { credentials: 'include' });
-    return res.json();
+    const rows = await res.json();
+    // /api/materials returns [{name, is_housemade}]; map to {name, badge} so house-made
+    // materials show a "Component" pill in the dropdown (same pattern as fetchRecipes).
+    return rows.map(function(r) {
+        return { name: r.name, badge: r.is_housemade ? 'Component' : null };
+    });
 }
 
 async function fetchRecipes(q = '') {

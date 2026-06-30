@@ -79,7 +79,7 @@
         <tbody>
             {% for row in batches %}
             <tr class="expandable-row" tabindex="0" aria-expanded="false">
-                <td class="mono">{{ row.batch_number }}</td>
+                <td class="mono">{{ row.batch_number | batch_no(row.batch_type) }}</td>
                 <td>
                     <span style="font-weight:500;">{{ row.product_name }}</span>
                     {# ADDED: organic feature — neutral attribute tag, never accent green.
@@ -153,7 +153,7 @@
                         <div style="margin-left:auto;display:flex;gap:8px;align-items:center;">
                             <a href="/edit-batch/{{ row.batch_id | int }}" class="btn btn-secondary" style="padding:6px 14px;font-size:13px;">Edit</a>
                             <form method="POST" action="/edit-batch/{{ row.batch_id | int }}/delete"
-                                  onsubmit="return confirm('Delete batch {{ row.batch_number }}? All ingredients used by this batch WILL be returned to inventory.')"
+                                  onsubmit="return confirm('Delete batch {{ row.batch_number | batch_no(row.batch_type) }}? All ingredients used by this batch WILL be returned to inventory.')"
                                   style="display:inline;" autocomplete="off">
                                 <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
                                 <input type="hidden" name="reallocate_all" value="1">
