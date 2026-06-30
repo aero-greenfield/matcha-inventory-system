@@ -253,8 +253,8 @@ details.htu-section .htu-body {
                 {% set status = item.stock_level | material_status(item.reorder_level) %}
                 <tr>
                     <td>{{ item.name }}</td>
-                    <td>{{ item.stock_level }} {{ item.unit }}</td>
-                    <td>{{ item.reorder_level }} {{ item.unit }}</td>
+                    <td>{{ item.stock_level | qty }} {{ item.unit }}</td>
+                    <td>{{ item.reorder_level | qty }} {{ item.unit }}</td>
                     <td><span class="badge badge-{{ status }}">{{ 'Out' if status == 'out' else 'Low' }}</span></td>
                 </tr>
                 {% endfor %}

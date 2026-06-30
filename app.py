@@ -1532,13 +1532,20 @@ def create_batch():
         #INPUT VALIDATION DONE===============================
 
 
-        # see if its okay that batch creation makes stock go negative. 
+        # see if its okay that batch creation makes stock go negative.
         defer_deduction = (batch_type in ('finished', 'mix') and bool(planned_completion_date))
+        # A planned batch dated TODAY is immediately due — it tries (and fails) to promote on the
+        # next batches view if stock is short, leaving a silently-stuck Planned batch with no alert.
+        # So validate stock up front for same-day plans, giving the same "inadequate stock" alert as
+        # an immediate batch. Future-dated plans are intentionally exempt: they exist to reserve
+        # production against stock that hasn't arrived yet. (pcd was parsed above when the date is set;
+        # bool(...) short-circuits so pcd is never read when planned_completion_date is blank.)
+        planned_today = bool(planned_completion_date) and pcd.date() == datetime.now().date()
         # Gated off: the override can never be true while ALLOW_NEGATIVE_STOCK_OVERRIDE is False,
         # so add_to_batches always runs with allow_negative=False (its per-lot check is the backstop).
         confirm_negative = ALLOW_NEGATIVE_STOCK_OVERRIDE and request.form.get('confirm_negative') == '1'
 
-        if not defer_deduction and not confirm_negative:
+        if (not defer_deduction or planned_today) and not confirm_negative:
             negative_materials = check_negative_stock(product_name, quantity)
             if negative_materials:
                 if ALLOW_NEGATIVE_STOCK_OVERRIDE:

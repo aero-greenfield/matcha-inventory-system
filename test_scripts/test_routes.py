@@ -6,12 +6,13 @@ fixture so requests are deterministic. Representative coverage, not every route.
 """
 
 import re
+from datetime import datetime, timedelta
 
 import pytest
 
 from services.materials import get_material_id, get_raw_material
 from services.lots import get_material_stock_from_lots
-from services.batches import add_to_batches
+from services.batches import add_to_batches, get_batches, get_batches_planned
 
 
 def _mix_output_lot(db, material_name):
@@ -248,6 +249,40 @@ def test_dashboard_zero_stock_shows_out_not_low(client, auth, make_material, mak
     html = client.get("/", headers=auth).get_data(as_text=True)
     assert '<span class="badge badge-out">' in html
     assert '<span class="badge badge-low">' not in html
+
+
+def test_create_same_day_planned_batch_short_stock_alerts(client, auth, make_material, make_lot, make_recipe):
+    # A planned batch dated TODAY can't promote without stock, so it must hit the same
+    # "Not Enough Stock" alert as an immediate batch rather than silently becoming Planned.
+    mid = make_material("Matcha")
+    make_lot(mid, 5)  # recipe needs 10
+    make_recipe("Latte", [{"material_name": "Matcha", "quantity_needed": 10}], batch_type="finished")
+    today = datetime.now().strftime("%Y-%m-%d")
+    resp = client.post("/create-batch", headers=auth, data={
+        "product_name": "Latte", "batch_number": "SD1", "quantity": "1",
+        "planned_completion_date": today,
+    })
+    assert resp.status_code == 400
+    assert b"Not Enough Stock" in resp.data
+    # and no batch was created at all (neither promoted nor planned)
+    assert get_batches(page=1, per_page=50)[1] == 0
+    assert get_batches_planned(page=1, per_page=50)[1] == 0
+
+
+def test_create_future_planned_batch_short_stock_allowed(client, auth, make_material, make_lot, make_recipe):
+    # A FUTURE-dated plan reserves production against stock that hasn't arrived yet, so a
+    # current shortfall must NOT block it — it's created and sits Planned (no alert).
+    mid = make_material("Matcha")
+    make_lot(mid, 5)  # short for a need of 10
+    make_recipe("Latte", [{"material_name": "Matcha", "quantity_needed": 10}], batch_type="finished")
+    future = (datetime.now() + timedelta(days=30)).strftime("%Y-%m-%d")
+    resp = client.post("/create-batch", headers=auth, data={
+        "product_name": "Latte", "batch_number": "FUT1", "quantity": "1",
+        "planned_completion_date": future,
+    }, follow_redirects=False)
+    assert resp.status_code == 302  # redirect to batches, created
+    # future plan isn't overdue, so it sits in the Planned list (not promoted/deducted)
+    assert get_batches_planned(page=1, per_page=50)[1] == 1
 
 
 # --- batches page: component (mix) display ------------------------------------------
