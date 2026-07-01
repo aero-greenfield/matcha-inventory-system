@@ -148,7 +148,7 @@
                         {% if row['remaining'] < row['quantity'] %}<span class="badge badge-partial">Partially Shipped</span>{% endif %}</td>
                     {# partial-batch shipments — show remaining available, with produced total when partly shipped. #}
                     <td class="num">{{ row['remaining'] }}{% if row['remaining'] < row['quantity'] %}<span style="color:var(--text-faint);"> / {{ row['quantity'] }}</span>{% endif %}{% if row['product_unit'] %}<span style="color:var(--text-faint);font-weight:400;"> {{ row['product_unit'] }}</span>{% endif %}</td>
-                    <td>{{ row['date_completed'] or '—' }}</td>
+                    <td>{{ row['date_completed'] | fmt_date }}</td>
                     {# ADDED: cost-of-material feature — show total batch cost or dash if no cost data. #}
                     <td>{% if row['batch_cost'] %}${{ '%.2f'|format(row['batch_cost']) }}{% else %}—{% endif %}</td>
                     <td>
@@ -188,7 +188,7 @@
                     {# mix-usage feature — Available shows the output lot remaining (what finished batches can
                        still consume), not shipment-remaining. Falls back to shipment remaining if no lot/unit. #}
                     <td class="num">{% if row['mix_remaining'] is not none %}{{ row['mix_remaining'] | fmt_num }}{% if row['mix_remaining'] < row['quantity'] %}<span style="color:var(--text-faint);"> / {{ row['quantity'] }}</span>{% endif %}{% else %}{{ row['remaining'] }}{% endif %}{% if row['product_unit'] %}<span style="color:var(--text-faint);font-weight:400;"> {{ row['product_unit'] }}</span>{% endif %}</td>
-                    <td>{{ row['date_completed'] or '—' }}</td>
+                    <td>{{ row['date_completed'] | fmt_date }}</td>
                     {# ADDED: cost-of-material feature — show total batch cost or dash if no cost data. #}
                     <td>{% if row['batch_cost'] %}${{ '%.2f'|format(row['batch_cost']) }}{% else %}—{% endif %}</td>
                     <td>
