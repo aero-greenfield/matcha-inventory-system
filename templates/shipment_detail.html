@@ -74,7 +74,7 @@
         </tr>
         <tr>
             <td style="padding:6px 24px 6px 0;color:var(--text-muted);font-weight:600;">Date Shipped</td>
-            <td style="padding:6px 0;">{{ shipment['date_shipped'] or '—' }}</td>
+            <td style="padding:6px 0;">{{ shipment['date_shipped'] | fmt_date }}</td>
         </tr>
         <tr>
             <td style="padding:6px 24px 6px 0;color:var(--text-muted);font-weight:600;">Destination</td>
@@ -106,8 +106,8 @@
                 <td><strong>{{ row['product_name'] }}</strong>
                     <button class="materials-toggle" data-batch-id="{{ row['batch_id'] }}">&#9654; Materials</button></td>
                 <td class="num">{{ row['quantity'] }}<span style="color:var(--text-faint);"> / {{ row['batch_quantity'] }}</span>{% if row['product_unit'] %}<span style="color:var(--text-faint);font-weight:400;"> {{ row['product_unit'] }}</span>{% endif %}</td>
-                <td>{{ row['date_completed'] if row['date_completed'] and row['date_completed'] != 'None' else '—' }}</td>
-                <td>{{ row['expiration_date'] if row['expiration_date'] and row['expiration_date'] != 'None' else '—' }}</td>
+                <td>{{ row['date_completed'] | fmt_date }}</td>
+                <td>{{ row['expiration_date'] | fmt_date }}</td>
             </tr>
             <tr class="materials-row" id="materials-{{ row['batch_id'] }}" style="display:none;">
                 <td colspan="5">

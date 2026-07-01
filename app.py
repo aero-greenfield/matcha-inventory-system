@@ -250,9 +250,9 @@ def humanize(value):
 
 
 @app.template_filter("fmt_date")
-def fmt_date(value, fmt="%Y-%m-%d"):
+def fmt_date(value, fmt="%d %b %Y"):
     """One consistent date format; tolerant of datetime, ISO string, or None.
-    Usage: {{ row.received_date | fmt_date }}  ->  "2026-06-15"."""
+    Usage: {{ row.received_date | fmt_date }}  ->  "30 Jun 2026"."""
     if _is_empty(value):
         return EMPTY_DISPLAY
     if isinstance(value, datetime):

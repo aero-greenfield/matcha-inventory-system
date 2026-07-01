@@ -57,6 +57,18 @@
 .tab-panel { display: none; }
 .tab-panel.active { display: block; }
 
+.filter-bar {
+    display: flex;
+    align-items: center;
+    gap: 20px;
+    padding: 8px 2px 14px;
+    font-size: 12.5px;
+    color: var(--text-muted);
+}
+.filter-bar label { display: flex; align-items: center; gap: 6px; cursor: pointer; user-select: none; }
+.filter-bar label:hover { color: var(--text); }
+.filter-bar input[type="checkbox"] { cursor: pointer; accent-color: var(--accent); }
+
 </style>
 {% endblock %}
 
@@ -91,6 +103,15 @@
 <div id="panel-ready" class="tab-panel active">
 
     {% if ready_standard or ready_mix %}
+    {# Count rows that will be hidden by default so we only show the relevant toggles. #}
+    {% set ec = namespace(n=0) %}{% for b in ready_mix %}{% if b['mix_remaining'] is not none and b['mix_remaining'] <= 0 %}{% set ec.n = ec.n + 1 %}{% endif %}{% endfor %}
+    {% set sc = namespace(n=0) %}{% for b in ready_standard %}{% if b['remaining'] is not none and b['remaining'] <= 0 %}{% set sc.n = sc.n + 1 %}{% endif %}{% endfor %}
+    {% if sc.n > 0 or ec.n > 0 %}
+    <div class="filter-bar">
+        {% if sc.n > 0 %}<label><input type="checkbox" id="toggle-shipped" onchange="applyReadyFilters()"> Show completely shipped ({{ sc.n }})</label>{% endif %}
+        {% if ec.n > 0 %}<label><input type="checkbox" id="toggle-exhausted" onchange="applyReadyFilters()"> Show exhausted components ({{ ec.n }})</label>{% endif %}
+    </div>
+    {% endif %}
     <div class="table-container">
         <table class="data-table">
             <thead>
@@ -114,9 +135,9 @@
                 {# ── Standard & Finished group ── #}
                 {% if ready_standard %}
                 {# CHANGED: cost-of-material feature colspan 6→7, +1 for # column → 8. #}
-                <tr class="group-divider"><td colspan="8">Standard &amp; Finished</td></tr>
+                <tr class="group-divider" id="divider-standard"><td colspan="8">Standard &amp; Finished</td></tr>
                 {% for row in ready_standard %}
-                <tr>
+                <tr data-group="standard"{% if row['remaining'] is not none and row['remaining'] <= 0 %} class="row-fully-shipped"{% endif %}>
                     <td class="num">{% set ns.n = ns.n + 1 %}{{ ns.n }}</td>
                     <td>{{ row['batch_number'] }}</td>
                     <td><strong>{{ row['product_name'] }}</strong></td>
@@ -148,9 +169,9 @@
                 {# ── Component group ── #}
                 {% if ready_mix %}
                 {# CHANGED: cost-of-material colspan 6→7, +1 for # column → 8. #}
-                <tr class="group-divider"><td colspan="8">Component</td></tr>
+                <tr class="group-divider" id="divider-mix"><td colspan="8">Component</td></tr>
                 {% for row in ready_mix %}
-                <tr>
+                <tr data-group="mix"{% if row['mix_remaining'] is not none and row['mix_remaining'] <= 0 %} class="row-exhausted-mix"{% endif %}>
                     <td class="num">{% set ns.n = ns.n + 1 %}{{ ns.n }}</td>
                     <td>{{ row['batch_number'] | batch_no(row['batch_type']) }}</td>
                     <td><strong>{{ row['product_name'] }}</strong></td>
@@ -249,7 +270,7 @@
                     </td>
                     <td><span class="badge badge-{{ row['batch_type'] or 'standard' }}">{{ row['batch_type'] or 'standard' }}</span></td>
                     <td>{{ row['quantity'] }}{% if row['product_unit'] %}<span style="color:var(--text-faint);"> {{ row['product_unit'] }}</span>{% endif %}</td>
-                    <td>{{ row['planned_completion_date'] or '—' }}</td>
+                    <td>{{ row['planned_completion_date'] | fmt_date }}</td>
                     <td>
                         <form method="POST" action="/edit-batch/{{ row['batch_id'] }}/change-status"
                               onsubmit="return confirm('Mark batch as Ready now?')" style="display:inline;" autocomplete="off">
@@ -285,7 +306,7 @@
                     </td>
                     <td><span class="badge badge-mix">component</span></td>
                     <td>{{ row['quantity'] }}{% if row['product_unit'] %}<span style="color:var(--text-faint);"> {{ row['product_unit'] }}</span>{% endif %}</td>
-                    <td>{{ row['planned_completion_date'] or '—' }}</td>
+                    <td>{{ row['planned_completion_date'] | fmt_date }}</td>
                     <td>
                         <form method="POST" action="/edit-batch/{{ row['batch_id'] }}/change-status"
                               onsubmit="return confirm('Mark batch as Ready now?')" style="display:inline;" autocomplete="off">
@@ -387,6 +408,35 @@ document.querySelectorAll('.materials-toggle').forEach(function(btn) {
     this.innerHTML = '&#9660; Materials';
   });
 });
+
+function applyReadyFilters() {
+  var showShipped   = document.getElementById('toggle-shipped')   ? document.getElementById('toggle-shipped').checked   : false;
+  var showExhausted = document.getElementById('toggle-exhausted') ? document.getElementById('toggle-exhausted').checked : false;
+
+  document.querySelectorAll('#panel-ready .row-fully-shipped').forEach(function(row) {
+    row.style.display = showShipped ? '' : 'none';
+    var mat = row.nextElementSibling;
+    if (mat && mat.classList.contains('materials-row') && !showShipped) mat.style.display = 'none';
+  });
+
+  document.querySelectorAll('#panel-ready .row-exhausted-mix').forEach(function(row) {
+    row.style.display = showExhausted ? '' : 'none';
+    var mat = row.nextElementSibling;
+    if (mat && mat.classList.contains('materials-row') && !showExhausted) mat.style.display = 'none';
+  });
+
+  // Hide group dividers when every row in that group is hidden.
+  ['standard', 'mix'].forEach(function(group) {
+    var divider = document.getElementById('divider-' + group);
+    if (!divider) return;
+    var anyVisible = Array.from(document.querySelectorAll('#panel-ready tr[data-group="' + group + '"]'))
+      .some(function(r) { return r.style.display !== 'none'; });
+    divider.style.display = anyVisible ? '' : 'none';
+  });
+}
+
+// Apply defaults on load (hidden rows stay hidden until toggled).
+document.addEventListener('DOMContentLoaded', applyReadyFilters);
 </script>
 
 {% endblock %}

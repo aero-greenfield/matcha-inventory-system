@@ -6,6 +6,8 @@
 <style>
 .batch-select { cursor: pointer; }
 #submit-shipment:disabled { opacity: 0.4; cursor: not-allowed; }
+.batch-row[hidden] { display: none; }
+#toggle-components.active { background: var(--accent); color: #fff; border-color: var(--accent); }
 </style>
 {% endblock %}
 
@@ -39,6 +41,11 @@
     </div>
 
     <div class="table-container">
+        <div style="display:flex;align-items:center;justify-content:flex-end;padding:12px 16px 0;">
+            <button type="button" id="toggle-components" class="btn btn-secondary" style="font-size:12px;padding:5px 12px;">
+                Show component batches
+            </button>
+        </div>
         <table class="data-table">
             <thead>
                 <tr>
@@ -51,9 +58,9 @@
                     <th>Completed</th>
                 </tr>
             </thead>
-            <tbody>
+            <tbody id="batch-tbody">
                 {% for row in batches %}
-                <tr>
+                <tr class="batch-row" data-batch-type="{{ row['batch_type'] or 'standard' }}"{% if row['batch_type'] == 'mix' %} hidden{% endif %}>
                     <td><input type="checkbox" class="batch-select" name="batch_ids" value="{{ row['batch_id'] }}"></td>
                     <td>{{ row['batch_number'] | batch_no(row['batch_type']) if row['batch_number'] else '—' }}</td>
                     <td><strong>{{ row['product_name'] }}</strong></td>
@@ -91,16 +98,22 @@
     var submitBtn = document.getElementById('submit-shipment');
     var countLabel = document.getElementById('selection-count');
     var selectAll = document.getElementById('select-all');
+    var toggleBtn = document.getElementById('toggle-components');
+    var showComponents = false;
+
+    function visibleCheckboxes() {
+        return Array.from(document.querySelectorAll('.batch-row:not([hidden]) .batch-select'));
+    }
 
     function syncRow(cb) {
-        // The ship-qty input lives in the same row as the checkbox; enable it only when checked.
         var qtyInput = cb.closest('tr').querySelector('.ship-qty');
         if (qtyInput) qtyInput.disabled = !cb.checked;
     }
 
     function updateState() {
-        var checked = document.querySelectorAll('.batch-select:checked').length;
-        var total = document.querySelectorAll('.batch-select').length;
+        var visible = visibleCheckboxes();
+        var checked = visible.filter(function(cb) { return cb.checked; }).length;
+        var total = visible.length;
 
         if (submitBtn) submitBtn.disabled = (checked === 0);
         if (countLabel) countLabel.textContent = checked > 0 ? checked + ' batch(es) selected' : '';
@@ -117,10 +130,28 @@
 
     if (selectAll) {
         selectAll.addEventListener('change', function() {
-            document.querySelectorAll('.batch-select').forEach(function(cb) {
+            visibleCheckboxes().forEach(function(cb) {
                 cb.checked = selectAll.checked;
                 syncRow(cb);
             });
+            updateState();
+        });
+    }
+
+    if (toggleBtn) {
+        toggleBtn.addEventListener('click', function() {
+            showComponents = !showComponents;
+            document.querySelectorAll('.batch-row[data-batch-type="mix"]').forEach(function(row) {
+                if (showComponents) {
+                    row.removeAttribute('hidden');
+                } else {
+                    row.setAttribute('hidden', '');
+                    var cb = row.querySelector('.batch-select');
+                    if (cb) { cb.checked = false; syncRow(cb); }
+                }
+            });
+            toggleBtn.textContent = showComponents ? 'Hide component batches' : 'Show component batches';
+            toggleBtn.classList.toggle('active', showComponents);
             updateState();
         });
     }

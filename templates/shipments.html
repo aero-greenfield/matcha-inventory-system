@@ -35,7 +35,7 @@
             <tr>
                 <td class="num">{{ offset + loop.index }}</td>
                 <td><a href="/shipments/{{ row['shipment_id'] }}" style="color:var(--accent);">{{ row['shipment_number'] }}</a></td>
-                <td>{{ row['date_shipped'] or '—' }}</td>
+                <td>{{ row['date_shipped'] | fmt_date }}</td>
                 <td>{{ row['destination'] if row['destination'] and row['destination'] != 'nan' else '—' }}</td>
                 <td>{{ row['notes'] if row['notes'] and row['notes'] != 'nan' else '—' }}</td>
                 <td>{{ row['batch_count'] }}</td>

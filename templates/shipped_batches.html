@@ -103,8 +103,8 @@
                 </td>
                 {# partial-batch shipments — quantity is the amount shipped on this shipment (of the batch total). #}
                 <td class="num">{{ row['quantity'] }}<span style="color:var(--text-faint);"> / {{ row['batch_quantity'] }}</span>{% if row['product_unit'] %}<span style="color:var(--text-faint);font-weight:400;"> {{ row['product_unit'] }}</span>{% endif %}</td>
-                <td>{{ row['date_completed'] if row['date_completed'] and row['date_completed'] != 'nan' else '—' }}</td>
-                <td>{{ row['date_shipped'] if row['date_shipped'] and row['date_shipped'] != 'nan' else '—' }}</td>
+                <td>{{ row['date_completed'] | fmt_date }}</td>
+                <td>{{ row['date_shipped'] | fmt_date }}</td>
                 <td>
                     {% if row['shipment_id'] and row['shipment_id'] != 'nan' %}
                         <a href="/shipments/{{ row['shipment_id'] | int }}" style="color:var(--accent);">{{ row['shipment_number'] }}</a>
@@ -113,7 +113,7 @@
                     {% endif %}
                 </td>
                 <td>{{ row['notes'] if row['notes'] and row['notes'] != 'nan' else '—' }}</td>
-                <td>{{ row['expiration_date'] if row['expiration_date'] and row['expiration_date'] != 'nan' else '—' }}</td>
+                <td>{{ row['expiration_date'] | fmt_date }}</td>
                 {# A batch can appear on several shipments, so key the expandable row by shipment+batch
                    to keep element IDs unique; the materials fetch is still per batch. #}
                 <td><button class="materials-toggle" data-batch-id="{{ row['batch_id'] }}" data-row-key="{{ row['shipment_id'] }}-{{ row['batch_id'] }}">&#9654; Materials</button></td>

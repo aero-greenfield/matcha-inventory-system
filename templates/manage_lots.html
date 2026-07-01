@@ -37,8 +37,8 @@
                 <td>{{ row.material_name }}</td>
                 {# CHANGED: units-conversion-layer feature — quantity stored in base unit; convert for display. #}
                 <td>{{ row.quantity | disp_full(row.unit) }} {{ row.unit }}</td>
-                <td>{{ row.received_date or '' }}</td>
-                <td>{{ row.expiration_date or '—' }}</td>
+                <td>{{ row.received_date | fmt_date }}</td>
+                <td>{{ row.expiration_date | fmt_date }}</td>
                 <td>{{ row.location | dash }}</td>
                 <td>{{ row.supplier | dash }}</td>
                 <td>

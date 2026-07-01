@@ -109,13 +109,13 @@
                    contradict it. Planned → planned date; Shipped → ship date; else completed. #}
                 <td>
                     {% if row.status == 'Planned' %}
-                        <span class="num">{{ row.planned_completion_date | dash }}</span>
+                        <span class="num">{{ row.planned_completion_date | fmt_date }}</span>
                         <span class="date-label">Planned</span>
                     {% elif row.status == 'Shipped' %}
-                        <span class="num">{{ row.date_shipped | dash }}</span>
+                        <span class="num">{{ row.date_shipped | fmt_date }}</span>
                         <span class="date-label">Shipped</span>
                     {% else %}
-                        <span class="num">{{ row.date_completed | dash }}</span>
+                        <span class="num">{{ row.date_completed | fmt_date }}</span>
                         <span class="date-label">Completed</span>
                     {% endif %}
                 </td>
@@ -142,7 +142,7 @@
                         {% if row.status == 'Shipped' %}
                         <div class="drawer-pair">
                             <span class="drawer-label">Completed</span>
-                            <span class="drawer-value mono">{{ row.date_completed | dash }}</span>
+                            <span class="drawer-value mono">{{ row.date_completed | fmt_date }}</span>
                         </div>
                         {% endif %}
                         <div class="drawer-pair">
