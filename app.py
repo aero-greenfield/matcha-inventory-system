@@ -1256,7 +1256,9 @@ def view_batches():
         rem = b.get('mix_remaining')
         unit = b.get('product_unit')
         if rem is not None and unit:
-            b['mix_remaining'] = float(units.from_base(rem, unit))
+            # Round to 6 dp to match fmt_num display precision — eliminates float residuals
+            # (e.g. 1e-15 kg after full deduction) that show "0" but don't trigger <= 0.
+            b['mix_remaining'] = round(float(units.from_base(rem, unit)), 6)
     # Sort exhausted mixes (depleted output lot) to the bottom, keeping the existing order otherwise.
     ready_mix.sort(key=lambda b: 1 if (b.get('mix_remaining') is not None and b['mix_remaining'] <= 0) else 0)
 
