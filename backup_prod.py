@@ -34,7 +34,8 @@ CREDENTIALS:
 import os
 import subprocess
 from datetime import datetime
-
+import re                    # for non-brittle table detection in the integrity check
+import urllib.request        # stdlib — pings healthchecks.io with zero new dependencies
 # ----------------------------------------
 # LOAD ENVIRONMENT VARIABLES
 # Works locally (.env file) and on GitHub Actions
@@ -47,6 +48,137 @@ except ImportError:
     # dotenv not available — running in GitHub Actions
     # environment variables already injected by workflow
     pass
+
+# ============================================================
+# INTEGRITY CHECK  —  runs BEFORE any upload
+# ============================================================
+# WHY THIS EXISTS: pg_dump returns exit code 0 even when the dump is
+# near-empty or truncated. The exit code proves the *command* ran, not
+# that your *data* is inside. A "successful" empty backup is the most
+# dangerous kind, because you'll trust it. This turns "a file exists"
+# into "a valid backup exists."
+
+# Anchor tables that are structural and will never be removed. We check
+# for THESE rather than an exhaustive list of every table — an exhaustive
+# list would be brittle and break the check every time the schema changes.
+CORE_TABLES = ("raw_materials", "batches")
+MIN_TABLE_COUNT = 4      # sanity floor; the real schema has more than this
+MIN_SIZE_BYTES = 2048    # a valid dump of this DB is always larger than this
+
+def verify_backup_integrity(backup_path):
+    """Raise if the dump looks empty, truncated, or schema-only. Returns None on success."""
+    size = os.path.getsize(backup_path)
+    if size < MIN_SIZE_BYTES:
+        raise ValueError(f"Backup too small ({size} bytes) — likely empty or truncated")
+
+    with open(backup_path, "r", encoding="utf-8", errors="replace") as f:
+        contents = f.read()
+
+    # Count CREATE TABLE statements — proves the schema made it in.
+    create_count = len(re.findall(r"CREATE TABLE", contents))
+    if create_count < MIN_TABLE_COUNT:
+        raise ValueError(f"Only {create_count} CREATE TABLE statements — expected >= {MIN_TABLE_COUNT}")
+
+    # Confirm the anchor tables specifically are present (handles pg_dump's
+    # `public.raw_materials` / quoted-identifier variations).
+    missing = [t for t in CORE_TABLES
+               if not re.search(rf'CREATE TABLE\s+(?:public\.)?"?{t}"?', contents)]
+    if missing:
+        raise ValueError(f"Backup missing core tables: {missing}")
+
+    # pg_dump writes row data as COPY blocks by default. No COPY = schema only,
+    # no actual rows — a backup that restores an empty database.
+    if "COPY " not in contents:
+        raise ValueError("Backup has no COPY data blocks — schema only, no rows")
+
+    print(f"✅ Integrity check passed ({size/1024:.1f} KB, {create_count} tables)")
+
+
+# ============================================================
+# CLOUDFLARE R2  —  the off-site copy (different failure domain than Supabase)
+# ============================================================
+def get_r2_client():
+    """Build an S3 client pointed at R2. Returns None if R2 is intentionally unset;
+    raises if it's *partially* set (a misconfiguration we want to hear about)."""
+    account_id = os.getenv("R2_ACCOUNT_ID")
+    access_key = os.getenv("R2_ACCESS_KEY_ID")
+    secret_key = os.getenv("R2_SECRET_ACCESS_KEY")
+    bucket     = os.getenv("R2_BUCKET")
+
+    if not any([account_id, access_key, secret_key, bucket]):
+        return None
+    if not all([account_id, access_key, secret_key, bucket]):
+        raise RuntimeError("R2 partially configured — check all four R2_* secrets")
+
+    import boto3  # imported lazily so a missing dep fails loudly here, not at startup
+    endpoint = f"https://{account_id}.r2.cloudflarestorage.com"
+    return boto3.client("s3", endpoint_url=endpoint,
+                        aws_access_key_id=access_key, aws_secret_access_key=secret_key,
+                        region_name="auto")
+
+def upload_to_r2(s3, local_filepath):
+    bucket = os.getenv("R2_BUCKET")
+    key = os.path.basename(local_filepath)   # e.g. prod_backup_20260706_020000.sql
+    s3.upload_file(local_filepath, bucket, key)
+    print(f"✅ Uploaded to R2: {key}")
+    return key
+
+
+# ============================================================
+# PRUNING  —  keep newest N in BOTH buckets
+# ============================================================
+# WHY PRUNE SUPABASE TOO (not just R2): free-tier Supabase Storage has a hard
+# size cap. Unbounded nightly uploads eventually hit it, and then new uploads
+# FAIL SILENTLY — you'd think you're backed up while you aren't. This is a
+# latent bug in your current setup today. Filenames are timestamped
+# (prod_backup_YYYYMMDD_HHMMSS.sql), so lexical sort == chronological order.
+KEEP = 30
+
+def prune_supabase(keep=KEEP):
+    supabase_url = os.getenv("SUPABASE_URL")
+    service_key  = os.getenv("SUPABASE_SERVICE_KEY")
+    if not (supabase_url and service_key):
+        return
+    from supabase import create_client
+    supabase = create_client(supabase_url, service_key)
+    files = supabase.storage.from_("db-backups").list()
+    backups = sorted([f for f in files if f["name"].endswith(".sql")],
+                     key=lambda x: x["name"], reverse=True)
+    old = [f["name"] for f in backups[keep:]]
+    if old:
+        supabase.storage.from_("db-backups").remove(old)
+        print(f"🧹 Pruned {len(old)} old backup(s) from Supabase")
+
+def prune_r2(s3, keep=KEEP):
+    bucket = os.getenv("R2_BUCKET")
+    resp = s3.list_objects_v2(Bucket=bucket)
+    objs = [o for o in resp.get("Contents", []) if o["Key"].endswith(".sql")]
+    backups = sorted(objs, key=lambda x: x["Key"], reverse=True)
+    for o in backups[keep:]:
+        s3.delete_object(Bucket=bucket, Key=o["Key"])
+    if len(backups) > keep:
+        print(f"🧹 Pruned {len(backups) - keep} old backup(s) from R2")
+
+
+# ============================================================
+# DEAD-MAN'S SWITCH  —  pinged LAST, only on full success
+# ============================================================
+# WHY LAST: if we pinged at the start, a failing upload would still report
+# "healthy." The ping must mean "a verified backup landed in two places."
+# WHY IT MATTERS FOR SUMMER: GitHub disables scheduled workflows after 60
+# days of no repo activity — silently. A job that never runs sends no failure
+# email. healthchecks.io alerts on the *absence* of a ping, which is the only
+# way to catch that.
+def ping_healthcheck(success=True):
+    url = os.getenv("HEALTHCHECK_URL")
+    if not url:
+        return
+    target = url if success else url.rstrip("/") + "/fail"
+    try:
+        urllib.request.urlopen(target, timeout=10)
+    except Exception as e:
+        print(f"⚠️ healthcheck ping failed (non-fatal): {e}")
+
 
 
 def run_pg_dump():
@@ -258,37 +390,33 @@ def list_remote_backups():
 
 
 def run_full_backup():
-    """
-    Main function: pg_dump → upload → cleanup.
+    """pg_dump → verify → upload Supabase → upload R2 → prune both → ping."""
+    try:
+        local_file = run_pg_dump()
+        if not local_file:
+            raise RuntimeError("pg_dump failed")
 
-    Called by GitHub Actions workflow every night,
-    or manually with: python backup_prod.py
-    """
+        verify_backup_integrity(local_file)     # NEW: gate before any upload
 
-    print("\n" + "="*55)
-    print("  BOTANIKS DATABASE BACKUP")
-    print(f"  {datetime.now().strftime('%Y-%m-%d_%H:%M:%S UTC')}")
-    print("="*55 + "\n")
+        upload_to_supabase(local_file)           # existing (primary copy)
 
-    # Step 1: pg_dump to local .sql file
-    local_file = run_pg_dump()
-    if not local_file:
-        print("\n❌ Backup aborted — pg_dump failed.")
-        # Exit with error code so GitHub Actions marks the run as failed
-        # You'll get an email notification when this happens
-        exit(1)
+        s3 = get_r2_client()                     # NEW: off-site copy
+        if s3:
+            upload_to_r2(s3, local_file)
+            prune_r2(s3)
+        else:
+            print("ℹ️ R2 not configured — skipping off-site copy")
 
-    # Step 2: Upload to Supabase Storage
-    remote_file = upload_to_supabase(local_file)
-    if not remote_file:
-        print(f"\n⚠️  Upload failed — local file kept at: {local_file}")
-        exit(1)
+        prune_supabase()                         # NEW: bound the free-tier bucket
+        cleanup_local_file(local_file)
 
-    # Step 3: Clean up local temp file
-    cleanup_local_file(local_file)
+        ping_healthcheck(success=True)           # NEW: last, on success only
+        print("\n✅ Backup complete (verified, 2 destinations).")
 
-    print("\n✅ Backup complete.")
-    print("   Check: Supabase Dashboard → Storage → db-backups")
+    except Exception as e:
+        print(f"\n❌ Backup FAILED: {e}")
+        ping_healthcheck(success=False)          # NEW: alerts you
+        exit(1)                                   # marks the Action red
 
 
 if __name__ == "__main__":
