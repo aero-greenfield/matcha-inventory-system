@@ -52,6 +52,40 @@ def test_get_pages_render(client, auth, path):
     assert resp.status_code == 200, f"{path} returned {resp.status_code}"
 
 
+# --- sort feature: date-header links render and accept asc/desc without error ---------
+# The sortable header only renders when the table has rows, so seed one first.
+def _seed_ready(db):
+    cur = db.cursor()
+    db.execute(cur, """INSERT INTO batches (product_name, quantity, status, batch_number, batch_type, date_completed)
+                       VALUES ('R', 10, 'Ready', 'R', 'standard', '2024-01-01')""")
+    db.commit()
+
+
+def _seed_shipped(db):
+    cur = db.cursor()
+    db.execute(cur, """INSERT INTO batches (product_name, quantity, status, batch_number, batch_type)
+                       VALUES ('S', 10, 'Shipped', 'S', 'standard')""")
+    bid = db.get_last_insert_id(cur)
+    db.execute(cur, "INSERT INTO shipments (shipment_number, date_shipped, destination) VALUES ('SH1', '2024-01-01', 'D')")
+    sid = db.get_last_insert_id(cur)
+    db.execute(cur, "INSERT INTO shipment_batches (shipment_id, batch_id, quantity) VALUES (%s, %s, 10)", (sid, bid))
+    db.commit()
+
+
+@pytest.mark.parametrize("url", ["/batches", "/batches?ready_sort=asc&planned_sort=desc"])
+def test_batches_sort_header_renders(client, auth, db, url):
+    _seed_ready(db)
+    html = client.get(url, headers=auth).get_data(as_text=True)
+    assert "sort-link" in html
+
+
+@pytest.mark.parametrize("url", ["/shipped-batches", "/shipped-batches?sort=asc"])
+def test_shipped_sort_header_renders(client, auth, db, url):
+    _seed_shipped(db)
+    html = client.get(url, headers=auth).get_data(as_text=True)
+    assert "sort-link" in html
+
+
 # --- JSON API ------------------------------------------------------------------------
 def test_api_materials_autocomplete(client, auth, make_material):
     make_material("Matcha Ceremonial")

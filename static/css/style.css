@@ -312,6 +312,28 @@ textarea:focus-visible,
     font-size: 13px;
 }
 
+/* Sortable column header — anchor inherits the muted uppercase <th> look, with a
+   direction arrow. Used by the date columns on the batches / shipped-batches tables. */
+.data-table th .sort-link {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    color: inherit;
+    text-decoration: none;
+    cursor: pointer;
+}
+.data-table th .sort-link:hover {
+    color: var(--text);
+}
+.data-table th .sort-link .sort-arrow {
+    font-size: 10px;
+    color: var(--text-faint);
+    line-height: 1;
+}
+.data-table th .sort-link:hover .sort-arrow {
+    color: var(--accent);
+}
+
 /* Numeric cells — right-aligned DM Mono. Header + body. Applied per-page later. */
 .data-table th.num,
 .data-table td.num {

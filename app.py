@@ -1240,9 +1240,14 @@ def view_batches():
     ready_page   = max(1, int(request.args.get('ready_page', 1)))
     planned_page = min(max(1, int(request.args.get('planned_page', 1))), MAX_PAGE)  # CHANGED: capped at MAX_PAGE to prevent large-OFFSET DoS
 
+    # ADDED: sort feature — each section sorts by its date column, newest first by default.
+    # Only 'asc'/'desc' are meaningful; the service whitelists anything else to 'desc'.
+    ready_sort   = 'asc' if request.args.get('ready_sort') == 'asc' else 'desc'
+    planned_sort = 'asc' if request.args.get('planned_sort') == 'asc' else 'desc'
+
     # CHANGED: get_batches and get_batches_planned now return (df, total) tuples
-    data, ready_total         = get_batches(page=ready_page, per_page=PER_PAGE)
-    planned_data, planned_total = get_batches_planned(page=planned_page, per_page=PER_PAGE)
+    data, ready_total         = get_batches(page=ready_page, per_page=PER_PAGE, sort=ready_sort)
+    planned_data, planned_total = get_batches_planned(page=planned_page, per_page=PER_PAGE, sort=planned_sort)
 
     # PRESERVED: Python standard/mix split — unchanged, still runs on whatever slice the query returned
     all_ready    = data.to_dict(orient='records') if not data.empty else []
@@ -1279,6 +1284,9 @@ def view_batches():
         ready_total_pages=ready_total_pages,
         planned_page=planned_page,
         planned_total_pages=planned_total_pages,
+        # sort feature — current direction per section, so headers can render/toggle the arrow
+        ready_sort=ready_sort,
+        planned_sort=planned_sort,
         # row-numbering feature — per-tab page offsets so each tab's # continues across its pages.
         ready_offset=(ready_page - 1) * PER_PAGE,
         planned_offset=(planned_page - 1) * PER_PAGE,
@@ -1373,8 +1381,11 @@ def view_shipped_batches():
     PER_PAGE = 50
     page = min(max(1, int(request.args.get('page', 1))), MAX_PAGE)  # CHANGED: capped at MAX_PAGE to prevent large-OFFSET DoS
 
+    # ADDED: sort feature — by shipment date, newest first by default (service whitelists direction)
+    sort = 'asc' if request.args.get('sort') == 'asc' else 'desc'
+
     # CHANGED: get_batches_shipped now returns (df, total) tuple
-    df, total = get_batches_shipped(page=page, per_page=PER_PAGE)
+    df, total = get_batches_shipped(page=page, per_page=PER_PAGE, sort=sort)
 
     batches = df.to_dict(orient='records') if not df.empty else []
     columns = list(df.columns) if not df.empty else []
@@ -1386,6 +1397,8 @@ def view_shipped_batches():
         page=page,
         total_pages=total_pages,
         total=total,
+        # sort feature — current direction so the "Shipped" header can render/toggle the arrow
+        sort=sort,
         back_link=True, back_link_url="/", back_link_label="Back to Home"
 )
 

@@ -366,9 +366,11 @@ def add_to_batches(product_name, quantity, notes=None, batch_number=None, deduct
         db.close()
 
 
-def get_batches(page=None, per_page=50):
-    """Gets all batches ready to ship"""
+def get_batches(page=None, per_page=50, sort='desc'):
+    """Gets all batches ready to ship, ordered by date_completed (newest first by default)."""
     global _last_promote_time
+    # sort feature — whitelist direction; never interpolate raw user input into SQL
+    direction = 'ASC' if sort == 'asc' else 'DESC'
     now = time.time()
     # PRESERVED: time-gated side effect — promotes overdue planned batches at most once per 60 s
     if now - _last_promote_time > 60:
@@ -394,7 +396,7 @@ def get_batches(page=None, per_page=50):
     # ADDED: cost-of-material feature — batch_cost sums quantity_used * cost_per_unit from batch_materials.
     #        Uses the same correlated subquery pattern as is_organic. COALESCE handles lots that
     #        had no cost_per_unit set at deduction time.
-    base_query = """
+    base_query = f"""
     SELECT batch_id, batch_number, product_name, batch_type, quantity, date_completed, notes, expiration_date,
            (SELECT CASE
                      WHEN COUNT(CASE WHEN rm.is_edible THEN 1 END) > 0
@@ -424,7 +426,7 @@ def get_batches(page=None, per_page=50):
             WHERE bm.lot_id = batches.mix_lot_id) AS mix_consumed_count
     FROM batches
     WHERE status IN ('Ready', 'Partially Shipped')
-    ORDER BY batch_id DESC
+    ORDER BY date_completed {direction}, batch_id DESC
     """
 
     try:
@@ -452,10 +454,12 @@ def get_batches(page=None, per_page=50):
         db.close()
 
 
-def get_batches_shipped(page=None, per_page=50):
-    """Gets all batches that have been shipped"""
+def get_batches_shipped(page=None, per_page=50, sort='desc'):
+    """Gets all batches that have been shipped, ordered by date_shipped (newest first by default)."""
     db = get_db_connection()
     cursor = db.cursor()
+    # sort feature — whitelist direction; never interpolate raw user input into SQL
+    direction = 'ASC' if sort == 'asc' else 'DESC'
 
     # ADDED: converted from pd.read_sql_query to cursor approach for LIMIT/OFFSET support
     # CHANGED: organic feature — added derived is_organic flag (same correlated subquery as get_batches).
@@ -466,7 +470,7 @@ def get_batches_shipped(page=None, per_page=50):
     columns = ['batch_id', 'batch_number', 'product_name', 'quantity', 'batch_quantity',
                'date_completed', 'date_shipped', 'notes', 'expiration_date', 'is_organic',
                'shipment_id', 'shipment_number']
-    base_query = """
+    base_query = f"""
     SELECT b.batch_id, b.batch_number, b.product_name, sb.quantity, b.quantity,
            b.date_completed, s.date_shipped, b.notes, b.expiration_date,
            (SELECT CASE
@@ -481,7 +485,7 @@ def get_batches_shipped(page=None, per_page=50):
     FROM shipment_batches sb
     JOIN batches b ON sb.batch_id = b.batch_id
     JOIN shipments s ON sb.shipment_id = s.shipment_id
-    ORDER BY s.date_shipped DESC, b.batch_id DESC
+    ORDER BY s.date_shipped {direction}, b.batch_id DESC
     """
 
     try:
@@ -1138,22 +1142,24 @@ def promote_planned_batches():
         db.close()
 
 
-def get_batches_planned(page=None, per_page=50):
-    """Gets all Planned batches ordered by planned_completion_date ascending."""
+def get_batches_planned(page=None, per_page=50, sort='desc'):
+    """Gets all Planned batches ordered by planned_completion_date (newest first by default)."""
     db = get_db_connection()
     cursor = db.cursor()
+    # sort feature — whitelist direction; never interpolate raw user input into SQL
+    direction = 'ASC' if sort == 'asc' else 'DESC'
 
     # ADDED: converted from pd.read_sql_query to cursor approach for LIMIT/OFFSET support
     columns = ['batch_id', 'batch_number', 'product_name', 'batch_type', 'quantity',
                'planned_completion_date', 'notes', 'expiration_date', 'promotion_failure_reason', 'product_unit']
-    base_query = """
+    base_query = f"""
     SELECT batch_id, batch_number, product_name, batch_type, quantity, planned_completion_date, notes, expiration_date, promotion_failure_reason,
            -- product unit-of-measurement from the matching recipe (NULL when no recipe matches)
            (SELECT product_unit FROM recipes
             WHERE LOWER(recipes.product_name) = LOWER(batches.product_name) LIMIT 1) AS product_unit
     FROM batches
     WHERE status = 'Planned'
-    ORDER BY batch_id DESC
+    ORDER BY planned_completion_date {direction}, batch_id DESC
     """
 
     try:

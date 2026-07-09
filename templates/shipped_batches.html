@@ -79,7 +79,13 @@
                 <th>Type</th>
                 <th class="num">Qty Shipped</th>
                 <th>Completed</th>
-                <th>Shipped</th>
+                {# sort feature — toggle date_shipped order (newest first by default). #}
+                <th>
+                    <a class="sort-link" href="?sort={{ 'asc' if sort == 'desc' else 'desc' }}">
+                        Shipped
+                        <span class="sort-arrow">{{ '↑' if sort == 'asc' else '↓' }}</span>
+                    </a>
+                </th>
                 <th>Shipment #</th>
                 <th>Notes</th>
                 <th>Expiration</th>

@@ -122,7 +122,13 @@
                     <th>Product</th>
                     <th>Type</th>
                     <th class="num">Available</th>
-                    <th>Completed</th>
+                    {# sort feature — toggle date_completed order; preserve the Planned tab's sort. #}
+                    <th>
+                        <a class="sort-link" href="?ready_sort={{ 'asc' if ready_sort == 'desc' else 'desc' }}&amp;planned_sort={{ planned_sort }}">
+                            Completed
+                            <span class="sort-arrow">{{ '↑' if ready_sort == 'asc' else '↓' }}</span>
+                        </a>
+                    </th>
                     {# ADDED: cost-of-material feature — total material cost for this batch. #}
                     <th>Cost</th>
                     <th>Actions</th>
@@ -247,7 +253,13 @@
                     <th>Product</th>
                     <th>Type</th>
                     <th>Qty</th>
-                    <th>Planned Completion</th>
+                    {# sort feature — toggle planned_completion_date order; preserve the Ready tab's sort. #}
+                    <th>
+                        <a class="sort-link" href="?planned_sort={{ 'asc' if planned_sort == 'desc' else 'desc' }}&amp;ready_sort={{ ready_sort }}&amp;tab=planned">
+                            Planned Completion
+                            <span class="sort-arrow">{{ '↑' if planned_sort == 'asc' else '↓' }}</span>
+                        </a>
+                    </th>
                     <th>Actions</th>
                 </tr>
             </thead>

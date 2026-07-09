@@ -470,3 +470,67 @@ def test_get_all_batches_with_id_lists_every_status(make_material, make_lot, mak
     df, total = get_all_batches_with_id(page=1, per_page=50)
     assert total == 2
     assert set(df["batch_number"]) == {"R1", "PL1"}
+
+
+# --- sort feature: Ready / Planned / Shipped order by their date column ---------------
+# Dates are stored as YYYY-MM-DD TEXT, so string ordering is chronological. Rows are
+# inserted directly here so we control the date columns without driving the full flow.
+def _insert_ready(db, name, date_completed):
+    cur = db.cursor()
+    db.execute(cur, """INSERT INTO batches (product_name, quantity, status, batch_number, batch_type, date_completed)
+                       VALUES (%s, 10, 'Ready', %s, 'standard', %s)""", (name, name, date_completed))
+    db.commit()
+
+
+def _insert_planned(db, name, planned_completion_date):
+    cur = db.cursor()
+    db.execute(cur, """INSERT INTO batches (product_name, quantity, status, batch_number, batch_type, planned_completion_date)
+                       VALUES (%s, 10, 'Planned', %s, 'standard', %s)""", (name, name, planned_completion_date))
+    db.commit()
+
+
+def _insert_shipped(db, name, date_shipped):
+    cur = db.cursor()
+    db.execute(cur, """INSERT INTO batches (product_name, quantity, status, batch_number, batch_type)
+                       VALUES (%s, 10, 'Shipped', %s, 'standard')""", (name, name))
+    bid = db.get_last_insert_id(cur)
+    db.execute(cur, """INSERT INTO shipments (shipment_number, date_shipped, destination)
+                       VALUES (%s, %s, 'Dest')""", (f"S-{name}", date_shipped))
+    sid = db.get_last_insert_id(cur)
+    db.execute(cur, """INSERT INTO shipment_batches (shipment_id, batch_id, quantity)
+                       VALUES (%s, %s, 10)""", (sid, bid))
+    db.commit()
+
+
+def test_get_batches_sorts_by_date_completed(db):
+    _insert_ready(db, "A", "2024-01-01")
+    _insert_ready(db, "B", "2024-03-01")
+    _insert_ready(db, "C", "2024-02-01")
+    # default is newest-first (desc)
+    df_default, _ = get_batches(page=1, per_page=50)
+    assert list(df_default["date_completed"]) == ["2024-03-01", "2024-02-01", "2024-01-01"]
+    df_asc, _ = get_batches(page=1, per_page=50, sort="asc")
+    assert list(df_asc["date_completed"]) == ["2024-01-01", "2024-02-01", "2024-03-01"]
+    df_desc, _ = get_batches(page=1, per_page=50, sort="desc")
+    assert list(df_desc["date_completed"]) == ["2024-03-01", "2024-02-01", "2024-01-01"]
+
+
+def test_get_batches_planned_sorts_by_planned_completion_date(db):
+    _insert_planned(db, "A", "2099-01-01")
+    _insert_planned(db, "B", "2099-03-01")
+    _insert_planned(db, "C", "2099-02-01")
+    df_default, _ = get_batches_planned(page=1, per_page=50)
+    assert list(df_default["planned_completion_date"]) == ["2099-03-01", "2099-02-01", "2099-01-01"]
+    df_asc, _ = get_batches_planned(page=1, per_page=50, sort="asc")
+    assert list(df_asc["planned_completion_date"]) == ["2099-01-01", "2099-02-01", "2099-03-01"]
+
+
+def test_get_batches_shipped_sorts_by_date_shipped(db):
+    from services.batches import get_batches_shipped
+    _insert_shipped(db, "A", "2024-01-01")
+    _insert_shipped(db, "B", "2024-03-01")
+    _insert_shipped(db, "C", "2024-02-01")
+    df_default, _ = get_batches_shipped(page=1, per_page=50)
+    assert list(df_default["date_shipped"]) == ["2024-03-01", "2024-02-01", "2024-01-01"]
+    df_asc, _ = get_batches_shipped(page=1, per_page=50, sort="asc")
+    assert list(df_asc["date_shipped"]) == ["2024-01-01", "2024-02-01", "2024-03-01"]
