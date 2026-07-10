@@ -5,6 +5,7 @@ auth enforcement and the JSON API. CSRF and rate limiting are disabled by the `c
 fixture so requests are deterministic. Representative coverage, not every route.
 """
 
+import json
 import re
 from datetime import datetime, timedelta
 
@@ -12,7 +13,9 @@ import pytest
 
 from services.materials import get_material_id, get_raw_material
 from services.lots import get_material_stock_from_lots
-from services.batches import add_to_batches, get_batches, get_batches_planned
+from services.batches import (
+    add_to_batches, get_batches, get_batches_planned, get_planned_lot_selections,
+)
 
 
 def _mix_output_lot(db, material_name):
@@ -304,19 +307,37 @@ def test_create_same_day_planned_batch_short_stock_alerts(client, auth, make_mat
 
 
 def test_create_future_planned_batch_short_stock_allowed(client, auth, make_material, make_lot, make_recipe):
-    # A FUTURE-dated plan reserves production against stock that hasn't arrived yet, so a
+    # A FUTURE-dated DEFERRED plan reserves production against stock that hasn't arrived yet, so a
     # current shortfall must NOT block it — it's created and sits Planned (no alert).
+    # CHANGED: planned-deduction-mode feature — deferral must now be asked for; see the
+    # deduction_mode='immediate' counterpart below, which IS blocked by the same shortfall.
     mid = make_material("Matcha")
     make_lot(mid, 5)  # short for a need of 10
     make_recipe("Latte", [{"material_name": "Matcha", "quantity_needed": 10}], batch_type="finished")
     future = (datetime.now() + timedelta(days=30)).strftime("%Y-%m-%d")
     resp = client.post("/create-batch", headers=auth, data={
         "product_name": "Latte", "batch_number": "FUT1", "quantity": "1",
-        "planned_completion_date": future,
+        "planned_completion_date": future, "deduction_mode": "deferred",
     }, follow_redirects=False)
     assert resp.status_code == 302  # redirect to batches, created
     # future plan isn't overdue, so it sits in the Planned list (not promoted/deducted)
     assert get_batches_planned(page=1, per_page=50)[1] == 1
+
+
+def test_create_future_planned_batch_immediate_blocked_on_short_stock(client, auth, make_material, make_lot, make_recipe):
+    # planned-deduction-mode feature — an IMMEDIATE planned batch takes stock today, so a shortfall
+    # blocks it exactly like a Ready batch, even though its completion date is far in the future.
+    mid = make_material("Matcha")
+    make_lot(mid, 5)  # short for a need of 10
+    make_recipe("Latte", [{"material_name": "Matcha", "quantity_needed": 10}], batch_type="finished")
+    future = (datetime.now() + timedelta(days=30)).strftime("%Y-%m-%d")
+    resp = client.post("/create-batch", headers=auth, data={
+        "product_name": "Latte", "batch_number": "FUT2", "quantity": "1",
+        "planned_completion_date": future, "deduction_mode": "immediate",
+    }, follow_redirects=False)
+    assert resp.status_code == 400
+    assert b"Not Enough Stock" in resp.data
+    assert get_batches_planned(page=1, per_page=50)[1] == 0
 
 
 # --- batches page: component (mix) display ------------------------------------------
@@ -340,3 +361,72 @@ def test_batches_page_shows_mix_prefix_and_original_total(client, auth, db,
     html = client.get("/batches", headers=auth).get_data(as_text=True)
     assert "MIX-BATCH-C1" in html          # Bug 5: prefixed component batch#
     assert "/ 100" in html                  # Bug 4: 90 remaining / 100 originally produced
+
+
+# --- planned-deduction-mode feature: planned batches are visible and editable ---------
+def _planned_deferred_batch(make_material, make_lot, make_recipe):
+    """A deferred Planned finished batch with one reserved lot. Returns (batch_id, material_id, lot_id)."""
+    mid = make_material("Matcha")
+    lid = make_lot(mid, 100, lot_number="RES9")
+    make_recipe("Latte", [{"material_name": "Matcha", "quantity_needed": 10}], batch_type="finished")
+    bid = add_to_batches("Latte", 1, batch_number="PD1", planned_completion_date="2999-01-01",
+                         batch_type="finished", deduction_mode="deferred",
+                         lot_selections={mid: [{"lot_id": lid, "qty": 10}]})
+    return bid, mid, lid
+
+
+def test_materials_endpoint_shows_reserved_lots_of_deferred_batch(client, auth, make_material, make_lot, make_recipe):
+    # A deferred batch has no batch_materials rows; the drawer must still show its chosen lots,
+    # flagged as reservations rather than deductions.
+    bid, _mid, _lid = _planned_deferred_batch(make_material, make_lot, make_recipe)
+    payload = client.get(f"/batches/{bid}/materials", headers=auth).get_json()
+    assert payload["planned"] is True
+    assert payload["fifo"] is False
+    assert [m["lot_number"] for m in payload["materials"]] == ["RES9"]
+
+
+def test_materials_endpoint_reports_fifo_when_no_lots_reserved(client, auth, make_material, make_lot, make_recipe):
+    make_material("Matcha")
+    mid = get_material_id("Matcha")
+    make_lot(mid, 100)
+    make_recipe("Latte", [{"material_name": "Matcha", "quantity_needed": 10}], batch_type="finished")
+    bid = add_to_batches("Latte", 1, batch_number="PD2", planned_completion_date="2999-01-01",
+                         batch_type="finished", deduction_mode="deferred", lot_selections=None)
+    payload = client.get(f"/batches/{bid}/materials", headers=auth).get_json()
+    assert payload["materials"] == []
+    assert payload["fifo"] is True
+
+
+def test_edit_page_opens_for_deferred_planned_batch(client, auth, make_material, make_lot, make_recipe):
+    # Regression: this used to 404 ("Batch Materials Not Found") because a deferred batch has no
+    # batch_materials rows, making every planned batch un-editable.
+    bid, _mid, _lid = _planned_deferred_batch(make_material, make_lot, make_recipe)
+    resp = client.get(f"/edit-batch/{bid}", headers=auth)
+    assert resp.status_code == 200
+    assert b"Planned Lot Selection" in resp.data
+
+
+def test_update_planned_lots_route_rewrites_reservation(client, auth, db, make_material, make_lot, make_recipe):
+    bid, mid, lid = _planned_deferred_batch(make_material, make_lot, make_recipe)
+    other = make_lot(mid, 100, lot_number="RES10")
+    resp = client.post(f"/edit-batch/{bid}/planned-lots", headers=auth, data={
+        "lot_selection": json.dumps({str(mid): [{"lot_id": other, "qty": 10}]}),
+    }, follow_redirects=False)
+    assert resp.status_code == 302
+    assert get_planned_lot_selections(bid)[0][3] == other
+    # no stock moved — this is a reservation, not a deduction
+    cur = db.cursor()
+    db.execute(cur, "SELECT quantity FROM raw_material_lots WHERE lot_id = %s", (lid,))
+    assert cur.fetchone()[0] == 100
+
+
+def test_quantity_change_clears_reserved_lots(client, auth, make_material, make_lot, make_recipe):
+    # Stored per-lot sums are validated against quantity_needed * quantity at promotion, so stale
+    # picks would strand the batch as Planned. The route clears them and warns instead.
+    bid, _mid, _lid = _planned_deferred_batch(make_material, make_lot, make_recipe)
+    resp = client.post(f"/edit-batch/{bid}/update-details", headers=auth, data={
+        "product_name": "Latte", "quantity": "3", "planned_completion_date": "2999-01-01",
+    }, follow_redirects=True)
+    assert resp.status_code == 200
+    assert get_planned_lot_selections(bid) == []
+    assert b"lot selections were cleared" in resp.data

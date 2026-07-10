@@ -71,6 +71,9 @@ from services.batches import (
     update_batch, update_batch_status, get_batch_materials,
     adjust_batch_material, check_batch_materials_stock,
     get_batch_materials_for_reallocation,
+    # ADDED: planned-deduction-mode feature — a deferred Planned batch has no batch_materials rows;
+    #        its lot picks live in the planned_lot_selections JSON column and are read/written here.
+    get_planned_lot_selections, update_planned_lot_selections, clear_planned_lot_selections,
 )
 from services.shipments import (
     create_shipment, get_all_shipments, get_shipment_by_id,
@@ -1321,10 +1324,25 @@ def batch_materials(batch_id):
     but for batch details, user only sees: material name, quantity used, unit, and lot number. 
     
     the batch material lot id and batch id are just for reference and not shown to user.
-    
-    
+
+    CHANGED: planned-deduction-mode feature — the response used to be a bare JSON array. It is now
+    an object, because a deferred Planned batch has no batch_materials rows and the drawer must
+    still show its chosen lots AND say they are only reserved:
+        {"materials": [...], "planned": bool, "fifo": bool}
+    planned = these quantities are reservations, not deductions.
+    fifo    = deferred batch with no stored picks; the oldest lots get used at the planned date.
+    The three JS callers were updated with it: batches.html, manage_batches.html, edit_batch.html.
     """
     rows = get_batch_materials(batch_id)
+    planned = False
+
+    # A deferred Planned batch hasn't deducted anything yet, so batch_materials is empty. Fall back
+    # to the lot picks stored on the batch itself — otherwise the drawer reads "No materials
+    # recorded" for a batch whose lots the user explicitly chose.
+    if not rows:
+        rows = get_planned_lot_selections(batch_id)
+        planned = bool(rows)
+
     # ADDED: cost-of-material feature — expose cost_per_unit (r[6]) so batches.html can
     #        display it in the materials expansion panel per line item.
     # CHANGED: units-conversion-layer feature — quantity_used is stored in the base unit
@@ -1332,10 +1350,19 @@ def batch_materials(batch_id):
     #          back to the material's display unit via disp() (identity for count units) so it
     #          shows e.g. "1" kg instead of "1000".
     materials = [
-        {'material_name': r[0], 'quantity_used': disp(r[1], r[2]), 'unit': r[2], 'batch_material_lot_id': r[3], 'lot_number': r[4], 'material_id': r[5], 'cost_per_unit': r[6]}
+        {'material_name': r[0], 'quantity_used': disp(r[1], r[2]), 'unit': r[2], 'batch_material_lot_id': r[3], 'lot_number': r[4], 'material_id': r[5], 'cost_per_unit': r[6],
+         # planned rows carry an 8th element flagging a lot that has since expired/been used up
+         'lot_status': (r[7] if len(r) > 7 else 'active')}
         for r in rows
     ]
-    return jsonify(materials)
+
+    # Distinguish "deferred, no picks → FIFO at promotion" from "nothing here at all".
+    fifo = False
+    if not materials:
+        batch = get_batch_by_id(batch_id)
+        fifo = bool(batch) and batch[4] == 'Planned' and batch[11] == 'deferred'
+
+    return jsonify({'materials': materials, 'planned': planned, 'fifo': fifo})
 
 
 
@@ -1547,8 +1574,21 @@ def create_batch():
         #INPUT VALIDATION DONE===============================
 
 
+        # ADDED: planned-deduction-mode feature — the create form's toggle. Deferral is only
+        # meaningful for a Planned finished/mix batch; anything else deducts at creation, so we
+        # normalize to 'immediate' rather than trusting the posted value. 'immediate' is the default,
+        # including when the field is absent (JS off, or the field was hidden because no date was set).
+        deduction_mode = 'immediate'
+        if (request.form.get('deduction_mode') == 'deferred'
+                and planned_completion_date
+                and batch_type in ('finished', 'mix')):
+            deduction_mode = 'deferred'
+
         # see if its okay that batch creation makes stock go negative.
-        defer_deduction = (batch_type in ('finished', 'mix') and bool(planned_completion_date))
+        # CHANGED: planned-deduction-mode feature — was derived from batch_type + planned date alone.
+        # A planned+immediate batch deducts now, so it must pass the same negative-stock gate below
+        # as a Ready batch.
+        defer_deduction = (batch_type in ('finished', 'mix') and bool(planned_completion_date) and deduction_mode == 'deferred')
         # A planned batch dated TODAY is immediately due — it tries (and fails) to promote on the
         # next batches view if stock is short, leaving a silently-stuck Planned batch with no alert.
         # So validate stock up front for same-day plans, giving the same "inadequate stock" alert as
@@ -1574,6 +1614,9 @@ def create_batch():
                             'batch_number': batch_number,
                             'expiration_date': expiration_date or '',
                             'planned_completion_date': planned_completion_date or '',
+                            # planned-deduction-mode feature — must round-trip the re-POST or the
+                            # user's choice silently reverts to 'immediate'.
+                            'deduction_mode': deduction_mode,
                             # batch-type-on-recipe feature — type is re-resolved from the recipe on the
                             # re-POST, so it no longer needs to round-trip through this confirm form.
                             'lot_selections': lot_selections_raw, # raw JSON string, must be string because
@@ -1587,10 +1630,10 @@ def create_batch():
 
         # call function
         try:
-            result = add_to_batches(product_name, quantity, notes=notes, batch_number=batch_number, deduct_resources=True, expiration_date=expiration_date, planned_completion_date=planned_completion_date, batch_type=batch_type, allow_negative=confirm_negative, lot_selections=lot_selections)
+            result = add_to_batches(product_name, quantity, notes=notes, batch_number=batch_number, deduct_resources=True, expiration_date=expiration_date, planned_completion_date=planned_completion_date, batch_type=batch_type, allow_negative=confirm_negative, lot_selections=lot_selections, deduction_mode=deduction_mode)
             if result:
                 logging.info(f"Batch created: product='{product_name}', quantity={quantity}, batch_number={batch_number}, batch_type={batch_type}")
-                log_action('batch_created', f"product={product_name}, quantity={quantity}, batch_id={result}, batch_number={batch_number}, batch_type={batch_type}")
+                log_action('batch_created', f"product={product_name}, quantity={quantity}, batch_id={result}, batch_number={batch_number}, batch_type={batch_type}, deduction_mode={deduction_mode}")
                 return redirect(url_for('view_batches'))
             else:
                 return render_template('error.html',
@@ -1689,27 +1732,37 @@ def edit_batch(batch_id):
     batch_materials = [] #get materials df and convert to list of dicts for display in edit batch page.
     for r in batch_materials_rows:
         batch_materials.append({'material_name': r[0], 'quantity_used': r[1], 'lot_id': r[3], 'lot_number': r[4], 'material_id': r[5]}) # convert materials to a format for display in the edit batch page.
-    
+
     if not batch:
         return render_template('error.html', # if batch not found, show error page.
             title="Batch Not Found",
             message="The batch you requested could not be found.",
             back_link=True, back_link_url="/manage-batches", back_link_label="Back to Manage Batches"
         ), 404
-    
-    if not batch_materials_rows:
-        return render_template('error.html', # if batch not found, show error page.
-            title="Batch Materials Not Found",
-            message="The batch materials you requested could not be found.",
-            back_link=True, back_link_url="/manage-batches", back_link_label="Back to Manage Batches"
-        ), 404
-    
+
+    # REMOVED: planned-deduction-mode feature — a "Batch Materials Not Found" 404 used to fire here
+    # whenever get_batch_materials() came back empty. That made every deferred Planned batch
+    # un-editable: it legitimately has ZERO batch_materials rows until it promotes. An existing batch
+    # is always editable; when it has no deductions we show its planned lot picks instead.
+    is_deferred_planned = (batch[4] == 'Planned' and batch[11] == 'deferred')
+    planned_lots = []
+    if is_deferred_planned:
+        planned_lots = [
+            {'material_name': r[0], 'quantity_used': r[1], 'unit': r[2], 'lot_id': r[3],
+             'lot_number': r[4], 'material_id': r[5], 'lot_status': r[7]}
+            for r in get_planned_lot_selections(batch_id)
+        ]
+
     msg = request.args.get('msg', '') # get success message from URL parameters, if any (e.g., after updating batch details)
     err = request.args.get('err', '') # get error message from URL parameters, if any (e.g., if updating batch details failed)
 
     return render_template("edit_batch.html", # show the edit batch form, with current batch details and any success/error messages.
         batch = batch,
         batch_materials = batch_materials,
+        # planned-deduction-mode feature — drives the "Planned lot selection" card, which replaces
+        # the deduction-adjust UI for a batch that hasn't deducted anything yet.
+        is_deferred_planned = is_deferred_planned,
+        planned_lots = planned_lots,
         msg=msg, err=err,
         back_link=True,
         back_link_url="/manage-batches",
@@ -1796,11 +1849,28 @@ def update_batch_details(batch_id):
             flash('Could not update — insufficient stock for new material quantities', 'error')
             return redirect(url_for('edit_batch', batch_id=batch_id))
 
+    # ADDED: planned-deduction-mode feature — a deferred Planned batch's stored lot picks are sized
+    # for its OLD quantity. promote_planned_batches validates each material's stored per-lot sum
+    # against quantity_needed * quantity, so keeping stale picks would strand the batch as Planned
+    # with a "don't match required" failure on its completion date. Clear them and make the user
+    # re-pick (FIFO covers it if they don't).
+    existing = get_batch_by_id(batch_id)
+    quantity_changed = (
+        existing is not None
+        and existing[4] == 'Planned' and existing[11] == 'deferred'
+        and quantity is not None and float(existing[2]) != quantity
+    )
+
     result = update_batch(batch_id, product_name=product_name, quantity=quantity, notes=notes, expiration_date=expiration_date, planned_completion_date=planned_completion_date)
 
     if result:
         logging.info(f"Batch details updated: batch_id={batch_id}, product_name={product_name}, quantity={quantity}")
         log_action('batch_updated', f"batch_id={batch_id}, product_name={product_name}, quantity={quantity}")
+
+        if quantity_changed:
+            clear_planned_lot_selections(batch_id)
+            log_action('planned_lots_cleared', f"batch_id={batch_id}, reason=quantity_changed")
+            flash('Quantity changed — lot selections were cleared. Re-select lots, or the oldest lots (FIFO) will be used at the planned date.', 'warning')
 
         if new_quantities:
             adj_result = adjust_batch_material(batch_id, new_quantities, lot_selections or None)
@@ -1820,7 +1890,53 @@ def update_batch_details(batch_id):
         return redirect(url_for('edit_batch', batch_id=batch_id))
 
 
-@app.route('/edit-batch/<int:batch_id>/change-status', methods=['POST']) 
+# ADDED: planned-deduction-mode feature — edit the lots a deferred Planned batch has RESERVED.
+# No stock moves here: nothing was deducted, so this only rewrites the planned_lot_selections JSON
+# that promote_planned_batches will replay on the completion date. Editing an already-deducted
+# batch's lots is a different operation entirely — that's adjust_batch_material, above.
+@app.route('/edit-batch/<int:batch_id>/planned-lots', methods=['POST'])
+@requires_auth
+def update_batch_planned_lots(batch_id):
+    """
+    Replaces the stored lot picks of a deferred Planned batch.
+    Consumes the same `lot_selection` hidden JSON field the create-batch form posts:
+    {material_id: [{"lot_id": int, "qty": float_in_base_units}, ...]}
+    An empty selection clears the picks — promotion then falls back to FIFO.
+    """
+    raw = request.form.get('lot_selection', '').strip()
+    lot_selections = None
+    if raw:
+        try:
+            parsed = json.loads(raw)
+            # Shape-check before it reaches the service: keys are material_ids, values are lists of
+            # {lot_id, qty}. A malformed payload must be a 400, never a KeyError in the service.
+            lot_selections = {}
+            for material_id, lots in parsed.items():
+                lot_selections[int(material_id)] = [
+                    {'lot_id': int(lot['lot_id']), 'qty': float(lot['qty'])} for lot in lots
+                ]
+        except (ValueError, TypeError, KeyError, AttributeError):
+            return render_template('error.html',
+                title="Invalid Input",
+                message="Invalid lot selection format.",
+                back_link=True, back_link_url=f"/edit-batch/{batch_id}", back_link_label="Go back to Edit Batch"
+            ), 400
+
+    try:
+        if update_planned_lot_selections(batch_id, lot_selections):
+            flash('Planned lot selection updated', 'success')
+        else:
+            flash('Could not update the planned lot selection', 'error')
+    except ValueError as e:
+        # Don't surface raw service text — log it, show the one thing the user can act on.
+        logging.warning(f"update_batch_planned_lots ValueError: batch_id={batch_id}: {e}")
+        flash('Could not update — a lot you picked may have expired or been used up since you '
+              'opened the page. Reload and try again.', 'error')
+
+    return redirect(url_for('edit_batch', batch_id=batch_id))
+
+
+@app.route('/edit-batch/<int:batch_id>/change-status', methods=['POST'])
 @requires_auth
 def change_batch_status(batch_id):
     """

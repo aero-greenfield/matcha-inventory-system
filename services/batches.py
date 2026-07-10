@@ -142,13 +142,17 @@ def _create_housemade_lot(db, cursor, product_name, quantity, batch_number, rece
         raise ValueError(f"Failed to create lot for mixed batch {batch_number}")
     return db.get_last_insert_id(cursor)
 
-def add_to_batches(product_name, quantity, notes=None, batch_number=None, deduct_resources=True, expiration_date=None, planned_completion_date=None, batch_type='standard', allow_negative=False, lot_selections=None):
+def add_to_batches(product_name, quantity, notes=None, batch_number=None, deduct_resources=True, expiration_date=None, planned_completion_date=None, batch_type='standard', allow_negative=False, lot_selections=None, deduction_mode='immediate'):
     """
     adds batch to ready to ship, but asks user if they want to deduct from resources, or just add it.
     If planned_completion_date is provided, batch is created with status 'Planned' instead of 'Ready'.
-    batch_type can be 'standard', 'mix', or 'finished' — used to auto-determine whether to defer deduction for planned batches.
-    if standard or mix, deduction happens immediately at batch creation regardless of planned vs ready status. and adds mixed batch to raw_materials with is_housemade = True, so they can be used in future batches.
-    if finished, deduction is deferred until promotion time for planned batches, happens immediately for ready batches.
+    batch_type can be 'standard', 'mix', or 'finished'.
+
+    CHANGED: planned-deduction-mode feature — deferral is now the USER'S choice, not derived from
+    batch_type. deduction_mode ('immediate' | 'deferred') only has an effect on a Planned
+    finished/mix batch; 'standard' and any Ready batch always deduct at creation. A Planned mix
+    produces its house-made output lot at promotion in BOTH modes: its inputs may be consumed now,
+    but the mixed product does not exist as stock until the day it's actually made.
 
 
     lot number changes:
@@ -193,23 +197,28 @@ def add_to_batches(product_name, quantity, notes=None, batch_number=None, deduct
             date_completed = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
 
 
-        # Auto-derive whether to defer deduction.
-        # finished/mix + Planned = skip deduction now, will deduct at promotion time.
-        # standard always deducts immediately, regardless of status.
-        # A deferred mix (Planned Component) also defers creating its house-made output lot —
-        # both the input deduction and the output lot happen at promotion (see promote_planned_batches).
-        defer_deduction = (batch_type in ('finished', 'mix') and status == 'Planned')
+        # CHANGED: planned-deduction-mode feature — deferral used to be implied by
+        # (batch_type in finished/mix AND status == 'Planned'). It is now the user's explicit
+        # choice on the create form, so a Planned batch can consume its materials up front
+        # ('immediate', the default) or reserve them for the planned date ('deferred').
+        # deduction_mode is ignored for standard batches and for Ready batches, which always
+        # deduct at creation — there is nothing to defer to.
+        defer_deduction = (batch_type in ('finished', 'mix') and status == 'Planned' and deduction_mode == 'deferred')
 
+        # Normalize what we persist so the column never claims a deferral that isn't happening.
+        stored_deduction_mode = 'deferred' if defer_deduction else 'immediate'
 
-        # serialize lot_selections to JSON for deferred finished batches so promote_planned_batches
+        # serialize lot_selections to JSON for deferred batches so promote_planned_batches
         # can use the same user-picked lots at promotion time instead of falling back to FIFO.
         # JSON keys must be strings, so material_id ints become strings — we'll re-cast on read.
+        # Immediate batches don't need this: their picks are already recorded as batch_materials
+        # rows, which stay the single source of truth for what a batch consumed.
         planned_lot_selections_json = json.dumps(lot_selections) if (defer_deduction and lot_selections is not None) else None
 
         db.execute(cursor, """
-            INSERT INTO batches (batch_number, product_name, quantity, date_completed, status, notes, expiration_date, planned_completion_date, batch_type, planned_lot_selections)
-            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
-            """, (batch_number, product_name, quantity, date_completed, status, notes, expiration_date, planned_completion_date, batch_type, planned_lot_selections_json))
+            INSERT INTO batches (batch_number, product_name, quantity, date_completed, status, notes, expiration_date, planned_completion_date, batch_type, planned_lot_selections, deduction_mode)
+            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+            """, (batch_number, product_name, quantity, date_completed, status, notes, expiration_date, planned_completion_date, batch_type, planned_lot_selections_json, stored_deduction_mode))
         batch_id = db.get_last_insert_id(cursor)
 
 
@@ -334,9 +343,11 @@ def add_to_batches(product_name, quantity, notes=None, batch_number=None, deduct
 
         # ALSO IF BATCH TYPE IS MIX, ADD THE MIXED PRODUCT TO RAW_MATERIALS WITH is_housemade = True, SO IT CAN BE USED IN FUTURE BATCHES.if not already in raw_materials,
         # otherwise if its already in raw_materials, just update the stock level by adding the quantity of the batch we just made.
-        # A deferred mix (Planned Component) skips this — promote_planned_batches creates the output
-        # lot at promotion time, alongside the deferred input deduction.
-        if batch_type == 'mix' and not defer_deduction:
+        # CHANGED: planned-deduction-mode feature — guard was `not defer_deduction`. Now ANY Planned
+        # mix defers its output lot to promotion, including an immediate-deduction one: consuming the
+        # inputs today doesn't mean the mixed product exists today. It becomes available stock on its
+        # planned completion date, when promote_planned_batches creates the lot.
+        if batch_type == 'mix' and status == 'Ready':
             mix_lot_id = _create_housemade_lot(
                 db, cursor, product_name, quantity, batch_number,
                 datetime.now().strftime('%Y-%m-%d'), batch_id)
@@ -711,12 +722,14 @@ def get_all_batches_with_id(page=None, per_page=50):
     # CHANGED: organic feature — added derived is_organic flag (same correlated subquery as
     #          get_batches/get_batches_shipped). Planned batches have no batch_materials yet, so
     #          this yields 0 for them; the manage-batches template shows a dash for Planned rows.
+    # ADDED: planned-deduction-mode feature — deduction_mode lets manage_batches.html caption a
+    #        Planned row's materials drawer as reserved-but-not-yet-deducted.
     columns = ['batch_id', 'batch_number', 'product_name', 'quantity', 'date_completed',
                'status', 'notes', 'date_shipped', 'expiration_date', 'planned_completion_date', 'batch_type',
-               'promotion_failure_reason', 'is_organic', 'product_unit']
+               'promotion_failure_reason', 'deduction_mode', 'is_organic', 'product_unit']
     base_query = """
     SELECT batch_id, batch_number, product_name, quantity, date_completed, status, notes, date_shipped, expiration_date, planned_completion_date, batch_type,
-           promotion_failure_reason,
+           promotion_failure_reason, deduction_mode,
            (SELECT CASE
                      WHEN COUNT(CASE WHEN rm.is_edible THEN 1 END) > 0
                       AND COUNT(CASE WHEN rm.is_edible AND NOT rm.is_organic THEN 1 END) = 0
@@ -766,8 +779,10 @@ def get_batch_by_id(batch_id):
     cursor = db.cursor()
 
     try:
+        # ADDED: planned-deduction-mode feature — deduction_mode is appended LAST on purpose:
+        #        edit_batch.html indexes this tuple positionally (batch[0]..batch[10]).
         query = """
-        SELECT batch_id, product_name, quantity, date_completed, status, notes, date_shipped, expiration_date, planned_completion_date, batch_type, batch_number
+        SELECT batch_id, product_name, quantity, date_completed, status, notes, date_shipped, expiration_date, planned_completion_date, batch_type, batch_number, deduction_mode
         FROM batches
         WHERE batch_id = %s
 
@@ -886,202 +901,278 @@ def update_batch_status(batch_id, new_status):
     finally:
         db.close()
 
+def _fetch_overdue(db, cursor, now):
+    """
+    Reads the Planned batches whose completion date has arrived.
+
+    NOTE: this read is NOT a claim. Whatever it returns may already have been promoted by another
+    worker by the time we act on it — see _claim_batch, which is the only thing that decides who
+    gets to promote a batch. Extracted so tests can inject a deliberately stale row.
+    """
+    overdue_query = """
+        SELECT batch_id, batch_number, product_name, quantity, batch_type, planned_completion_date, planned_lot_selections, deduction_mode
+        FROM batches
+        WHERE status = 'Planned'
+        AND planned_completion_date IS NOT NULL
+        AND planned_completion_date <= %s
+    """
+    if db.is_postgres:
+        overdue_query += " FOR UPDATE SKIP LOCKED"
+    db.execute(cursor, overdue_query, (now,))
+    return cursor.fetchall()
+
+
+def _claim_batch(db, cursor, batch_id, date_completed):
+    """
+    Atomically takes ownership of one overdue batch, flipping it Planned -> Ready.
+
+    Returns True if THIS caller won the batch, False if someone else already promoted it.
+
+    WHY THIS EXISTS (bug: planned batches were deducted twice).
+    promote_planned_batches used to SELECT the overdue batches and then, with no further check,
+    deduct their lots and flip status with an unconditional `WHERE batch_id = %s`. Python's sqlite3
+    opens a transaction on the first INSERT/UPDATE, never on a SELECT, so that read was unprotected:
+    two requests that both call promote (/batches via get_batches, /manage-batches via
+    get_all_batches_with_id) could both read the same batch as Planned, then serialize their writes
+    and each deduct the full amount — double deduction, duplicate batch_materials rows, and two
+    house-made output lots for a mix.
+
+    The `AND status = 'Planned'` predicate below is what fixes it: it is evaluated at write time,
+    under the write lock, against committed data. Exactly one racer can match it; every other racer
+    gets rowcount 0 and skips the batch. It must be the FIRST statement of the batch's transaction,
+    so that a later rollback (insufficient stock) also releases the claim.
+    """
+    db.execute(cursor, """
+        UPDATE batches
+        SET status = 'Ready',
+            date_completed = %s,
+            promotion_failure_reason = NULL
+        WHERE batch_id = %s AND status = 'Planned'
+    """, (date_completed, batch_id))
+    return cursor.rowcount > 0
+
+
+def _has_batch_materials(db, cursor, batch_id):
+    """True if the batch already has recorded deductions. A deferred batch must have none until it
+    promotes, so any row means it was already processed — a second safety net behind _claim_batch."""
+    db.execute(cursor, "SELECT 1 FROM batch_materials WHERE batch_id = %s LIMIT 1", (batch_id,))
+    return cursor.fetchone() is not None
+
+
+def _record_promotion_failure(db, cursor, batch_id, failure_reason):
+    """Leaves the batch Planned with the reason it couldn't promote. Runs AFTER the claim has been
+    rolled back, so it must re-assert nothing else — the row is Planned again at this point."""
+    db.execute(cursor, """
+        UPDATE batches
+        SET promotion_failure_reason = %s
+        WHERE batch_id = %s
+    """, (failure_reason, batch_id))
+    db.commit()
+
+
 def promote_planned_batches():
 
     """
     Promotes overdue Planned batches to Ready.
-    - standard/mix batches: flip status directly (deduction already happened at creation)
-    - finished batches: deduct from lots now and promote; leave as Planned if stock is insufficient
     Called lazily from get_batches() and get_all_batches_with_id().
 
-    For finished batches, lot deduction uses one of two paths depending on what was stored at creation:
+    Which batches still owe a deduction at promotion is decided by batches.deduction_mode, not by
+    batch_type:
+    - standard: flip status directly (always deducted at creation).
+    - finished/mix, deduction_mode='immediate': flip status directly (deducted at creation, and
+      batch_materials rows already written).
+    - finished/mix, deduction_mode='deferred': deduct from lots now and promote; leave as Planned
+      with a promotion_failure_reason if stock is insufficient.
+
+    For a DEFERRED batch, lot deduction uses one of two paths depending on what was stored at creation:
     1. stored lots (planned_lot_selections JSON column): user picked specific lots when creating the batch —
        validate and deduct from exactly those lots, same logic as add_to_batches.
     2. FIFO fallback: no stored selections — automatically deduct from oldest active lots first.
 
-    For mix batches: also inserts a new lot into raw_material_lots for the produced quantity
-    so the housemade material is available for use in future batches.
+    For mix batches (BOTH modes): also inserts a new lot into raw_material_lots for the produced
+    quantity so the housemade material is available for use in future batches. The output lot is
+    always born here, because the mixed product doesn't exist as stock until its completion date.
+
+    CONCURRENCY (this function runs lot deductions from GET handlers, under several workers):
+    every batch is claimed with _claim_batch before any stock moves, and each batch gets its OWN
+    transaction — so a batch that can't be covered rolls back its claim alone, without discarding
+    the batches already promoted in this pass.
     """
 
 
     db = get_db_connection()
     cursor = db.cursor()
+    # Audit rows are written after each batch's transaction commits. log_action opens a SECOND
+    # connection; while our transaction holds SQLite's write lock, its INSERT fails with "database
+    # is locked" and audit.py swallows the error — which is why no promotion was ever audited.
+    promoted = []
     try:
         now = datetime.now().strftime('%Y-%m-%d')
+        overdue = _fetch_overdue(db, cursor, now)
 
-        # fetch all overdue planned batches.
-        # planned_lot_selections is the JSON-serialized lot picks the user made at creation time —
-        # used by finished batches to deduct from specific lots instead of falling back to FIFO.
-        #
-        # CONCURRENCY: this function is triggered from GET handlers and runs lot deductions.
-        # With multiple gunicorn workers, two requests could select the same overdue batch and
-        # both deduct (over-deducting stock / inserting duplicate housemade lots). On Postgres we
-        # lock the selected rows with FOR UPDATE SKIP LOCKED so a concurrent promote skips rows
-        # already being processed and does no duplicate work. SQLite is a single-writer, local-only
-        # engine and does not support the clause, so it is left unlocked.
-        overdue_query = """
-            SELECT batch_id, batch_number, product_name, quantity, batch_type, planned_completion_date, planned_lot_selections
-            FROM batches
-            WHERE status = 'Planned'
-            AND planned_completion_date IS NOT NULL
-            AND planned_completion_date <= %s
-        """
-        if db.is_postgres:
-            overdue_query += " FOR UPDATE SKIP LOCKED"
-        db.execute(cursor, overdue_query, (now,))
-        overdue = cursor.fetchall()
+        for batch_id, batch_number, product_name, quantity, batch_type, planned_completion_date, planned_lot_selections_json, deduction_mode in overdue:
 
-        for batch_id, batch_number, product_name, quantity, batch_type, planned_completion_date, planned_lot_selections_json in overdue:
+            # a finished/mix batch only owes a deduction here if the user chose to defer it. Rows
+            # written before the planned-deduction-mode feature existed were backfilled to
+            # 'deferred' by the migration, so a NULL/unknown value can only mean an immediate batch.
+            is_deferred = (batch_type in ('finished', 'mix') and deduction_mode == 'deferred')
 
-            if batch_type == 'standard':
-                # standard batches already had their raw_material_lots deducted at creation time,
-                # so all we need to do here is flip the status to Ready.
-                db.execute(cursor, """
-                    UPDATE batches
-                    SET status = 'Ready',
-                        date_completed = %s,
-                        promotion_failure_reason = NULL
-                    WHERE batch_id = %s
-
-                           """, (planned_completion_date, batch_id))
-
-                if cursor.rowcount == 0:
-                    raise ValueError(f"Batch {batch_id} not found during promotion — nothing updated")
-
-                log_action('planned_batch_promoted',
-                           f"batch_id={batch_id}, product={product_name}, type={batch_type}")
-
-            # finished AND mix batches deferred their input deduction at creation time
-            # (defer_deduction=True in add_to_batches). Now at promotion we do the actual lot-level
-            # deduction, mirroring add_to_batches' lot logic. A mix batch ADDITIONALLY produces its
-            # house-made output lot here (deferred from creation too).
-
-            elif batch_type in ('finished', 'mix'):
-                recipe_df = get_recipe(product_name)
-                if recipe_df is None or recipe_df.empty:
-                    db.execute(cursor, """
-                        UPDATE batches
-                        SET promotion_failure_reason = %s
-                        WHERE batch_id = %s
-
-                               """, (f"No recipe found for {product_name}", batch_id,))
+            try:
+                # Take the batch before touching any stock. Lost the race -> another worker has
+                # already deducted and promoted it; do nothing.
+                if not _claim_batch(db, cursor, batch_id, planned_completion_date):
+                    db.rollback()
                     continue
 
-                failure_reason = None  # will be set if any material can't be covered by its lots
-                all_allocations = {}   # material_id -> [(lot_id, qty_to_take, cost_per_unit)]
+                if is_deferred and _has_batch_materials(db, cursor, batch_id):
+                    logging.warning(f"Batch {batch_id} is deferred but already has batch_materials — skipping promotion")
+                    db.rollback()
+                    continue
 
-                # parse stored lot selections if the user picked specific lots at creation time.
-                # JSON keys are always strings, so re-cast material_id back to int to match recipe_df.
-                stored_lot_selections = None
-                if planned_lot_selections_json:
-                    raw = json.loads(planned_lot_selections_json)
-                    stored_lot_selections = {int(k): v for k, v in raw.items()}
+                if batch_type == 'standard':
+                    # standard batches already had their raw_material_lots deducted at creation
+                    # time, so the claim is the whole promotion.
+                    pass
 
-                # --- PASS 1: lot allocation + coverage check (reads only, no writes yet) ---
-                for _, row in recipe_df.iterrows():
-                    material_id = row['material_id']
-                    material_name = row['material_name']
-                    # float() guards against Decimal (PostgreSQL numeric) * float (quantity) TypeError
-                    required = float(row['quantity_needed']) * quantity
+                # An immediate-deduction finished/mix batch already deducted its lots and wrote its
+                # batch_materials rows at creation, so promotion has nothing to allocate and CANNOT
+                # fail: there is no stock check to lose, and promotion_failure_reason can never be
+                # set on this path. A mix still gets its house-made output lot here — that was
+                # always deferred to the completion date.
+                elif not is_deferred:
+                    if batch_type == 'mix':
+                        mix_lot_id = _create_housemade_lot(
+                            db, cursor, product_name, quantity, batch_number,
+                            planned_completion_date, batch_id)
+                        db.execute(cursor, """
+                            UPDATE batches SET mix_lot_id = %s WHERE batch_id = %s
+                        """, (mix_lot_id, batch_id))
 
-                    # Use the user-picked lots only when this material actually HAS a stored
-                    # selection. A material can be absent from stored_lot_selections when the
-                    # create-batch UI couldn't auto-fill it (no/insufficient active lots at
-                    # creation) — in that case fall through to FIFO, which reports the real
-                    # "Insufficient lot stock" reason instead of a misleading "no stored lot
-                    # selection" message (and still succeeds if other lots can cover it).
-                    if stored_lot_selections is not None and stored_lot_selections.get(material_id) is not None:
-                        # --- user-picked lots path: validate stored selections same as add_to_batches ---
+                # DEFERRED finished AND mix batches held back their input deduction at creation time
+                # (defer_deduction=True in add_to_batches). Now at promotion we do the actual
+                # lot-level deduction, mirroring add_to_batches' lot logic. A mix batch ADDITIONALLY
+                # produces its house-made output lot here (deferred from creation too).
+                else:
+                    recipe_df = get_recipe(product_name)
+                    if recipe_df is None or recipe_df.empty:
+                        db.rollback()  # release the claim: the batch stays Planned
+                        _record_promotion_failure(db, cursor, batch_id, f"No recipe found for {product_name}")
+                        continue
 
-                        lot_list = stored_lot_selections.get(material_id)
+                    failure_reason = None  # will be set if any material can't be covered by its lots
+                    all_allocations = {}   # material_id -> [(lot_id, qty_to_take, cost_per_unit)]
 
-                        # total qty across stored lots must equal required (mirrors add_to_batches sum check)
-                        material_sum = sum(lot['qty'] for lot in lot_list)
-                        if not _quantities_match(material_sum, required):
-                            failure_reason = (
-                                f"Stored lot quantities for '{material_name}' don't match required "
-                                f"(stored: {material_sum}, required: {required})"
-                            )
-                            break
+                    # parse stored lot selections if the user picked specific lots at creation time.
+                    # JSON keys are always strings, so re-cast material_id back to int to match recipe_df.
+                    stored_lot_selections = None
+                    if planned_lot_selections_json:
+                        raw = json.loads(planned_lot_selections_json)
+                        stored_lot_selections = {int(k): v for k, v in raw.items()}
 
-                        # validate each stored lot individually: must exist, be active, not expired, have enough qty
-                        allocations = []
-                        for lot in lot_list:
-                            lot_id = lot['lot_id']
-                            qty = lot['qty']
-                            db.execute(cursor, """
-                                SELECT quantity, cost_per_unit FROM raw_material_lots
-                                WHERE lot_id = %s AND material_id = %s AND status = 'active'
-                                  AND (expiration_date IS NULL OR expiration_date > %s)
-                            """, (lot_id, material_id, now))
-                            lot_row = cursor.fetchone()
-                            if not lot_row:
-                                failure_reason = f"Lot {lot_id} for '{material_name}' not found, inactive, or expired."
-                                break
-                            # tolerant compare (mirrors add_to_batches): a lot auto-filled to its
-                            # exact available qty round-trips through a JS float and can land a
-                            # sub-ULP above the stored Decimal — don't reject what's exactly enough.
-                            # See the Decimal-end-to-end FUTURE note in add_to_batches for the
-                            # principled fix that would remove this epsilon.
-                            if not _covers(lot_row[0], qty):
+                    # --- PASS 1: lot allocation + coverage check (reads only, no writes yet) ---
+                    for _, row in recipe_df.iterrows():
+                        material_id = row['material_id']
+                        material_name = row['material_name']
+                        # float() guards against Decimal (PostgreSQL numeric) * float (quantity) TypeError
+                        required = float(row['quantity_needed']) * quantity
+
+                        # Use the user-picked lots only when this material actually HAS a stored
+                        # selection. A material can be absent from stored_lot_selections when the
+                        # create-batch UI couldn't auto-fill it (no/insufficient active lots at
+                        # creation) — in that case fall through to FIFO, which reports the real
+                        # "Insufficient lot stock" reason instead of a misleading "no stored lot
+                        # selection" message (and still succeeds if other lots can cover it).
+                        if stored_lot_selections is not None and stored_lot_selections.get(material_id) is not None:
+                            # --- user-picked lots path: validate stored selections same as add_to_batches ---
+
+                            lot_list = stored_lot_selections.get(material_id)
+
+                            # total qty across stored lots must equal required (mirrors add_to_batches sum check)
+                            material_sum = sum(lot['qty'] for lot in lot_list)
+                            if not _quantities_match(material_sum, required):
                                 failure_reason = (
-                                    f"Lot {lot_id} for '{material_name}' has insufficient quantity "
-                                    f"(need {qty}, have {lot_row[0]})."
+                                    f"Stored lot quantities for '{material_name}' don't match required "
+                                    f"(stored: {material_sum}, required: {required})"
                                 )
                                 break
-                            # clamp to the whole lot when within tolerance so we don't leave a
-                            # tiny negative residual from float drift
-                            take = lot_row[0] if float(qty) >= float(lot_row[0]) else qty
-                            allocations.append((lot_id, take, lot_row[1]))
 
-                        if failure_reason:
-                            break  # stop checking other materials
+                            # validate each stored lot individually: must exist, be active, not expired, have enough qty
+                            allocations = []
+                            for lot in lot_list:
+                                lot_id = lot['lot_id']
+                                qty = lot['qty']
+                                db.execute(cursor, """
+                                    SELECT quantity, cost_per_unit FROM raw_material_lots
+                                    WHERE lot_id = %s AND material_id = %s AND status = 'active'
+                                      AND (expiration_date IS NULL OR expiration_date > %s)
+                                """, (lot_id, material_id, now))
+                                lot_row = cursor.fetchone()
+                                if not lot_row:
+                                    failure_reason = f"Lot {lot_id} for '{material_name}' not found, inactive, or expired."
+                                    break
+                                # tolerant compare (mirrors add_to_batches): a lot auto-filled to its
+                                # exact available qty round-trips through a JS float and can land a
+                                # sub-ULP above the stored Decimal — don't reject what's exactly enough.
+                                # See the Decimal-end-to-end FUTURE note in add_to_batches for the
+                                # principled fix that would remove this epsilon.
+                                if not _covers(lot_row[0], qty):
+                                    failure_reason = (
+                                        f"Lot {lot_id} for '{material_name}' has insufficient quantity "
+                                        f"(need {qty}, have {lot_row[0]})."
+                                    )
+                                    break
+                                # clamp to the whole lot when within tolerance so we don't leave a
+                                # tiny negative residual from float drift
+                                take = lot_row[0] if float(qty) >= float(lot_row[0]) else qty
+                                allocations.append((lot_id, take, lot_row[1]))
 
-                    else:
-                        # --- FIFO fallback path: auto-select oldest active lots first ---
+                            if failure_reason:
+                                break  # stop checking other materials
 
-                        # fetch active, non-expired lots for this material, oldest first
-                        db.execute(cursor, """
-                            SELECT lot_id, quantity, cost_per_unit FROM raw_material_lots
-                            WHERE material_id = %s
-                              AND status = 'active'
-                              AND (expiration_date IS NULL OR expiration_date > %s)
-                              AND quantity > 0
-                            ORDER BY received_date ASC
-                        """, (material_id, now))
-                        lots = cursor.fetchall()
+                        else:
+                            # --- FIFO fallback path: auto-select oldest active lots first ---
 
-                        # greedily fill required from lots oldest-first
-                        remaining = required
-                        allocations = []
-                        for lot_id, lot_qty, cost in lots:
-                            if remaining <= 0:
-                                break
-                            take = min(lot_qty, remaining)
-                            allocations.append((lot_id, take, cost))
-                            remaining -= take
+                            # fetch active, non-expired lots for this material, oldest first
+                            db.execute(cursor, """
+                                SELECT lot_id, quantity, cost_per_unit FROM raw_material_lots
+                                WHERE material_id = %s
+                                  AND status = 'active'
+                                  AND (expiration_date IS NULL OR expiration_date > %s)
+                                  AND quantity > 0
+                                ORDER BY received_date ASC
+                            """, (material_id, now))
+                            lots = cursor.fetchall()
 
-                        if remaining > _QTY_EPSILON_G:
-                            available = required - remaining
-                            failure_reason = (
-                                f"Insufficient lot stock: {material_name} "
-                                f"(need {required}, have {round(available, 4)} across active lots)"
-                            )
-                            break  # no point checking other materials
+                            # greedily fill required from lots oldest-first
+                            remaining = required
+                            allocations = []
+                            for lot_id, lot_qty, cost in lots:
+                                if remaining <= 0:
+                                    break
+                                take = min(lot_qty, remaining)
+                                allocations.append((lot_id, take, cost))
+                                remaining -= take
 
-                    # both paths confirmed coverage for this material — store allocations for the write pass
-                    all_allocations[material_id] = allocations
+                            if remaining > _QTY_EPSILON_G:
+                                available = required - remaining
+                                failure_reason = (
+                                    f"Insufficient lot stock: {material_name} "
+                                    f"(need {required}, have {round(available, 4)} across active lots)"
+                                )
+                                break  # no point checking other materials
 
-                # --- handle failure: leave batch as Planned, record why ---
-                if failure_reason:
-                    db.execute(cursor, """
-                        UPDATE batches
-                        SET promotion_failure_reason = %s
-                        WHERE batch_id = %s
-                    """, (failure_reason, batch_id))
-                    logging.warning(f"Batch {batch_id} could not promote: {failure_reason}")
+                        # both paths confirmed coverage for this material — store allocations for the write pass
+                        all_allocations[material_id] = allocations
 
-                else:
+                    # --- handle failure: release the claim, leave batch Planned, record why ---
+                    if failure_reason:
+                        # rollback undoes the claim (status is Planned again) along with anything
+                        # PASS 1 touched, so the reason is written to a batch that really is Planned.
+                        db.rollback()
+                        _record_promotion_failure(db, cursor, batch_id, failure_reason)
+                        logging.warning(f"Batch {batch_id} could not promote: {failure_reason}")
+                        continue
+
                     # --- PASS 2: deduct from lots + insert batch_materials (writes) ---
                     # all materials passed the coverage check, so now we do the actual deductions.
                     # for each allocated lot: subtract the taken quantity and log it in batch_materials with lot_id.
@@ -1116,23 +1207,15 @@ def promote_planned_batches():
                             UPDATE batches SET mix_lot_id = %s WHERE batch_id = %s
                         """, (mix_lot_id, batch_id))
 
-                    # all deductions succeeded — flip batch to Ready
-                    db.execute(cursor, """
-                        UPDATE batches
-                        SET status = 'Ready',
-                            date_completed = %s,
-                            promotion_failure_reason = NULL
-                        WHERE batch_id = %s
-                    """, (planned_completion_date, batch_id))
+                # The claim already set status/date_completed; commit this batch on its own so a
+                # later batch failing to promote can't undo it.
+                db.commit()
+                promoted.append((batch_id, product_name, batch_type, deduction_mode))
 
-                    if cursor.rowcount == 0:
-                        raise ValueError(f"Batch {batch_id} not found during promotion — nothing updated")
-
-                    log_action('planned_batch_promoted',
-                               f"batch_id={batch_id}, product={product_name}, type={batch_type}")
-
-        db.commit()
-
+            except Exception as e:
+                # One bad batch must not abort the rest of the pass.
+                logging.error(f"Error promoting batch {batch_id}: {e}")
+                db.rollback()
 
     except Exception as e:
         logging.error(f"Error transitioning planned batches: {e}")
@@ -1140,6 +1223,12 @@ def promote_planned_batches():
 
     finally:
         db.close()
+
+    # Audit AFTER the write connection is closed: log_action opens its own connection, and on SQLite
+    # it cannot insert while this one holds the write lock.
+    for batch_id, product_name, batch_type, deduction_mode in promoted:
+        log_action('planned_batch_promoted',
+                   f"batch_id={batch_id}, product={product_name}, type={batch_type}, deduction={deduction_mode}")
 
 
 def get_batches_planned(page=None, per_page=50, sort='desc'):
@@ -1150,10 +1239,14 @@ def get_batches_planned(page=None, per_page=50, sort='desc'):
     direction = 'ASC' if sort == 'asc' else 'DESC'
 
     # ADDED: converted from pd.read_sql_query to cursor approach for LIMIT/OFFSET support
+    # ADDED: planned-deduction-mode feature — deduction_mode drives the "Deducted" / "Not yet
+    #        deducted" column on the Planned tabs of batches.html.
     columns = ['batch_id', 'batch_number', 'product_name', 'batch_type', 'quantity',
-               'planned_completion_date', 'notes', 'expiration_date', 'promotion_failure_reason', 'product_unit']
+               'planned_completion_date', 'notes', 'expiration_date', 'promotion_failure_reason',
+               'deduction_mode', 'product_unit']
     base_query = f"""
     SELECT batch_id, batch_number, product_name, batch_type, quantity, planned_completion_date, notes, expiration_date, promotion_failure_reason,
+           deduction_mode,
            -- product unit-of-measurement from the matching recipe (NULL when no recipe matches)
            (SELECT product_unit FROM recipes
             WHERE LOWER(recipes.product_name) = LOWER(batches.product_name) LIMIT 1) AS product_unit
@@ -1218,6 +1311,169 @@ def get_batch_materials(batch_id):
         logging.error(f"Error getting batch materials: {e}")
         return []
 
+    finally:
+        db.close()
+
+
+# ADDED: planned-deduction-mode feature — a deferred Planned batch has NO batch_materials rows
+# (nothing has been deducted yet); its lot picks live only in the planned_lot_selections JSON
+# column. These three helpers make those picks readable and editable before promotion, so the
+# batches-page drawer and the edit page aren't blank for a batch whose lots were clearly chosen.
+
+def get_planned_lot_selections(batch_id):
+    """
+    Reads the planned (not-yet-deducted) lot picks of a deferred Planned batch.
+
+    Returns rows in the SAME shape as get_batch_materials, plus an 8th element:
+        (material_name, quantity_used, unit, lot_id, lot_number, material_id, cost_per_unit, lot_status)
+    so callers can reuse the same display path. quantity_used is the RESERVED quantity in the base
+    unit (grams), matching batch_materials.quantity_used.
+
+    lot_status is 'active' when the lot is still usable, otherwise a reason ('unavailable' /
+    'missing'). Stale rows are returned rather than dropped: a lot that has since been exhausted or
+    expired is exactly what the user needs to see and re-pick before the batch fails to promote.
+
+    Returns [] when the batch has no stored picks (promotion will fall back to FIFO).
+    """
+    db = get_db_connection()
+    cursor = db.cursor()
+
+    try:
+        db.execute(cursor, "SELECT planned_lot_selections FROM batches WHERE batch_id = %s", (batch_id,))
+        row = cursor.fetchone()
+        if not row or not row[0]:
+            return []
+
+        # JSON keys are always strings — re-cast material_id back to int, as promote does.
+        stored = {int(k): v for k, v in json.loads(row[0]).items()}
+        now = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+
+        rows = []
+        for material_id, lot_list in stored.items():
+            for lot in lot_list:
+                db.execute(cursor, """
+                    SELECT rm.name, rm.unit, rml.lot_number, rml.cost_per_unit,
+                           CASE WHEN rml.status = 'active'
+                                 AND (rml.expiration_date IS NULL OR rml.expiration_date > %s)
+                                THEN 'active' ELSE 'unavailable' END
+                    FROM raw_materials rm
+                    LEFT JOIN raw_material_lots rml
+                           ON rml.lot_id = %s AND rml.material_id = rm.material_id
+                    WHERE rm.material_id = %s
+                """, (now, lot['lot_id'], material_id))
+                info = cursor.fetchone()
+                if not info:
+                    continue  # material itself was deleted — nothing meaningful to show
+                name, unit, lot_number, cost_per_unit, lot_status = info
+                if lot_number is None:
+                    lot_number, lot_status = f"Lot {lot['lot_id']}", 'missing'
+                rows.append((name, lot['qty'], unit, lot['lot_id'], lot_number,
+                             material_id, cost_per_unit, lot_status))
+
+        rows.sort(key=lambda r: (r[0] or '', r[4] or ''))
+        return rows
+
+    except Exception as e:
+        logging.error(f"Error getting planned lot selections for batch {batch_id}: {e}")
+        return []
+
+    finally:
+        db.close()
+
+
+def update_planned_lot_selections(batch_id, lot_selections):
+    """
+    Replaces the stored lot picks of a deferred Planned batch. Pass None/{} to clear them.
+
+    Only valid on a Planned + deduction_mode='deferred' batch: any other batch has already moved
+    stock, and its consumption is recorded in batch_materials — editing it there (adjust_batch_material)
+    is what actually returns quantity to the lots.
+
+    Coverage is NOT enforced: a planned batch may deliberately under-reserve against stock that
+    hasn't arrived yet, and promotion falls back to FIFO for any material without picks.
+
+    Raises ValueError on an unknown batch, a non-deferred batch, or a lot that doesn't exist / isn't
+    active / is expired / doesn't belong to the material it's claimed under.
+    Returns True on success.
+    """
+    db = get_db_connection()
+    cursor = db.cursor()
+
+    try:
+        db.execute(cursor, "SELECT status, deduction_mode FROM batches WHERE batch_id = %s", (batch_id,))
+        row = cursor.fetchone()
+        if not row:
+            raise ValueError(f"Batch {batch_id} not found")
+        status, deduction_mode = row
+        if status != 'Planned' or deduction_mode != 'deferred':
+            raise ValueError(
+                f"Batch {batch_id} is not a deferred Planned batch (status={status}, "
+                f"deduction_mode={deduction_mode}) — its materials are already deducted."
+            )
+
+        if not lot_selections:
+            db.execute(cursor, "UPDATE batches SET planned_lot_selections = NULL WHERE batch_id = %s", (batch_id,))
+            db.commit()
+            log_action('planned_lots_updated', f"batch_id={batch_id}, cleared")
+            return True
+
+        now = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+        for material_id, lot_list in lot_selections.items():
+            for lot in lot_list:
+                qty = float(lot['qty'])
+                if qty <= 0:
+                    raise ValueError(f"Lot {lot['lot_id']} has a non-positive quantity")
+                # Same existence/active/expiry/ownership check promotion will run (see PASS 1) —
+                # fail here, where the user can fix it, rather than silently at the planned date.
+                db.execute(cursor, """
+                    SELECT 1 FROM raw_material_lots
+                    WHERE lot_id = %s AND material_id = %s AND status = 'active'
+                      AND (expiration_date IS NULL OR expiration_date > %s)
+                """, (lot['lot_id'], material_id, now))
+                if not cursor.fetchone():
+                    raise ValueError(f"Lot {lot['lot_id']} is not an active, unexpired lot of this material")
+
+        # JSON keys must be strings; promote_planned_batches re-casts them to int on read.
+        payload = json.dumps({str(k): v for k, v in lot_selections.items()})
+        db.execute(cursor, "UPDATE batches SET planned_lot_selections = %s WHERE batch_id = %s", (payload, batch_id))
+        if cursor.rowcount == 0:
+            raise ValueError(f"Batch {batch_id} not found during update")
+        db.commit()
+        log_action('planned_lots_updated', f"batch_id={batch_id}, materials={list(lot_selections)}")
+        return True
+
+    except ValueError:
+        db.rollback()
+        raise
+
+    except Exception as e:
+        logging.error(f"Error updating planned lot selections for batch {batch_id}: {e}")
+        db.rollback()
+        return False
+
+    finally:
+        db.close()
+
+
+def clear_planned_lot_selections(batch_id):
+    """
+    Drops the stored lot picks of a batch (no stock is touched — nothing was deducted).
+
+    Called when a deferred Planned batch's quantity changes: promotion validates each material's
+    stored per-lot sum against quantity_needed * quantity, so picks made for the old quantity would
+    strand the batch as Planned with a "don't match required" promotion_failure_reason. Clearing
+    them means the user re-picks, or FIFO covers it at the planned date.
+    """
+    db = get_db_connection()
+    cursor = db.cursor()
+    try:
+        db.execute(cursor, "UPDATE batches SET planned_lot_selections = NULL WHERE batch_id = %s", (batch_id,))
+        db.commit()
+        return True
+    except Exception as e:
+        logging.error(f"Error clearing planned lot selections for batch {batch_id}: {e}")
+        db.rollback()
+        return False
     finally:
         db.close()
 

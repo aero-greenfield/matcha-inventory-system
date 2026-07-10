@@ -207,20 +207,13 @@ document.querySelectorAll('.expandable-row').forEach(function (row) {
         if (!container || container.dataset.loaded) return;
         container.dataset.loaded = 'true';
         var body = container.querySelector('.materials-body');
+        // CHANGED: planned-deduction-mode feature — response is now {materials, planned, fifo};
+        // renderBatchMaterials (static/js/batch_materials.js) captions a deferred Planned batch's
+        // rows as reserved-but-not-yet-deducted instead of showing "No materials recorded".
         fetch('/batches/' + container.dataset.batchId + '/materials')
             .then(function (r) { return r.json(); })
-            .then(function (materials) {
-                if (!materials.length) {
-                    body.innerHTML = '<em>No materials recorded for this batch.</em>';
-                    return;
-                }
-                var html = '<table class="materials-inner-table"><thead><tr><th>Material</th><th>Lot #</th><th>Quantity Used</th><th>Unit</th><th>Cost/Unit</th></tr></thead><tbody>';
-                materials.forEach(function (m) {
-                    var cpu = (m.cost_per_unit != null && m.cost_per_unit > 0) ? '$' + parseFloat(m.cost_per_unit).toFixed(2) : '—';
-                    html += '<tr><td>' + m.material_name + '</td><td>' + m.lot_number + '</td><td>' + m.quantity_used + '</td><td>' + m.unit + '</td><td>' + cpu + '</td></tr>';
-                });
-                html += '</tbody></table>';
-                body.innerHTML = html;
+            .then(function (data) {
+                body.innerHTML = renderBatchMaterials(data);
             })
             .catch(function () {
                 body.innerHTML = '<em>Failed to load materials.</em>';

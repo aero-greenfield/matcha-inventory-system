@@ -804,6 +804,88 @@ h1 {
    Uses the tokenized "low" (amber) palette to signal an in-between/attention state. */
 .badge-partial  { background: var(--badge-low-bg); color: var(--badge-low-text); }
 
+/* planned-deduction-mode feature — has a Planned batch's stock moved yet?
+   Deducted = settled (green, same palette as "in stock"); Not yet deducted = pending, worth a
+   glance (amber "low" palette). Tokenized on purpose: no new literals. */
+.badge-deducted { background: var(--badge-in-stock-bg); color: var(--badge-in-stock-text); }
+.badge-deferred { background: var(--badge-low-bg);      color: var(--badge-low-text); }
+
+/* Caption above a materials drawer whose rows are reservations, not deductions. */
+.materials-caption {
+    font-size: 12px;
+    color: var(--text-muted);
+    margin-bottom: 8px;
+}
+
+/* ================================================
+   Switch — a compact binary toggle (one line tall)
+   ================================================ */
+
+/* The whole row is the <label>, so the click target is the full width of the text + track,
+   not just the 20px knob (warehouse hands, not mice). */
+.switch-row {
+    display: inline-flex;
+    align-items: center;
+    gap: 10px;
+    cursor: pointer;
+    font-weight: 400;
+    user-select: none;
+}
+
+/* FIX: .form-group label (style.css:491) sets display:block at higher specificity than the single
+   class above, so it was winning the cascade and collapsing this row to a block box. That let
+   .switch-track — a plain <span>, display:inline by default — ignore its width/height (inline
+   non-replaced boxes don't size from those properties), so the track pill vanished and the
+   absolutely-positioned knob rendered as a stray circle wherever the now-zero-size track landed,
+   on top of the label text. Reassert display here at higher specificity than that rule. */
+.form-group label.switch-row {
+    display: inline-flex;
+}
+
+/* Visually hidden, not display:none — it must stay focusable and reachable by keyboard. */
+.switch-input {
+    position: absolute;
+    opacity: 0;
+    width: 0;
+    height: 0;
+}
+
+.switch-track {
+    position: relative;
+    /* FIX: explicit display, not just `flex: none` — a flex ITEM is blockified automatically, but
+       that only helps while the parent really is a flex container. Setting it directly means the
+       track still sizes correctly even if that assumption breaks again. */
+    display: inline-block;
+    flex: none;
+    width: 36px;
+    height: 20px;
+    border-radius: 10px;
+    background: var(--border-input);
+    transition: background .15s ease;
+}
+
+.switch-knob {
+    position: absolute;
+    top: 2px;
+    left: 2px;
+    width: 16px;
+    height: 16px;
+    border-radius: 50%;
+    /* CHANGED: was var(--card-bg) (white) — blended into the page, and combined with the layout
+       bug above, read as a stray white dot floating over the label text. --text is already used
+       everywhere for body copy, and reads clearly against both the off (gray) and on (green) track. */
+    background: var(--text);
+    box-shadow: 0 1px 2px rgba(0, 0, 0, .18);
+    transition: transform .15s ease;
+}
+
+.switch-input:checked + .switch-track { background: var(--accent); }
+.switch-input:checked + .switch-track .switch-knob { transform: translateX(16px); }
+
+.switch-input:focus-visible + .switch-track { box-shadow: var(--focus-ring); }
+
+.switch-label { font-size: 13px; color: var(--text); }
+
 /* ================================================
    Tab bar — status tabs on batches page
    ================================================ */
