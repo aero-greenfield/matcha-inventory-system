@@ -3,7 +3,7 @@
 from database import get_db_connection
 import pandas as pd
 import logging
-from datetime import datetime
+from config import business_now  # lot-expiration check in check_negative_stock — see config.py
 
 # ADDED: component-material-on-recipe feature — creating a Component (mix) recipe now
 #        pre-creates its house-made raw_material (stock 0) so a finished recipe can reference
@@ -189,7 +189,7 @@ def check_negative_stock(product_name, quantity):
     db = get_db_connection()
     cursor = db.cursor()
     try:
-        date_now = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+        date_now = business_now().strftime('%Y-%m-%d %H:%M:%S')  # CHANGED: server-timezone-vs-business-timezone fix
         # ADDED: single GROUP BY query replacing N per-material SUM queries
         db.execute(cursor, f"""
             SELECT material_id, COALESCE(SUM(quantity), 0)

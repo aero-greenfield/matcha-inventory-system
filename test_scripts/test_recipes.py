@@ -59,6 +59,25 @@ def test_check_negative_stock_flags_shortfall(make_material, make_lot, make_reci
     assert row["resulting_stock"] == -15
 
 
+# --- server-timezone-vs-business-timezone fix -----------------------------------------
+def test_check_negative_stock_counts_lot_expiring_pacific_tomorrow_during_utc_evening(
+    freeze_business_time, make_material, make_lot, make_recipe
+):
+    # Render runs UTC; Botaniks runs Pacific. Frozen instant: 2026-01-02 06:00 UTC =
+    # 2026-01-01 22:00 PST — Pacific's evening of Jan 1, but UTC's calendar date has already
+    # rolled to Jan 2. A lot expiring on Pacific's actual tomorrow (Jan 2) must still count as
+    # available stock here: it was being excluded a day early whenever "now" came from the
+    # server's UTC clock instead of Botaniks' actual Pacific evening.
+    from datetime import datetime
+    from zoneinfo import ZoneInfo
+    freeze_business_time(datetime(2026, 1, 2, 6, 0, 0, tzinfo=ZoneInfo("UTC")))
+
+    mid = make_material("Matcha")
+    make_lot(mid, 100, expiry_date="2026-01-02")
+    make_recipe("Latte", [{"material_name": "Matcha", "quantity_needed": 10}])
+    assert check_negative_stock("Latte", 1) == []  # need 10, have 100 -> no shortfall
+
+
 def test_check_negative_stock_empty_when_sufficient(make_material, make_lot, make_recipe):
     mid = make_material("Matcha")
     make_lot(mid, 100)

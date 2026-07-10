@@ -97,6 +97,26 @@ def test_stock_is_summed_from_active_non_expired_lots(make_material, make_lot):
     assert row["stock_level"] == 150
 
 
+# --- server-timezone-vs-business-timezone fix -----------------------------------------
+def test_stock_level_counts_lot_expiring_pacific_tomorrow_during_utc_evening_rollover(
+    freeze_business_time, make_material, make_lot
+):
+    # Render runs UTC; Botaniks runs Pacific. Frozen instant: 2026-01-02 06:00 UTC =
+    # 2026-01-01 22:00 PST — Pacific's evening of Jan 1, but UTC's calendar date has already
+    # rolled to Jan 2. A lot expiring on Pacific's actual tomorrow (Jan 2) must still count toward
+    # stock_level: it was being excluded a day early whenever "now" came from the server's UTC
+    # clock instead of Botaniks' actual Pacific evening.
+    from datetime import datetime
+    from zoneinfo import ZoneInfo
+    freeze_business_time(datetime(2026, 1, 2, 6, 0, 0, tzinfo=ZoneInfo("UTC")))
+
+    mid = make_material("Matcha")
+    make_lot(mid, 100, expiry_date="2026-01-02")
+    df, _ = get_all_materials(page=None)
+    row = df[df["material_id"] == mid].iloc[0]
+    assert row["stock_level"] == 100
+
+
 def test_material_with_no_lots_reports_zero_stock(make_material):
     # Regression: a material with no active lots must report stock_level 0, not NULL — a NULL
     # slips past both the `== 0` and `<= reorder` checks and falsely renders "In Stock".

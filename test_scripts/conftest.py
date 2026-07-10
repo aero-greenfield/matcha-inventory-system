@@ -19,6 +19,7 @@ import os
 import sys
 import base64
 import tempfile
+from datetime import datetime
 
 # --- env must be set before importing the app/services (see module docstring) ---------
 _TEST_USER = "testuser"
@@ -173,3 +174,30 @@ def client():
     limiter.enabled = False
     with app.test_client() as c:
         yield c
+
+
+# --- server-timezone-vs-business-timezone fix ------------------------------------------
+# config.business_today()/business_now() are what every planned-batch and lot-expiration date
+# check now goes through instead of bare datetime.now(). Both call `datetime.now(tz)` using the
+# `datetime` name bound in config.py's own module globals — since `from config import
+# business_today` only imports the function object (not a copy), patching config.datetime here
+# freezes the clock for every caller across the app (app.py, services/*), regardless of which
+# module imported the function.
+@pytest.fixture
+def freeze_business_time(monkeypatch):
+    """Freeze the business-timezone clock to a specific UTC instant.
+
+    Usage: freeze_business_time(datetime(2026, 1, 2, 6, 0, 0, tzinfo=ZoneInfo("UTC")))
+    Pick a UTC instant deliberately near the Pacific day boundary to exercise the bug this
+    fixture exists to catch: business_today() must return Pacific's day, not UTC's.
+    """
+    import config
+
+    def _freeze(utc_instant):
+        class _Frozen(datetime):
+            @classmethod
+            def now(cls, tz=None):
+                return utc_instant.astimezone(tz) if tz else utc_instant
+        monkeypatch.setattr(config, "datetime", _Frozen)
+
+    return _freeze

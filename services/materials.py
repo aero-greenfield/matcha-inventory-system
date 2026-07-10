@@ -2,8 +2,8 @@
 #        actually used by the functions in this file are kept here.
 from database import get_db_connection
 import pandas as pd
-from datetime import datetime
 import logging
+from config import business_today  # lot-expiration checks — see config.py
 
 
 
@@ -81,7 +81,8 @@ def get_all_materials(page=None, per_page=50, sort_by=None, sort_dir='asc'):
     db = get_db_connection()
     cursor = db.cursor()
     try:
-        now = datetime.now().date().isoformat()  # TEXT column — pass ISO string so PostgreSQL doesn't see TEXT > timestamp
+        # CHANGED: server-timezone-vs-business-timezone fix — was datetime.now().date().isoformat().
+        now = business_today().isoformat()  # TEXT column — pass ISO string so PostgreSQL doesn't see TEXT > timestamp
         # CHANGED: organic feature — surface is_edible/is_organic so the manage-materials
         #          page can display and inline-toggle them.
         # ADDED: cost-of-material feature — total_cost column added to columns list.
@@ -149,7 +150,7 @@ def get_low_stock_materials():
     db = get_db_connection()
     cursor = db.cursor()
     try:
-        now = datetime.now().date().isoformat()
+        now = business_today().isoformat()  # CHANGED: server-timezone-vs-business-timezone fix
         columns = ['material_id', 'name', 'category', 'stock_level', 'unit', 'reorder_level']
         db.execute(cursor, """
             SELECT rm.material_id, rm.name, rm.category,

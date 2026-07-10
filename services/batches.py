@@ -4,6 +4,7 @@ from database import get_db_connection
 import pandas as pd
 from datetime import datetime
 import logging
+from config import business_today, business_now  # calendar-day-boundary checks — see config.py
 import time
 import json
 
@@ -277,7 +278,7 @@ def add_to_batches(product_name, quantity, notes=None, batch_number=None, deduct
                     FROM raw_material_lots
                     WHERE lot_id = %s AND material_id = %s AND status = 'active' AND (expiration_date IS NULL OR expiration_date > %s)
 
-                        """, (lot_id, material_id, datetime.now().strftime('%Y-%m-%d %H:%M:%S')))
+                        """, (lot_id, material_id, business_now().strftime('%Y-%m-%d %H:%M:%S')))  # CHANGED: server-timezone-vs-business-timezone fix
                     lot_row = cursor.fetchone() # we got our raw lot data
 
                     #existance validation
@@ -1007,7 +1008,12 @@ def promote_planned_batches():
     # is locked" and audit.py swallows the error — which is why no promotion was ever audited.
     promoted = []
     try:
-        now = datetime.now().strftime('%Y-%m-%d')
+        # CHANGED: server-timezone-vs-business-timezone fix — was datetime.now().strftime(...), the
+        # server's own UTC clock on Render. Botaniks runs Pacific: for several hours every evening
+        # the server's UTC calendar date is already a day ahead, so a batch planned for Pacific
+        # "tomorrow" was already <= the server's UTC "today" and got promoted immediately. Also
+        # feeds the PASS-1/FIFO lot-expiration checks below via this same variable.
+        now = business_today().strftime('%Y-%m-%d')
         overdue = _fetch_overdue(db, cursor, now)
 
         for batch_id, batch_number, product_name, quantity, batch_type, planned_completion_date, planned_lot_selections_json, deduction_mode in overdue:
@@ -1346,7 +1352,7 @@ def get_planned_lot_selections(batch_id):
 
         # JSON keys are always strings — re-cast material_id back to int, as promote does.
         stored = {int(k): v for k, v in json.loads(row[0]).items()}
-        now = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+        now = business_now().strftime('%Y-%m-%d %H:%M:%S')  # CHANGED: server-timezone-vs-business-timezone fix
 
         rows = []
         for material_id, lot_list in stored.items():
@@ -1417,7 +1423,7 @@ def update_planned_lot_selections(batch_id, lot_selections):
             log_action('planned_lots_updated', f"batch_id={batch_id}, cleared")
             return True
 
-        now = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+        now = business_now().strftime('%Y-%m-%d %H:%M:%S')  # CHANGED: server-timezone-vs-business-timezone fix
         for material_id, lot_list in lot_selections.items():
             for lot in lot_list:
                 qty = float(lot['qty'])

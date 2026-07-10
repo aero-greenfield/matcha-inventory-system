@@ -6,6 +6,11 @@
 pandas==2.3.3
 tabulate==0.9.0
 
+# IANA timezone database for zoneinfo (config.py's business_today()/business_now()). Linux
+# containers usually ship a system tz database and Windows never does — pin explicitly so
+# BUSINESS_TZ can't silently break depending on the host.
+tzdata==2025.3
+
 # Database (PostgreSQL for cloud)
 psycopg2-binary==2.9.11
 

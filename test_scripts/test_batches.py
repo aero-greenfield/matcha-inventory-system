@@ -37,6 +37,30 @@ def _batch_status(db, batch_id):
 
 
 # --- standard immediate deduction ----------------------------------------------------
+# --- server-timezone-vs-business-timezone fix -----------------------------------------
+def test_immediate_deduction_accepts_lot_expiring_pacific_tomorrow_during_utc_evening(
+    freeze_business_time, make_material, make_lot, make_recipe, db
+):
+    # Render runs UTC; Botaniks runs Pacific. Frozen instant: 2026-01-02 06:00 UTC =
+    # 2026-01-01 22:00 PST — Pacific's evening of Jan 1, but UTC's calendar date has already
+    # rolled to Jan 2. add_to_batches' per-lot expiry check must still accept a lot expiring on
+    # Pacific's actual tomorrow (Jan 2): it was being rejected as already-expired a day early
+    # whenever "now" came from the server's UTC clock instead of Botaniks' actual Pacific evening.
+    from datetime import datetime
+    from zoneinfo import ZoneInfo
+    freeze_business_time(datetime(2026, 1, 2, 6, 0, 0, tzinfo=ZoneInfo("UTC")))
+
+    mid = make_material("Matcha")
+    lid = make_lot(mid, 100, expiry_date="2026-01-02")
+    make_recipe("Latte", [{"material_name": "Matcha", "quantity_needed": 10}])
+    # Before the fix this raised ValueError("Lot ID ... not found or is not active/expired.") —
+    # the lot looked expired a day early because the check used the server's UTC "now".
+    bid = add_to_batches("Latte", 1, batch_number="TZLOT1",
+                         lot_selections={mid: [{"lot_id": lid, "qty": 10}]})
+    assert isinstance(bid, int)
+    assert _lot_qty(db, lid)[0] == 90
+
+
 def test_standard_batch_deducts_from_lot(make_material, make_lot, make_recipe, db):
     mid = make_material("Matcha")
     lid = make_lot(mid, 100)

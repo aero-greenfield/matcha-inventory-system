@@ -2,8 +2,8 @@
 #        actually used by the functions in this file are kept here.
 from database import get_db_connection
 import pandas as pd
-from datetime import datetime
 import logging
+from config import business_now  # lot-expiration checks — see config.py
 
 _LOT_UPDATABLE_COLS = frozenset({"lot_number", "quantity", "received_date", "expiration_date",
                                   "location", "supplier", "cost_per_unit", "status"})
@@ -46,7 +46,7 @@ def get_lots_for_material(material_id):
     db = get_db_connection()
     cursor = db.cursor()
     try:
-        date_now = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+        date_now = business_now().strftime('%Y-%m-%d %H:%M:%S')  # CHANGED: server-timezone-vs-business-timezone fix
 
         db.execute(cursor,"""
         SELECT rm_lot.lot_id, rm.name AS material_name, rm_lot.lot_number, rm_lot.quantity, rm_lot.received_date, rm_lot.status, rm_lot.expiration_date
@@ -127,7 +127,7 @@ def get_active_lots_for_materials(material_ids):
     db = get_db_connection()
     cursor = db.cursor()
     try:
-        date_now = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+        date_now = business_now().strftime('%Y-%m-%d %H:%M:%S')  # CHANGED: server-timezone-vs-business-timezone fix
         # ADDED: build the IN-list placeholders dynamically. These are %s placeholders
         #        (rewritten to ? for SQLite by db.execute), never interpolated values.
         placeholders = ', '.join(['%s'] * len(material_ids))
@@ -173,7 +173,7 @@ def get_material_stock_from_lots(material_id):
     db = get_db_connection()
     cursor = db.cursor()
     try:
-        date_now = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+        date_now = business_now().strftime('%Y-%m-%d %H:%M:%S')  # CHANGED: server-timezone-vs-business-timezone fix
         db.execute(cursor, """
         SELECT SUM(quantity) FROM raw_material_lots
         WHERE material_id = %s AND status = 'active' AND (expiration_date IS NULL OR expiration_date > %s)

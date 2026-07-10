@@ -27,6 +27,7 @@ import os  # Operating system functions (file paths, environment variables)
 import math  # ADDED: math.ceil for computing total_pages in paginated routes
 from decimal import Decimal, ROUND_HALF_UP, InvalidOperation  # ADDED: Decimal-based display formatting (kills float spew, keeps precision)
 from datetime import datetime  # For timestamps in exports
+from config import business_today  # planned-batch date checks — never bare datetime.now(), see config.py
 
 from flask_wtf.csrf import CSRFProtect # security necesity. 
 
@@ -1540,7 +1541,11 @@ def create_batch():
         if planned_completion_date:
             try:
                 pcd = datetime.strptime(planned_completion_date, '%Y-%m-%d') #valid date
-                if pcd.date() < datetime.now().date(): # planned date can be today or later, just not the past
+                # CHANGED: server-timezone-vs-business-timezone fix — was datetime.now().date(),
+                # the server's own clock (UTC on Render). Botaniks runs Pacific; comparing against
+                # UTC rejected a Pacific "today" as being in the past for several hours every
+                # evening. business_today() is the calendar day Botaniks is actually in.
+                if pcd.date() < business_today(): # planned date can be today or later, just not the past
                     return render_template('error.html',
                         title="Invalid Input",
                         message="Planned completion date cannot be in the past.",
@@ -1595,7 +1600,8 @@ def create_batch():
         # an immediate batch. Future-dated plans are intentionally exempt: they exist to reserve
         # production against stock that hasn't arrived yet. (pcd was parsed above when the date is set;
         # bool(...) short-circuits so pcd is never read when planned_completion_date is blank.)
-        planned_today = bool(planned_completion_date) and pcd.date() == datetime.now().date()
+        # CHANGED: server-timezone-vs-business-timezone fix — was datetime.now().date().
+        planned_today = bool(planned_completion_date) and pcd.date() == business_today()
         # Gated off: the override can never be true while ALLOW_NEGATIVE_STOCK_OVERRIDE is False,
         # so add_to_batches always runs with allow_negative=False (its per-lot check is the backstop).
         confirm_negative = ALLOW_NEGATIVE_STOCK_OVERRIDE and request.form.get('confirm_negative') == '1'
@@ -1956,7 +1962,8 @@ def change_batch_status(batch_id):
             return redirect(url_for('edit_batch', batch_id=batch_id))
         try:
             pcd = datetime.strptime(planned_completion_date, '%Y-%m-%d')
-            if pcd.date() < datetime.now().date():
+            # CHANGED: server-timezone-vs-business-timezone fix — was datetime.now().date().
+            if pcd.date() < business_today():
                 flash('Planned completion date cannot be in the past', 'error')
                 return redirect(url_for('edit_batch', batch_id=batch_id))
         except ValueError:

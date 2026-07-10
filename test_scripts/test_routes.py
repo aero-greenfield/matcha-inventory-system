@@ -15,7 +15,9 @@ from services.materials import get_material_id, get_raw_material
 from services.lots import get_material_stock_from_lots
 from services.batches import (
     add_to_batches, get_batches, get_batches_planned, get_planned_lot_selections,
+    promote_planned_batches, get_batch_by_id,
 )
+from zoneinfo import ZoneInfo
 
 
 def _mix_output_lot(db, material_name):
@@ -430,3 +432,53 @@ def test_quantity_change_clears_reserved_lots(client, auth, make_material, make_
     assert resp.status_code == 200
     assert get_planned_lot_selections(bid) == []
     assert b"lot selections were cleared" in resp.data
+
+
+# --- server-timezone-vs-business-timezone fix -----------------------------------------
+# Reproduces the two exact production bugs reported: Render runs UTC, Botaniks runs Pacific.
+# Frozen instant throughout: 2026-01-02 06:00 UTC = 2026-01-01 22:00 PST (Pacific is UTC-8 in
+# January, no DST) — Pacific's evening of Jan 1, but UTC has already rolled over to Jan 2.
+_FROZEN_UTC_EVENING = datetime(2026, 1, 2, 6, 0, 0, tzinfo=ZoneInfo("UTC"))
+_PACIFIC_TODAY = "2026-01-01"
+_PACIFIC_TOMORROW = "2026-01-02"
+
+
+def test_planned_date_of_today_is_not_rejected_as_past(client, auth, freeze_business_time,
+                                                        make_material, make_lot, make_recipe):
+    # Bug 1: submitting Pacific's actual "today" was rejected with "cannot be in the past",
+    # because it was compared against the server's UTC date, already one day ahead in the evening.
+    freeze_business_time(_FROZEN_UTC_EVENING)
+    mid = make_material("Matcha")
+    lid = make_lot(mid, 100)
+    make_recipe("Latte", [{"material_name": "Matcha", "quantity_needed": 10}], batch_type="finished")
+    resp = client.post("/create-batch", headers=auth, data={
+        "product_name": "Latte", "batch_number": "TZ1", "quantity": "1",
+        "planned_completion_date": _PACIFIC_TODAY, "deduction_mode": "deferred",
+        "lot_selection": json.dumps({str(mid): [{"lot_id": lid, "qty": 10}]}),
+    }, follow_redirects=False)
+    assert resp.status_code == 302  # was 400 "cannot be in the past" before the fix
+    assert get_batches_planned(page=1, per_page=50)[1] == 1
+
+
+def test_planned_date_of_tomorrow_does_not_auto_promote(client, auth, freeze_business_time,
+                                                         make_material, make_lot, make_recipe):
+    # Bug 2 (the big one): submitting Pacific's actual "tomorrow" got promoted to Ready
+    # immediately, because that date already equalled the server's UTC "today".
+    freeze_business_time(_FROZEN_UTC_EVENING)
+    mid = make_material("Matcha")
+    lid = make_lot(mid, 100)
+    make_recipe("Latte", [{"material_name": "Matcha", "quantity_needed": 10}], batch_type="finished")
+    resp = client.post("/create-batch", headers=auth, data={
+        "product_name": "Latte", "batch_number": "TZ2", "quantity": "1",
+        "planned_completion_date": _PACIFIC_TOMORROW, "deduction_mode": "deferred",
+        "lot_selection": json.dumps({str(mid): [{"lot_id": lid, "qty": 10}]}),
+    }, follow_redirects=False)
+    assert resp.status_code == 302
+
+    batch_id = get_batches_planned(page=1, per_page=50)[0].iloc[0]["batch_id"]
+    promote_planned_batches()  # must NOT promote — Pacific's "today" is still one day short
+    batch = get_batch_by_id(int(batch_id))
+    assert batch[4] == "Planned"  # was "Ready" before the fix
+    # and the lot must be untouched — nothing should have been deducted
+    cur_db = get_material_stock_from_lots(mid)
+    assert cur_db == 100

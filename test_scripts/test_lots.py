@@ -38,6 +38,24 @@ def test_stock_from_lots_zero_when_none(make_material):
     assert get_material_stock_from_lots(mid) == 0.0
 
 
+# --- server-timezone-vs-business-timezone fix -----------------------------------------
+def test_lot_expiring_pacific_tomorrow_still_active_during_utc_evening_rollover(
+    freeze_business_time, make_material, make_lot
+):
+    # Render runs UTC; Botaniks runs Pacific. Frozen instant: 2026-01-02 06:00 UTC =
+    # 2026-01-01 22:00 PST — Pacific's evening of Jan 1, but UTC's calendar date has already
+    # rolled to Jan 2. A lot expiring on Pacific's actual tomorrow (Jan 2) must still count as
+    # active: it was being read as already-expired a day early whenever "now" was computed from
+    # the server's UTC clock instead of Botaniks' actual Pacific evening.
+    from datetime import datetime
+    from zoneinfo import ZoneInfo
+    freeze_business_time(datetime(2026, 1, 2, 6, 0, 0, tzinfo=ZoneInfo("UTC")))
+
+    mid = make_material("Matcha")
+    make_lot(mid, 40, expiry_date="2026-01-02")
+    assert get_material_stock_from_lots(mid) == 40
+
+
 def test_active_lots_are_fifo_ordered(make_material, make_lot):
     mid = make_material("Matcha")
     make_lot(mid, 10, received_date="2024-03-01", lot_number="NEW")
