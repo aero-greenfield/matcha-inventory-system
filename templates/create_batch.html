@@ -24,12 +24,25 @@
             <label for="expiration_date">Expiration Date <span style="color:#888">(optional)</span></label>
             <input type="date" id="expiration_date" name="expiration_date" value="">
         </div>
-        {# The Planned Completion Date applies to Finished and Component batches (both defer
-           their deduction to promotion time), so it's hidden until such a recipe is selected. #}
+        {# The Planned Completion Date applies to Finished and Component batches, so it's hidden
+           until such a recipe is selected. #}
         <div class="form-group" id="planned-date-group" style="max-width:300px;display:none;">
             <label for="planned_completion_date">Planned Completion Date <span style="color:#888">(optional — creates a Planned batch)</span></label>
             <input type="date" id="planned_completion_date" name="planned_completion_date" value="">
             <small style="color:var(--text-muted);display:block;margin-top:4px;">If set, the batch will be created with Planned status and transition to Ready automatically on this date.</small>
+        </div>
+        {# planned-deduction-mode feature — only shown once a planned date is set, because it is the
+           only case where "when do materials leave stock?" is an open question. The label says what
+           happens to the materials, not "immediate/deferred" — the person entering a batch on the
+           warehouse floor should not have to decode the internal term.
+           OFF (default) submits nothing, and app.py falls through to 'immediate'. #}
+        <div class="form-group" id="deduction-mode-group" style="max-width:420px;display:none;">
+            <label class="switch-row" for="defer-toggle">
+                <input type="checkbox" class="switch-input" id="defer-toggle" name="deduction_mode" value="deferred">
+                <span class="switch-track"><span class="switch-knob"></span></span>
+                <span class="switch-label">Defer deduction until completion date</span>
+            </label>
+            <small id="defer-hint" style="color:var(--text-muted);display:block;margin-top:4px;">Off — materials come off stock now.</small>
         </div>
         {# batch-type-on-recipe feature — the type is now read from the recipe, not chosen here.
            It's shown read-only once a product is selected. #}
@@ -58,6 +71,8 @@
 </div>
 
 <script src="{{ url_for('static', filename='js/autocomplete.js') }}"></script>
+{# planned-deduction-mode feature — shared with edit_batch.html's planned lot editor. #}
+<script src="{{ url_for('static', filename='js/lot_picker.js') }}"></script>
 <script>
 document.addEventListener('DOMContentLoaded', () => {
     attachAutocomplete(document.querySelector('[name="product_name"]'), fetchRecipes);
@@ -73,6 +88,33 @@ document.addEventListener('DOMContentLoaded', () => {
     var plannedGroup = document.getElementById('planned-date-group');
     var plannedInput = document.getElementById('planned_completion_date');
     var mixWarning = document.getElementById('mix-stock-warning');
+    // planned-deduction-mode feature — the toggle only exists for a Planned finished/mix batch.
+    var deductionGroup = document.getElementById('deduction-mode-group');
+    var deferToggle = document.getElementById('defer-toggle');
+    var deferHint = document.getElementById('defer-hint');
+
+    function isDeferredSelected() {
+        return !!(plannedInput.value.trim() && deferToggle.checked);
+    }
+
+    // Spell out the consequence of the current position, so nobody has to infer it from the switch.
+    function updateDeferHint() {
+        deferHint.textContent = deferToggle.checked
+            ? 'On — lots are reserved now and deducted on the planned date. Use when stock hasn\'t arrived yet.'
+            : 'Off — materials come off stock now.';
+    }
+    deferToggle.addEventListener('change', updateDeferHint);
+
+    // Reveal the toggle only when a planned date is present; force it off when it isn't, so a
+    // cleared date can never leave a stale 'deferred' value on the form.
+    function syncDeductionMode() {
+        var planned = !!plannedInput.value.trim() && plannedGroup.style.display !== 'none';
+        deductionGroup.style.display = planned ? '' : 'none';
+        if (!planned) deferToggle.checked = false;
+        updateDeferHint();
+    }
+    plannedInput.addEventListener('change', syncDeductionMode);
+    plannedInput.addEventListener('input', syncDeductionMode);
 
     function applyBatchType(batchType) {
         var isFinished = batchType === 'finished';
@@ -84,12 +126,13 @@ document.addEventListener('DOMContentLoaded', () => {
         } else {
             typeDisplay.textContent = 'Select a product to see its type.';
         }
-        // Both Finished and Component batches can be Planned (deferred): inputs deduct and,
-        // for Component, the house-made lot is created at promotion time.
+        // Both Finished and Component batches can be Planned. A Planned Component creates its
+        // house-made lot at promotion time in either deduction mode.
         var canPlan = isFinished || isComponent;
         plannedGroup.style.display = canPlan ? '' : 'none';
         if (!canPlan) plannedInput.value = '';
         mixWarning.style.display = isFinished ? 'block' : 'none';
+        syncDeductionMode();
     }
 
     function loadProductUnit() {
@@ -129,198 +172,28 @@ document.addEventListener('DOMContentLoaded', () => {
                         .then(function(r) { return r.json(); })
                         .then(function(lots) { availableLots[m.material_id] = lots; });
                 });
-                Promise.all(fetches).then(function() { renderLotCards(qty); });
+                // CHANGED: planned-deduction-mode feature — the card-building code moved to
+                // static/js/lot_picker.js so edit_batch.html can reuse it for a planned batch.
+                Promise.all(fetches).then(function() {
+                    renderLotPicker(lotCards, recipeMaterials, availableLots, qty);
+                    lotArea.style.display = 'block';
+                });
             });
-    }
-
-    function renderLotCards(batchQty) {
-        lotCards.innerHTML = '';
-        recipeMaterials.forEach(function(mat) {
-            // CHANGED: lot-selection-unit fix — recipe amounts and lot quantities are STORED in
-            // the base unit (grams for mass), but we DISPLAY and accept input in the unit the
-            // recipe line was entered in (display_unit, e.g. lb). factor = grams per 1 display
-            // unit. All math below stays in display units so coverage reads as "176 vs 176";
-            // the submit handler multiplies back by factor to send grams (backend unchanged).
-            var factor = mat.base_per_display || 1;
-            var required = mat.quantity_needed * batchQty / factor;
-            var unit = mat.display_unit ? (' ' + mat.display_unit) : '';
-            var lots = availableLots[mat.material_id] || [];
-            // map lot_id -> available quantity (in display units), for auto-fill
-            var lotAvail = {};
-            lots.forEach(function(l) { lotAvail[l.lot_id] = l.quantity / factor; });
-            var card = document.createElement('div');
-            card.style.cssText = 'border:1px solid var(--border);border-radius:8px;padding:12px 14px;margin-bottom:10px;';
-            card.dataset.materialId = mat.material_id;
-            card.dataset.required = required;  // used by the submit-time coverage check (display units)
-            card.dataset.factor = factor;      // used to convert entered display-unit qty -> grams on submit
-            var optHtml = '<option value="">-- select lot --</option>';
-            lots.forEach(function(l) {
-                optHtml += '<option value="' + l.lot_id + '">' + l.lot_number + ' (' + (l.quantity / factor).toFixed(2) + unit + ' avail)</option>';
-            });
-            card.innerHTML =
-                '<div style="font-weight:600;font-size:13px;margin-bottom:6px;">' + mat.material_name +
-                ' <span style="font-weight:400;color:var(--text-muted);">— need ' + required.toFixed(2) + unit + '</span>' +
-                ' <span class="lot-remaining" style="font-weight:400;font-size:12px;margin-left:6px;"></span></div>' +
-                '<div class="lot-rows"></div>' +
-                '<button type="button" class="add-lot-btn" style="margin-top:6px;font-size:12px;padding:4px 10px;border:1px dashed var(--border);border-radius:5px;background:transparent;cursor:pointer;">+ Add lot</button>' +
-                '<div class="lot-error" style="color:#dc2626;font-size:12px;margin-top:4px;display:none;"></div>';
-            var remainingEl = card.querySelector('.lot-remaining');
-
-            // sum of quantities entered in all rows except (optionally) one to exclude
-            function sumEntered(excludeInput) {
-                var total = 0;
-                card.querySelectorAll('.lot-rows > div input[type="number"]').forEach(function(inp) {
-                    if (inp === excludeInput) return;
-                    var v = parseFloat(inp.value);
-                    if (v > 0) total += v;
-                });
-                return total;
-            }
-
-            function updateRemaining() {
-                var remaining = required - sumEntered(null);
-                if (Math.abs(remaining) <= 1e-6) {
-                    remainingEl.textContent = '✓ covered';
-                    remainingEl.style.color = '#16a34a';
-                } else if (remaining > 0) {
-                    remainingEl.textContent = 'remaining: ' + remaining.toFixed(2) + unit;
-                    remainingEl.style.color = 'var(--text-muted)';
-                } else {
-                    remainingEl.textContent = 'over by ' + Math.abs(remaining).toFixed(2) + unit;
-                    remainingEl.style.color = '#dc2626';
-                }
-            }
-
-            function addRow() {
-                var row = document.createElement('div');
-                row.style.cssText = 'display:flex;gap:8px;align-items:center;margin-bottom:4px;';
-                row.innerHTML =
-                    '<select style="flex:1;padding:5px 8px;border:1px solid var(--border);border-radius:5px;font-size:13px;">' + optHtml + '</select>' +
-                    '<input type="number" step="any" min="0.01" placeholder="qty" style="width:90px;padding:5px 8px;border:1px solid var(--border);border-radius:5px;font-size:13px;">' +
-                    '<button type="button" style="padding:4px 8px;border:1px solid var(--border);border-radius:5px;background:transparent;cursor:pointer;color:#dc2626;">×</button>';
-                var sel = row.querySelector('select');
-                var qtyInput = row.querySelector('input[type="number"]');
-
-                // Auto-fill the remaining needed amount when a lot is picked,
-                // capped at that lot's available quantity. Only overwrite empty
-                // or previously auto-filled inputs so hand-typed values are kept.
-                sel.addEventListener('change', function() {
-                    var lotId = parseInt(sel.value);
-                    if (!lotId) { updateRemaining(); return; }
-                    // Prevent the same lot being picked twice within this material card —
-                    // double-counting a lot would inflate the covered total.
-                    var dup = false;
-                    card.querySelectorAll('.lot-rows > div select').forEach(function(otherSel) {
-                        if (otherSel !== sel && parseInt(otherSel.value) === lotId) dup = true;
-                    });
-                    if (dup) {
-                        var dupErr = card.querySelector('.lot-error');
-                        dupErr.textContent = 'That lot is already selected for this material — pick a different lot.';
-                        dupErr.style.display = 'block';
-                        sel.value = '';
-                        qtyInput.value = '';
-                        qtyInput.dataset.autofilled = '';
-                        updateRemaining();
-                        return;
-                    }
-                    card.querySelector('.lot-error').style.display = 'none';
-                    if (qtyInput.value !== '' && qtyInput.dataset.autofilled !== '1') {
-                        updateRemaining();
-                        return;
-                    }
-                    var remaining = required - sumEntered(qtyInput);
-                    var avail = lotAvail[lotId] != null ? lotAvail[lotId] : remaining;
-                    var fill = Math.min(remaining, avail);
-                    if (fill < 0) fill = 0;
-                    qtyInput.value = fill > 0 ? fill : '';
-                    qtyInput.dataset.autofilled = '1';
-                    updateRemaining();
-                });
-
-                // A hand edit clears the auto-filled flag so we won't clobber it later.
-                qtyInput.addEventListener('input', function() {
-                    qtyInput.dataset.autofilled = '';
-                    updateRemaining();
-                });
-
-                row.querySelector('button').addEventListener('click', function() { row.remove(); updateRemaining(); });
-                card.querySelector('.lot-rows').appendChild(row);
-            }
-            addRow();
-            card.querySelector('.add-lot-btn').addEventListener('click', addRow);
-            lotCards.appendChild(card);
-            updateRemaining();
-        });
-        lotArea.style.display = 'block';
     }
 
     document.querySelector('form').addEventListener('submit', function(e) {
         if (!recipeMaterials.length) return;
-        // A Planned batch (completion date set) defers its deduction: lots are picked later via
-        // FIFO at promotion time, so lot selection is OPTIONAL here and we never block on coverage.
-        // (Planning exists precisely for when you don't have the stock yet.) For an immediate batch
-        // we require each material to be fully covered before allowing submit.
-        var isPlanned = !!(plannedInput.value && plannedInput.value.trim());
-        var selections = {};
-        var valid = true;
-        var anyIncomplete = false;
-        document.querySelectorAll('#lot-material-cards > div').forEach(function(card) {
-            var matId = card.dataset.materialId;
-            var required = parseFloat(card.dataset.required) || 0;  // display units
-            var factor = parseFloat(card.dataset.factor) || 1;       // grams per display unit
-            var errEl = card.querySelector('.lot-error');
-            var entries = [];
-            var seen = {};
-            var dup = false;
-            var total = 0;  // display units, for the coverage check
-            card.querySelectorAll('.lot-rows > div').forEach(function(row) {
-                var lotId = parseInt(row.querySelector('select').value);
-                var qty = parseFloat(row.querySelector('input[type="number"]').value);
-                if (lotId && qty > 0) {
-                    if (seen[lotId]) { dup = true; }
-                    seen[lotId] = true;
-                    total += qty;
-                    // Backend deducts in the base unit (grams), so convert the display-unit qty back.
-                    entries.push({lot_id: lotId, qty: qty * factor});
-                }
-            });
-            // Duplicate lots always make the selection invalid, planned or not.
-            if (dup) {
-                errEl.textContent = 'A lot is selected more than once for this material — remove the duplicate.';
-                errEl.style.display = 'block';
-                valid = false;
-                return;
-            }
-            if (isPlanned) {
-                // Optional: only send selections when this material is fully, validly covered;
-                // otherwise leave it out so promotion fills it FIFO. Never block.
-                errEl.style.display = 'none';
-                if (entries.length && total + 1e-6 >= required) {
-                    selections[matId] = entries;
-                } else {
-                    anyIncomplete = true;
-                }
-                return;
-            }
-            // Immediate batch: require at least one lot and full coverage.
-            if (!entries.length) {
-                errEl.textContent = 'Select at least one lot.';
-                errEl.style.display = 'block';
-                valid = false;
-            } else if (total + 1e-6 < required) {
-                errEl.textContent = 'Selected lots cover only ' + total.toFixed(2) + ' of ' + required.toFixed(2) +
-                    ' needed — cover the full amount before creating the batch.';
-                errEl.style.display = 'block';
-                valid = false;
-            } else {
-                errEl.style.display = 'none';
-                selections[matId] = entries;
-            }
-        });
-        if (!valid) { e.preventDefault(); return; }
-        // For a planned batch, only pass selections if EVERY material was fully specified;
+        // CHANGED: planned-deduction-mode feature — this used to key off "is there a planned date".
+        // Only a DEFERRED batch may leave lots unpicked: it deducts at promotion, falling back to
+        // FIFO, and planning exists precisely for when you don't have the stock yet. A planned batch
+        // that deducts NOW must fully cover the recipe here, exactly like a Ready batch.
+        var isDeferred = isDeferredSelected();
+        var result = collectLotSelections(lotCards, {optional: isDeferred});
+        if (!result.valid) { e.preventDefault(); return; }
+        var selections = result.selections;
+        // For a deferred batch, only pass selections if EVERY material was fully specified;
         // a partial set would fail the exact-match check at promotion, so fall back to all-FIFO.
-        if (isPlanned && anyIncomplete) selections = {};
+        if (isDeferred && result.anyIncomplete) selections = {};
         lotHidden.value = JSON.stringify(selections);
     });
 

@@ -46,6 +46,9 @@
     <input type="hidden" name="batch_number"             value="{{ form_data.batch_number }}">
     <input type="hidden" name="expiration_date"        value="{{ form_data.expiration_date }}">
     <input type="hidden" name="planned_completion_date" value="{{ form_data.planned_completion_date }}">
+    {# planned-deduction-mode feature — must round-trip, or the user's choice of when materials
+       leave stock silently reverts to "Deduct materials now" on the re-POST. #}
+    <input type="hidden" name="deduction_mode"         value="{{ form_data.deduction_mode }}">
     {# batch-type-on-recipe feature — type is re-resolved from the recipe on re-POST, so it no
        longer needs a hidden field here. #}
     <input type="hidden" name="confirm_negative"       value="1">

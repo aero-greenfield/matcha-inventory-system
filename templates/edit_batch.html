@@ -52,12 +52,15 @@
                 <label for="adjust-deductions-cb" style="font-weight:600;">Also adjust raw material deductions</label>
             </div>
             <div id="deduction-controls" style="display:none;">
+                {# CHANGED: planned-deduction-mode feature — these radios were named `deduction_mode`,
+                   which now means something entirely different (when a Planned batch's stock moves).
+                   Renamed to adjust_mode; the server never read this field, only the JS below does. #}
                 <div style="display:flex;gap:16px;margin-bottom:10px;">
                     <label style="cursor:pointer;font-size:13px;">
-                        <input type="radio" name="deduction_mode" value="proportional" checked> Proportional (auto-scale)
+                        <input type="radio" name="adjust_mode" value="proportional" checked> Proportional (auto-scale)
                     </label>
                     <label style="cursor:pointer;font-size:13px;">
-                        <input type="radio" name="deduction_mode" value="manual"> Manual
+                        <input type="radio" name="adjust_mode" value="manual"> Manual
                     </label>
                 </div>
                 <table style="width:100%;border-collapse:collapse;font-size:13px;">
@@ -99,11 +102,17 @@
     var lotNote = document.getElementById('lot-note');
     var lotSelectionsInput = document.getElementById('lot-selections-json');
 
+    // CHANGED: planned-deduction-mode feature — the endpoint returns {materials, planned, fifo} now.
+    // Skip this whole section for a deferred Planned batch: nothing was deducted, so there are no
+    // deductions to adjust. Its reserved lots are edited in the "Planned Lot Selection" card below.
+    var isDeferredPlanned = {{ 'true' if is_deferred_planned else 'false' }};
+
     // Fetch materials then fetch available lots for each
     fetch('/batches/' + batchId + '/materials')
         .then(function(r) { return r.json(); })
-        .then(function(data) {
-            if (!data.length) return;
+        .then(function(payload) {
+            var data = (payload && payload.materials) || [];
+            if (isDeferredPlanned || !data.length) return;
             materials = data;
             var fetches = data.map(function(m) {
                 return fetch('/api/available-lots/' + m.material_id)
@@ -214,12 +223,12 @@
     cb.addEventListener('change', function() {
         controls.style.display = this.checked ? '' : 'none';
         if (this.checked) {
-            var mode = document.querySelector('input[name="deduction_mode"]:checked').value;
+            var mode = document.querySelector('input[name="adjust_mode"]:checked').value;
             if (mode === 'proportional') applyProportional();
         }
     });
 
-    document.querySelectorAll('input[name="deduction_mode"]').forEach(function(radio) {
+    document.querySelectorAll('input[name="adjust_mode"]').forEach(function(radio) {
         radio.addEventListener('change', function() {
             if (this.value === 'proportional') applyProportional();
         });
@@ -227,7 +236,7 @@
 
     qtyInput.addEventListener('input', function() {
         if (!cb.checked) return;
-        var mode = document.querySelector('input[name="deduction_mode"]:checked').value;
+        var mode = document.querySelector('input[name="adjust_mode"]:checked').value;
         if (mode === 'proportional') applyProportional();
     });
 
@@ -267,6 +276,69 @@
     });
 })();
 </script>
+
+{# ADDED: planned-deduction-mode feature — a deferred Planned batch has no batch_materials rows to
+   adjust; it has RESERVED lots stored on the batch. Editing them here moves no stock, it only
+   rewrites what promotion will deduct on the completion date. #}
+{% if is_deferred_planned %}
+<div class="section-card">
+    <h2>Planned Lot Selection</h2>
+    <p style="color:var(--text-muted);font-size:13px;margin-bottom:12px;">
+        These lots are <strong style="color:var(--text);">reserved, not deducted</strong> — stock comes off them on
+        {{ batch[8] | fmt_date }}. Leave a material unpicked and the oldest lots (FIFO) will be used for it.
+    </p>
+    {% if planned_lots | selectattr('lot_status', 'ne', 'active') | list %}
+    <div class="alert alert-warning" style="margin-bottom:12px;">
+        A reserved lot is no longer available (used up or expired). Re-pick it, or this batch will fail to complete on its planned date.
+    </div>
+    {% endif %}
+    <form method="POST" action="/edit-batch/{{ batch[0] }}/planned-lots" id="planned-lots-form" autocomplete="off">
+        <div id="planned-lot-cards">Loading...</div>
+        <input type="hidden" id="planned_lot_selection" name="lot_selection" value="">
+        <button type="submit" class="btn btn-primary" style="margin-top:12px;">Save Lot Selection</button>
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    </form>
+</div>
+
+<script src="{{ url_for('static', filename='js/lot_picker.js') }}"></script>
+<script>
+(function() {
+    var cards = document.getElementById('planned-lot-cards');
+    var hidden = document.getElementById('planned_lot_selection');
+    var productName = {{ batch[1] | tojson }};
+    var batchQty = parseFloat('{{ batch[2] }}') || 0;
+    // Existing picks, in BASE units — the same shape promote_planned_batches replays.
+    var prefill = {};
+    {% for m in planned_lots %}
+    (prefill[{{ m.material_id }}] = prefill[{{ m.material_id }}] || []).push({lot_id: {{ m.lot_id }}, qty: {{ m.quantity_used }}});
+    {% endfor %}
+
+    fetch('/api/recipe-materials/' + encodeURIComponent(productName))
+        .then(function(r) { return r.json(); })
+        .then(function(materials) {
+            if (!materials.length) { cards.innerHTML = '<em>This product has no recipe materials.</em>'; return; }
+            var availableLots = {};
+            var fetches = materials.map(function(m) {
+                return fetch('/api/available-lots/' + m.material_id)
+                    .then(function(r) { return r.json(); })
+                    .then(function(lots) { availableLots[m.material_id] = lots; });
+            });
+            return Promise.all(fetches).then(function() {
+                renderLotPicker(cards, materials, availableLots, batchQty, prefill);
+            });
+        })
+        .catch(function() { cards.innerHTML = '<em>Failed to load lots.</em>'; });
+
+    // optional:true — a planned batch may deliberately under-reserve against stock that hasn't
+    // arrived; anything left unpicked is filled FIFO at promotion. Never block the save.
+    document.getElementById('planned-lots-form').addEventListener('submit', function(e) {
+        var result = collectLotSelections(cards, {optional: true});
+        if (!result.valid) { e.preventDefault(); return; }
+        hidden.value = JSON.stringify(result.selections);
+    });
+})();
+</script>
+{% endif %}
 
 <div class="section-card">
     <h2>Change Status</h2>

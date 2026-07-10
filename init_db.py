@@ -281,6 +281,11 @@ def init_database():
             batch_type TEXT DEFAULT 'standard',
             planned_lot_selections TEXT,
             promotion_failure_reason TEXT,
+            -- ADDED: planned-deduction-mode feature. 'immediate' | 'deferred'. Only meaningful for
+            -- Planned finished/mix batches. EXISTING Postgres deploys are migrated by hand in the
+            -- Supabase SQL editor (ALTER TABLE + backfill of Planned finished/mix rows to
+            -- 'deferred'), NOT by upgrade_schema() — this CREATE TABLE only fires on fresh DBs.
+            deduction_mode TEXT DEFAULT 'immediate',
             mix_lot_id INTEGER DEFAULT NULL REFERENCES raw_material_lots(lot_id),
             shipment_id INTEGER DEFAULT NULL REFERENCES shipments(shipment_id)
         )
@@ -301,6 +306,7 @@ def init_database():
             batch_type TEXT DEFAULT 'standard',
             planned_lot_selections TEXT,
             promotion_failure_reason TEXT,
+            deduction_mode TEXT DEFAULT 'immediate',  -- ADDED: planned-deduction-mode feature
             mix_lot_id INTEGER DEFAULT NULL REFERENCES raw_material_lots(lot_id),
             shipment_id INTEGER DEFAULT NULL REFERENCES shipments(shipment_id)
         )

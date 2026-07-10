@@ -10,10 +10,12 @@ lot_selections shape (per add_to_batches docstring): {material_id: [{'lot_id', '
 
 import pytest
 
+from services import batches as batches_mod  # for monkeypatching _fetch_overdue in the race tests
 from services.batches import (
     add_to_batches, promote_planned_batches, delete_batch, get_batch_materials,
     get_batch_materials_for_reallocation, adjust_batch_material, check_batch_materials_stock,
     get_batch_by_id, get_batches, get_batches_planned, get_all_batches_with_id,
+    get_planned_lot_selections, update_planned_lot_selections, clear_planned_lot_selections,
 )
 from services.lots import get_material_stock_from_lots
 from services.materials import get_raw_material
@@ -280,13 +282,334 @@ def test_finished_batch_cost_includes_component_cost(make_material, make_lot, ma
     assert row["batch_cost"] == pytest.approx(10 * 3)  # 10 g of mix @ $3/g = $30
 
 
+# --- planned-deduction-mode feature: immediate vs deferred ---------------------------
+# A Planned batch now chooses WHEN its materials leave stock. 'immediate' (the default) deducts at
+# creation and writes batch_materials rows straight away; 'deferred' reserves lots in the
+# planned_lot_selections JSON and deducts them at promotion.
+
+def _deduction_mode(db, batch_id):
+    cur = db.cursor()
+    db.execute(cur, "SELECT deduction_mode FROM batches WHERE batch_id = %s", (batch_id,))
+    return cur.fetchone()[0]
+
+
+def test_planned_immediate_deducts_at_creation(make_material, make_lot, make_recipe, db):
+    mid = make_material("Matcha")
+    lid = make_lot(mid, 100)
+    make_recipe("Latte", [{"material_name": "Matcha", "quantity_needed": 10}])
+    bid = add_to_batches("Latte", 2, batch_number="PI1", planned_completion_date=PAST,
+                         batch_type="finished", deduction_mode="immediate",
+                         lot_selections={mid: [{"lot_id": lid, "qty": 20}]})
+    # stock moved now, and the consumption is recorded — even though the batch is still Planned
+    assert _lot_qty(db, lid)[0] == 80
+    assert _batch_status(db, bid)[0] == "Planned"
+    assert _deduction_mode(db, bid) == "immediate"
+    assert len(get_batch_materials(bid)) == 1
+
+    # promotion has nothing left to deduct and cannot fail
+    promote_planned_batches()
+    assert _lot_qty(db, lid)[0] == 80
+    status, reason = _batch_status(db, bid)
+    assert status == "Ready"
+    assert reason is None
+
+
+def test_planned_immediate_is_the_default(make_material, make_lot, make_recipe, db):
+    mid = make_material("Matcha")
+    lid = make_lot(mid, 100)
+    make_recipe("Latte", [{"material_name": "Matcha", "quantity_needed": 10}])
+    bid = add_to_batches("Latte", 1, batch_number="PI2", planned_completion_date="2999-01-01",
+                         batch_type="finished",
+                         lot_selections={mid: [{"lot_id": lid, "qty": 10}]})
+    assert _deduction_mode(db, bid) == "immediate"
+    assert _lot_qty(db, lid)[0] == 90
+
+
+def test_planned_immediate_mix_defers_only_its_output_lot(make_material, make_lot, make_recipe, db):
+    # A Planned Component consumes its inputs today but does not EXIST as stock until its
+    # completion date — the house-made output lot is born at promotion in either mode.
+    mid = make_material("Matcha")
+    lid = make_lot(mid, 100)
+    make_recipe("Component", [{"material_name": "Matcha", "quantity_needed": 10}],
+                batch_type="mix", product_unit="g", product_dimension="mass")
+    bid = add_to_batches("Component", 2, batch_number="PM1", planned_completion_date=PAST,
+                         batch_type="mix", deduction_mode="immediate",
+                         lot_selections={mid: [{"lot_id": lid, "qty": 20}]})
+    assert _lot_qty(db, lid)[0] == 80  # inputs consumed now
+    cur = db.cursor()
+    db.execute(cur, "SELECT quantity FROM raw_material_lots WHERE lot_number = %s", ("MIX-BATCH-PM1",))
+    assert cur.fetchone() is None  # ...but no output lot yet
+
+    promote_planned_batches()
+    assert _batch_status(db, bid)[0] == "Ready"
+    assert _lot_qty(db, lid)[0] == 80  # not double-deducted
+    db.execute(cur, "SELECT quantity FROM raw_material_lots WHERE lot_number = %s", ("MIX-BATCH-PM1",))
+    assert cur.fetchone()[0] == 2
+
+
+# --- planned-deduction-mode feature: reading + editing the reserved lots --------------
+def test_get_planned_lot_selections_returns_reserved_picks(make_material, make_lot, make_recipe):
+    mid = make_material("Matcha")
+    lid = make_lot(mid, 100, lot_number="RES1")
+    make_recipe("Latte", [{"material_name": "Matcha", "quantity_needed": 10}])
+    bid = add_to_batches("Latte", 2, batch_number="PS1", planned_completion_date="2999-01-01",
+                         batch_type="finished", deduction_mode="deferred",
+                         lot_selections={mid: [{"lot_id": lid, "qty": 20}]})
+    # nothing was deducted, so the drawer's normal source is empty...
+    assert get_batch_materials(bid) == []
+    # ...and the reserved picks come from the batch itself, in get_batch_materials' shape
+    rows = get_planned_lot_selections(bid)
+    assert len(rows) == 1
+    name, qty, unit, lot_id, lot_number, material_id, _cost, lot_status = rows[0]
+    assert (name, qty, lot_id, lot_number, material_id) == ("Matcha", 20, lid, "RES1", mid)
+    assert lot_status == "active"
+
+
+def test_get_planned_lot_selections_flags_unavailable_lot(make_material, make_lot, make_recipe, db):
+    # A reserved lot can be used up before the planned date. Surface it rather than dropping the row.
+    mid = make_material("Matcha")
+    lid = make_lot(mid, 100)
+    make_recipe("Latte", [{"material_name": "Matcha", "quantity_needed": 10}])
+    bid = add_to_batches("Latte", 1, batch_number="PS2", planned_completion_date="2999-01-01",
+                         batch_type="finished", deduction_mode="deferred",
+                         lot_selections={mid: [{"lot_id": lid, "qty": 10}]})
+    cur = db.cursor()
+    db.execute(cur, "UPDATE raw_material_lots SET status = 'exhausted' WHERE lot_id = %s", (lid,))
+    db.commit()
+    assert get_planned_lot_selections(bid)[0][7] == "unavailable"
+
+
+def test_update_planned_lot_selections_changes_what_promotion_deducts(make_material, make_lot, make_recipe, db):
+    mid = make_material("Matcha")
+    first = make_lot(mid, 100, received_date="2024-01-01")
+    second = make_lot(mid, 100, received_date="2024-06-01")
+    make_recipe("Latte", [{"material_name": "Matcha", "quantity_needed": 10}])
+    bid = add_to_batches("Latte", 1, batch_number="PE1", planned_completion_date=PAST,
+                         batch_type="finished", deduction_mode="deferred",
+                         lot_selections={mid: [{"lot_id": first, "qty": 10}]})
+
+    assert update_planned_lot_selections(bid, {mid: [{"lot_id": second, "qty": 10}]}) is True
+    promote_planned_batches()
+    assert _lot_qty(db, first)[0] == 100   # original pick untouched
+    assert _lot_qty(db, second)[0] == 90   # the re-picked lot is what got deducted
+
+
+def test_update_planned_lot_selections_rejects_unavailable_lot(make_material, make_lot, make_recipe, db):
+    mid = make_material("Matcha")
+    lid = make_lot(mid, 100)
+    dead = make_lot(mid, 100)
+    make_recipe("Latte", [{"material_name": "Matcha", "quantity_needed": 10}])
+    bid = add_to_batches("Latte", 1, batch_number="PE2", planned_completion_date="2999-01-01",
+                         batch_type="finished", deduction_mode="deferred",
+                         lot_selections={mid: [{"lot_id": lid, "qty": 10}]})
+    cur = db.cursor()
+    db.execute(cur, "UPDATE raw_material_lots SET status = 'exhausted' WHERE lot_id = %s", (dead,))
+    db.commit()
+    with pytest.raises(ValueError):
+        update_planned_lot_selections(bid, {mid: [{"lot_id": dead, "qty": 10}]})
+    # the rejected write left the original picks intact
+    assert get_planned_lot_selections(bid)[0][3] == lid
+
+
+def test_update_planned_lot_selections_rejects_already_deducted_batch(make_material, make_lot, make_recipe):
+    # An immediate batch's consumption lives in batch_materials; rewriting the JSON would be a lie.
+    mid = make_material("Matcha")
+    lid = make_lot(mid, 100)
+    make_recipe("Latte", [{"material_name": "Matcha", "quantity_needed": 10}])
+    bid = add_to_batches("Latte", 1, batch_number="PE3", planned_completion_date="2999-01-01",
+                         batch_type="finished", deduction_mode="immediate",
+                         lot_selections={mid: [{"lot_id": lid, "qty": 10}]})
+    with pytest.raises(ValueError):
+        update_planned_lot_selections(bid, {mid: [{"lot_id": lid, "qty": 10}]})
+
+
+def test_clear_planned_lot_selections_falls_back_to_fifo(make_material, make_lot, make_recipe, db):
+    mid = make_material("Matcha")
+    old = make_lot(mid, 100, received_date="2024-01-01")
+    new = make_lot(mid, 100, received_date="2024-06-01")
+    make_recipe("Latte", [{"material_name": "Matcha", "quantity_needed": 10}])
+    bid = add_to_batches("Latte", 1, batch_number="PC1", planned_completion_date=PAST,
+                         batch_type="finished", deduction_mode="deferred",
+                         lot_selections={mid: [{"lot_id": new, "qty": 10}]})
+    clear_planned_lot_selections(bid)
+    assert get_planned_lot_selections(bid) == []
+
+    promote_planned_batches()
+    assert _lot_qty(db, old)[0] == 90   # FIFO took the oldest lot, not the cleared pick
+    assert _lot_qty(db, new)[0] == 100
+
+
+# --- promotion race: a batch may only ever be promoted once --------------------------
+# Bug: promote_planned_batches SELECTed the overdue batches and then deducted, with an
+# unconditional status flip. sqlite3 opens a transaction on the first write, never on a SELECT, so
+# two concurrent promotes (from /batches and /manage-batches) both read the batch as Planned and
+# each deducted the full amount — doubled stock deduction, duplicate batch_materials rows, and two
+# house-made lots for a mix. _claim_batch's `AND status = 'Planned'` now decides a single winner.
+#
+# The race is reproduced deterministically, without threads, by replaying a STALE overdue snapshot:
+# exactly what the losing racer holds in memory after the winner has committed.
+
+def _capture_overdue():
+    """The rows promote_planned_batches would act on right now (the racer's snapshot)."""
+    from database import get_db_connection
+    db = get_db_connection()
+    cur = db.cursor()
+    try:
+        return batches_mod._fetch_overdue(db, cur, "2999-12-31")
+    finally:
+        db.close()
+
+
+def _replay_stale(monkeypatch, stale):
+    """Make the next promote act on `stale` instead of re-reading the DB."""
+    monkeypatch.setattr(batches_mod, "_fetch_overdue", lambda db, cur, now: stale)
+
+
+def _bm_rows(db, batch_id):
+    cur = db.cursor()
+    db.execute(cur, "SELECT material_id, lot_id, quantity_used FROM batch_materials WHERE batch_id = %s", (batch_id,))
+    return cur.fetchall()
+
+
+def test_stale_snapshot_cannot_promote_a_batch_twice(monkeypatch, make_material, make_lot, make_recipe, db):
+    mid = make_material("Matcha")
+    lid = make_lot(mid, 100)
+    make_recipe("Latte", [{"material_name": "Matcha", "quantity_needed": 10}])
+    bid = add_to_batches("Latte", 2, batch_number="RACE1", planned_completion_date=PAST,
+                         batch_type="finished", deduction_mode="deferred",
+                         lot_selections={mid: [{"lot_id": lid, "qty": 20}]})
+
+    stale = _capture_overdue()          # what the loser read before the winner committed
+    promote_planned_batches()           # the winner
+    assert _lot_qty(db, lid)[0] == 80
+    assert len(_bm_rows(db, bid)) == 1
+
+    _replay_stale(monkeypatch, stale)   # the loser acts on its stale snapshot
+    promote_planned_batches()
+
+    assert _lot_qty(db, lid)[0] == 80             # NOT 60 — no second deduction
+    assert len(_bm_rows(db, bid)) == 1            # NOT 2 — no duplicate material row
+    assert _batch_status(db, bid)[0] == "Ready"
+
+
+def test_stale_snapshot_cannot_duplicate_a_mix_output_lot(monkeypatch, make_material, make_lot, make_recipe, db):
+    # The reported symptom: two MIX-BATCH-<batch_number> lots, i.e. phantom stock.
+    mid = make_material("Matcha")
+    lid = make_lot(mid, 100)
+    make_recipe("Component", [{"material_name": "Matcha", "quantity_needed": 10}],
+                batch_type="mix", product_unit="g", product_dimension="mass")
+    add_to_batches("Component", 2, batch_number="RACE2", planned_completion_date=PAST,
+                   batch_type="mix", deduction_mode="deferred",
+                   lot_selections={mid: [{"lot_id": lid, "qty": 20}]})
+
+    stale = _capture_overdue()
+    promote_planned_batches()
+    _replay_stale(monkeypatch, stale)
+    promote_planned_batches()
+
+    cur = db.cursor()
+    db.execute(cur, "SELECT COUNT(*) FROM raw_material_lots WHERE lot_number = %s", ("MIX-BATCH-RACE2",))
+    assert cur.fetchone()[0] == 1
+    assert _lot_qty(db, lid)[0] == 80  # inputs deducted once
+
+
+def test_stale_snapshot_cannot_duplicate_an_immediate_mix_output_lot(monkeypatch, make_material, make_lot, make_recipe, db):
+    # The immediate branch creates the house-made lot at promotion too, so it raced identically.
+    mid = make_material("Matcha")
+    lid = make_lot(mid, 100)
+    make_recipe("Component", [{"material_name": "Matcha", "quantity_needed": 10}],
+                batch_type="mix", product_unit="g", product_dimension="mass")
+    add_to_batches("Component", 2, batch_number="RACE3", planned_completion_date=PAST,
+                   batch_type="mix", deduction_mode="immediate",
+                   lot_selections={mid: [{"lot_id": lid, "qty": 20}]})
+
+    stale = _capture_overdue()
+    promote_planned_batches()
+    _replay_stale(monkeypatch, stale)
+    promote_planned_batches()
+
+    cur = db.cursor()
+    db.execute(cur, "SELECT COUNT(*) FROM raw_material_lots WHERE lot_number = %s", ("MIX-BATCH-RACE3",))
+    assert cur.fetchone()[0] == 1
+    assert _lot_qty(db, lid)[0] == 80  # deducted once, at creation
+
+
+def test_promotion_is_idempotent_when_called_twice(make_material, make_lot, make_recipe, db):
+    mid = make_material("Matcha")
+    lid = make_lot(mid, 100)
+    make_recipe("Latte", [{"material_name": "Matcha", "quantity_needed": 10}])
+    bid = add_to_batches("Latte", 1, batch_number="IDEM", planned_completion_date=PAST,
+                         batch_type="finished", deduction_mode="deferred",
+                         lot_selections={mid: [{"lot_id": lid, "qty": 10}]})
+    promote_planned_batches()
+    promote_planned_batches()
+    assert _lot_qty(db, lid)[0] == 90
+    assert len(_bm_rows(db, bid)) == 1
+
+
+def test_failed_promotion_rolls_back_its_claim(make_material, make_lot, make_recipe, db):
+    # The claim flips status to Ready *before* the stock check. If coverage fails, that claim must be
+    # rolled back or the batch would sit Ready having deducted nothing.
+    mid = make_material("Matcha")
+    lid = make_lot(mid, 5)  # short for a need of 10
+    make_recipe("Latte", [{"material_name": "Matcha", "quantity_needed": 10}])
+    bid = add_to_batches("Latte", 1, batch_number="FAIL1", planned_completion_date=PAST,
+                         batch_type="finished", deduction_mode="deferred", lot_selections=None)
+    promote_planned_batches()
+
+    status, reason = _batch_status(db, bid)
+    assert status == "Planned"
+    assert reason
+    assert _lot_qty(db, lid)[0] == 5      # untouched
+    assert _bm_rows(db, bid) == []
+
+
+def test_one_failing_batch_does_not_block_a_healthy_one(make_material, make_lot, make_recipe, db):
+    # Each batch gets its own transaction, so a rollback for the short one must not discard the
+    # deduction already committed for the good one.
+    short = make_material("Short")
+    make_lot(short, 5)
+    make_recipe("ShortDrink", [{"material_name": "Short", "quantity_needed": 10}])
+    bad = add_to_batches("ShortDrink", 1, batch_number="MIX_BAD", planned_completion_date=PAST,
+                         batch_type="finished", deduction_mode="deferred", lot_selections=None)
+
+    ok = make_material("Plenty")
+    ok_lot = make_lot(ok, 100)
+    make_recipe("GoodDrink", [{"material_name": "Plenty", "quantity_needed": 10}])
+    good = add_to_batches("GoodDrink", 1, batch_number="MIX_GOOD", planned_completion_date=PAST,
+                          batch_type="finished", deduction_mode="deferred",
+                          lot_selections={ok: [{"lot_id": ok_lot, "qty": 10}]})
+
+    promote_planned_batches()
+
+    assert _batch_status(db, bad)[0] == "Planned"
+    assert _batch_status(db, good)[0] == "Ready"
+    assert _lot_qty(db, ok_lot)[0] == 90
+
+
+def test_promotion_writes_an_audit_row(make_material, make_lot, make_recipe, db):
+    # log_action opens a second connection; while promote held SQLite's write lock its INSERT failed
+    # with "database is locked" and audit.py swallowed it, so promotions were never audited.
+    mid = make_material("Matcha")
+    lid = make_lot(mid, 100)
+    make_recipe("Latte", [{"material_name": "Matcha", "quantity_needed": 10}])
+    add_to_batches("Latte", 1, batch_number="AUD1", planned_completion_date=PAST,
+                   batch_type="finished", deduction_mode="deferred",
+                   lot_selections={mid: [{"lot_id": lid, "qty": 10}]})
+    promote_planned_batches()
+
+    cur = db.cursor()
+    db.execute(cur, "SELECT COUNT(*) FROM audit_log WHERE action = %s", ("planned_batch_promoted",))
+    assert cur.fetchone()[0] == 1
+
+
 # --- planned promotion: stored lots --------------------------------------------------
 def test_planned_finished_defers_then_promotes_stored_lots(make_material, make_lot, make_recipe, db):
     mid = make_material("Matcha")
     lid = make_lot(mid, 100)
     make_recipe("Latte", [{"material_name": "Matcha", "quantity_needed": 10}])
     bid = add_to_batches("Latte", 2, batch_number="P1", planned_completion_date=PAST,
-                         batch_type="finished",
+                         batch_type="finished", deduction_mode="deferred",
                          lot_selections={mid: [{"lot_id": lid, "qty": 20}]})
     assert isinstance(bid, int)
     # deferred: nothing deducted yet, batch is Planned
@@ -305,7 +628,7 @@ def test_planned_promotes_via_fifo_when_no_stored_lots(make_material, make_lot, 
     new = make_lot(mid, 20, received_date="2024-03-01", lot_number="NEW")
     make_recipe("Latte", [{"material_name": "Matcha", "quantity_needed": 30}])
     bid = add_to_batches("Latte", 1, batch_number="P2", planned_completion_date=PAST,
-                         batch_type="finished", lot_selections=None)
+                         batch_type="finished", deduction_mode="deferred", lot_selections=None)
     assert isinstance(bid, int)
     promote_planned_batches()
     # FIFO drained OLD first (oldest), then 10 of NEW
@@ -319,7 +642,7 @@ def test_planned_promotion_failure_keeps_planned_with_reason(make_material, make
     make_lot(mid, 5)  # not enough for need of 10
     make_recipe("Latte", [{"material_name": "Matcha", "quantity_needed": 10}])
     bid = add_to_batches("Latte", 1, batch_number="P3", planned_completion_date=PAST,
-                         batch_type="finished", lot_selections=None)
+                         batch_type="finished", deduction_mode="deferred", lot_selections=None)
     promote_planned_batches()
     status, reason = _batch_status(db, bid)
     assert status == "Planned"
@@ -338,7 +661,7 @@ def test_planned_promotion_failure_reports_insufficient_not_missing_selection(
     make_recipe("Latte", [{"material_name": "Matcha", "quantity_needed": 10}])
     # non-None but empty: stored_lot_selections is a dict that doesn't contain `mid`
     bid = add_to_batches("Latte", 1, batch_number="P4", planned_completion_date=PAST,
-                         batch_type="finished", lot_selections={})
+                         batch_type="finished", deduction_mode="deferred", lot_selections={})
     promote_planned_batches()
     status, reason = _batch_status(db, bid)
     assert status == "Planned"
@@ -451,7 +774,7 @@ def test_get_batches_planned_includes_failure_reason(make_material, make_lot, ma
     make_lot(mid, 5)
     make_recipe("Latte", [{"material_name": "Matcha", "quantity_needed": 10}])
     bid = add_to_batches("Latte", 1, batch_number="L2", planned_completion_date=PAST,
-                         batch_type="finished", lot_selections=None)
+                         batch_type="finished", deduction_mode="deferred", lot_selections=None)
     promote_planned_batches()  # fails -> stays planned with a reason
     df, total = get_batches_planned(page=1, per_page=50)
     row = df[df["batch_id"] == bid].iloc[0]
@@ -466,7 +789,7 @@ def test_get_all_batches_with_id_lists_every_status(make_material, make_lot, mak
     add_to_batches("Latte", 1, batch_number="R1",
                    lot_selections={mid: [{"lot_id": lid, "qty": 10}]})
     add_to_batches("Latte", 1, batch_number="PL1", planned_completion_date="2999-01-01",
-                   batch_type="finished", lot_selections=None)
+                   batch_type="finished", deduction_mode="deferred", lot_selections=None)
     df, total = get_all_batches_with_id(page=1, per_page=50)
     assert total == 2
     assert set(df["batch_number"]) == {"R1", "PL1"}

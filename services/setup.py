@@ -141,6 +141,7 @@ def create_database():
                     batch_type TEXT DEFAULT 'standard',
                     planned_lot_selections TEXT,
                     promotion_failure_reason TEXT,
+                    deduction_mode TEXT DEFAULT 'immediate',
                     mix_lot_id INTEGER DEFAULT NULL REFERENCES raw_material_lots(lot_id),
                     shipment_id INTEGER DEFAULT NULL REFERENCES shipments(shipment_id)
 
@@ -148,6 +149,21 @@ def create_database():
 
                    )
                    """)
+
+    # ADDED: planned-deduction-mode feature — additive migration for pre-existing SQLite DBs.
+    # 'immediate' (deduct at creation) | 'deferred' (deduct at the planned completion date).
+    # Only meaningful for Planned finished/mix batches; every other row stays 'immediate'.
+    cursor.execute("PRAGMA table_info(batches)")
+    _batch_cols = {row[1] for row in cursor.fetchall()}
+    if "deduction_mode" not in _batch_cols:
+        cursor.execute("ALTER TABLE batches ADD COLUMN deduction_mode TEXT DEFAULT 'immediate'")
+        # Backfill is mandatory, not cosmetic: before this feature EVERY Planned finished/mix batch
+        # deferred its deduction. Left at the 'immediate' default they would look already-deducted,
+        # and promote_planned_batches would skip their deduction entirely — free stock, lost audit trail.
+        cursor.execute("""
+            UPDATE batches SET deduction_mode = 'deferred'
+            WHERE status = 'Planned' AND batch_type IN ('finished', 'mix')
+        """)
 
 
     #Batch_materials

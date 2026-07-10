@@ -260,6 +260,8 @@
                             <span class="sort-arrow">{{ '↑' if planned_sort == 'asc' else '↓' }}</span>
                         </a>
                     </th>
+                    {# planned-deduction-mode feature — has this batch's stock moved yet? #}
+                    <th>Materials</th>
                     <th>Actions</th>
                 </tr>
             </thead>
@@ -269,7 +271,7 @@
 
                 {# ── Standard & Finished group ── #}
                 {% if planned_standard %}
-                <tr class="group-divider"><td colspan="7">Standard &amp; Finished</td></tr>
+                <tr class="group-divider"><td colspan="8">Standard &amp; Finished</td></tr>
                 {% for row in planned_standard %}
                 <tr{% if row['promotion_failure_reason'] %} class="row-failed-promotion"{% endif %}>
                     <td class="num">{% set pns.n = pns.n + 1 %}{{ pns.n }}</td>
@@ -283,6 +285,15 @@
                     <td><span class="badge badge-{{ row['batch_type'] or 'standard' }}">{{ row['batch_type'] or 'standard' }}</span></td>
                     <td>{{ row['quantity'] }}{% if row['product_unit'] %}<span style="color:var(--text-faint);"> {{ row['product_unit'] }}</span>{% endif %}</td>
                     <td>{{ row['planned_completion_date'] | fmt_date }}</td>
+                    {# planned-deduction-mode feature — worded as what happened to the stock, not as
+                       the internal 'immediate'/'deferred' value. #}
+                    <td>
+                        {% if row['deduction_mode'] == 'deferred' %}
+                        <span class="badge badge-deferred">Not yet deducted</span>
+                        {% else %}
+                        <span class="badge badge-deducted">Deducted</span>
+                        {% endif %}
+                    </td>
                     <td>
                         <form method="POST" action="/edit-batch/{{ row['batch_id'] }}/change-status"
                               onsubmit="return confirm('Mark batch as Ready now?')" style="display:inline;" autocomplete="off">
@@ -294,7 +305,7 @@
                     </td>
                 </tr>
                 <tr class="materials-row" id="materials-{{ row['batch_id'] }}" style="display:none;">
-                    <td colspan="7">
+                    <td colspan="8">
                         {# batch notes — shown here so they're visible without opening the manage page. #}
                         {% if row['notes'] %}<div class="batch-notes" style="margin-bottom:10px;font-size:13px;color:var(--text-muted);"><strong style="color:var(--text);">Notes:</strong> {{ row['notes'] }}</div>{% endif %}
                         <div class="materials-detail">Loading...</div>
@@ -305,7 +316,7 @@
 
                 {# ── Component group ── #}
                 {% if planned_mix %}
-                <tr class="group-divider"><td colspan="7">Component</td></tr>
+                <tr class="group-divider"><td colspan="8">Component</td></tr>
                 {% for row in planned_mix %}
                 <tr{% if row['promotion_failure_reason'] %} class="row-failed-promotion"{% endif %}>
                     <td class="num">{% set pns.n = pns.n + 1 %}{{ pns.n }}</td>
@@ -319,6 +330,15 @@
                     <td><span class="badge badge-mix">component</span></td>
                     <td>{{ row['quantity'] }}{% if row['product_unit'] %}<span style="color:var(--text-faint);"> {{ row['product_unit'] }}</span>{% endif %}</td>
                     <td>{{ row['planned_completion_date'] | fmt_date }}</td>
+                    {# planned-deduction-mode feature — the component's own output lot is created at
+                       promotion either way; this reports only its INPUT materials. #}
+                    <td>
+                        {% if row['deduction_mode'] == 'deferred' %}
+                        <span class="badge badge-deferred">Not yet deducted</span>
+                        {% else %}
+                        <span class="badge badge-deducted">Deducted</span>
+                        {% endif %}
+                    </td>
                     <td>
                         <form method="POST" action="/edit-batch/{{ row['batch_id'] }}/change-status"
                               onsubmit="return confirm('Mark batch as Ready now?')" style="display:inline;" autocomplete="off">
@@ -330,7 +350,7 @@
                     </td>
                 </tr>
                 <tr class="materials-row" id="materials-{{ row['batch_id'] }}" style="display:none;">
-                    <td colspan="7">
+                    <td colspan="8">
                         {# batch notes — shown here so they're visible without opening the manage page. #}
                         {% if row['notes'] %}<div class="batch-notes" style="margin-bottom:10px;font-size:13px;color:var(--text-muted);"><strong style="color:var(--text);">Notes:</strong> {{ row['notes'] }}</div>{% endif %}
                         <div class="materials-detail">Loading...</div>
@@ -394,21 +414,13 @@ document.querySelectorAll('.materials-toggle').forEach(function(btn) {
     }
 
     if (!detail.dataset.loaded) {
+      // CHANGED: planned-deduction-mode feature — the endpoint now returns
+      // {materials, planned, fifo} instead of a bare array. A deferred Planned batch has no
+      // batch_materials rows, so its RESERVED lot picks come back with planned=true.
       fetch('/batches/' + batchId + '/materials')
         .then(function(r) { return r.json(); })
-        .then(function(materials) {
-          if (materials.length === 0) {
-            detail.innerHTML = '<em>No materials recorded for this batch.</em>';
-          } else {
-            // ADDED: cost-of-material feature — Cost/Unit column in the materials expansion panel.
-            var html = '<table class="materials-inner-table"><thead><tr><th>Material</th><th>Lot #</th><th>Quantity Used</th><th>Unit</th><th>Cost/Unit</th></tr></thead><tbody>';
-            materials.forEach(function(m) {
-              var cpu = (m.cost_per_unit != null && m.cost_per_unit > 0) ? '$' + parseFloat(m.cost_per_unit).toFixed(2) : '—';
-              html += '<tr><td>' + m.material_name + '</td><td>' + m.lot_number + '</td><td>' + m.quantity_used + '</td><td>' + m.unit + '</td><td>' + cpu + '</td></tr>';
-            });
-            html += '</tbody></table>';
-            detail.innerHTML = html;
-          }
+        .then(function(data) {
+          detail.innerHTML = renderBatchMaterials(data);
           detail.dataset.loaded = 'true';
         })
         .catch(function() {
