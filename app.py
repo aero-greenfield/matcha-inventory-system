@@ -453,7 +453,8 @@ MAX_PAGE = 10_000
 def index():
     df_materials, _ = get_all_materials(page=None)
     df_low = get_low_stock_materials()
-    _, batch_count = get_batches(page=None)
+    df_batches, _ = get_batches(page=None)
+    batch_count = len(df_batches)
     df_recipes, _ = get_all_recipes(page=None)
     # page=None returns None for the count, and df_recipes has one row per ingredient,
     # so count distinct recipes by product name.
