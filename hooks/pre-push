@@ -1,0 +1,27 @@
+#!/bin/sh
+# Git pre-push hook: blocks the push if the test suite or the app-boot smoke test fails.
+#
+# Setup (one time per clone): git config core.hooksPath hooks
+#
+# Both checks run against an isolated SQLite temp DB (see test_scripts/conftest.py and
+# scripts/smoke_test.py) -- never data/inventory.db or production.
+
+set -e
+
+REPO_ROOT="$(git rev-parse --show-toplevel)"
+cd "$REPO_ROOT"
+
+echo "[pre-push] Running pytest suite..."
+if ! python -m pytest test_scripts -q; then
+    echo "[pre-push] BLOCKED: test suite failed. Fix the failing tests before pushing."
+    exit 1
+fi
+
+echo "[pre-push] Running app-boot smoke test..."
+if ! python scripts/smoke_test.py; then
+    echo "[pre-push] BLOCKED: smoke test failed. Fix the app boot/health issue before pushing."
+    exit 1
+fi
+
+echo "[pre-push] All checks passed."
+exit 0

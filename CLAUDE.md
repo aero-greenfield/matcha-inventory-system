@@ -24,6 +24,12 @@ gunicorn app:app --bind 0.0.0.0:8000 --workers 2
 python -m pytest test_scripts -q
 # With coverage:
 python -m pytest test_scripts --cov=services --cov=routes --cov-report=term-missing
+
+# One-time setup: enable the local pre-push pipeline (pytest + app-boot smoke test).
+# Render auto-deploys on push with no gate in between, so this blocks `git push` locally
+# if the suite or the smoke test fails — catching breakage before it reaches prod, not
+# just after (the tests.yml GitHub Actions workflow is async and doesn't block deploy).
+git config core.hooksPath hooks
 ```
 
 Required env vars (`.env` locally): `SECRET_KEY`, `AUTH_USERNAME`, `AUTH_PASSWORD`, and `DATABASE_URL` (blank → SQLite at `data/inventory.db`; set → PostgreSQL). The app refuses to start without `SECRET_KEY` (raises) or auth vars (asserts in [auth.py](auth.py)).
