@@ -20,16 +20,35 @@
             <p style="margin:0;font-size:14px;color:var(--text-muted);">{{ shipment['shipment_number'] }}</p>
         </div>
 
-        <div style="margin-bottom:16px;">
-            <label style="display:block;font-size:13px;font-weight:600;color:var(--text-muted);margin-bottom:6px;">Date Shipped</label>
-            <p style="margin:0;font-size:14px;color:var(--text-muted);">{{ shipment['date_shipped'] }}</p>
+        <div style="margin-bottom:16px;display:flex;gap:16px;">
+            <div style="flex:1;min-width:160px;">
+                <label for="date_shipped" style="display:block;font-size:13px;font-weight:600;margin-bottom:6px;">Date Shipped</label>
+                <input type="date" id="date_shipped" name="date_shipped" value="{{ number_date }}" required
+                       style="width:100%;padding:8px 12px;border:1px solid var(--border);border-radius:6px;font-size:14px;box-sizing:border-box;">
+            </div>
+            <div style="width:120px;">
+                <label for="counter" style="display:block;font-size:13px;font-weight:600;margin-bottom:6px;">Sequence #</label>
+                <input type="number" id="counter" name="counter" min="1" step="1" value="{{ number_counter }}" required
+                       style="width:100%;padding:8px 12px;border:1px solid var(--border);border-radius:6px;font-size:14px;box-sizing:border-box;">
+            </div>
         </div>
+        <p style="margin:-8px 0 16px;font-size:12px;color:var(--text-muted);">
+            Shipment # is rebuilt from these two on save (date as YYMMDD + sequence #).
+        </p>
 
         <div style="margin-bottom:16px;">
             <label for="destination" style="display:block;font-size:13px;font-weight:600;margin-bottom:6px;">Destination</label>
             <input type="text" id="destination" name="destination"
                    value="{{ shipment['destination'] if shipment['destination'] else '' }}"
                    placeholder="e.g. Store A, Wholesale, etc."
+                   style="width:100%;padding:8px 12px;border:1px solid var(--border);border-radius:6px;font-size:14px;box-sizing:border-box;">
+        </div>
+
+        <div style="margin-bottom:16px;">
+            <label for="category" style="display:block;font-size:13px;font-weight:600;margin-bottom:6px;">Category</label>
+            <input type="text" id="category" name="category"
+                   value="{{ shipment['category'] if shipment['category'] else '' }}"
+                   placeholder="e.g. Retail, Wholesale..."
                    style="width:100%;padding:8px 12px;border:1px solid var(--border);border-radius:6px;font-size:14px;box-sizing:border-box;">
         </div>
 

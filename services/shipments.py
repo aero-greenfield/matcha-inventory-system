@@ -2,6 +2,7 @@ from database import get_db_connection
 from services.audit import log_action
 from services import units
 from datetime import datetime
+from config import business_today
 import logging
 import pandas as pd
 
@@ -9,11 +10,16 @@ _UNSET = object()
 _EPS = 1e-9  # float tolerance when comparing allocated REAL quantities against a batch total
 
 
-def _generate_shipment_number(cursor, db) -> str:
-    today = datetime.now().strftime('%Y-%m-%d')
-    db.execute(cursor, "SELECT COUNT(*) FROM shipments WHERE date_shipped = %s", (today,))
+def _generate_shipment_number(cursor, db, date_shipped) -> str:
+    """
+    Builds shipment_number as YYMMDD + a per-date counter (e.g. "2607151" for the 1st
+    shipment dated 2026-07-15). The counter is the only auto part; it is not zero-padded,
+    so it just keeps growing past the 9th shipment on a given date (...10, ...11, ...).
+    """
+    prefix = datetime.strptime(date_shipped, '%Y-%m-%d').strftime('%y%m%d')
+    db.execute(cursor, "SELECT COUNT(*) FROM shipments WHERE date_shipped = %s", (date_shipped,))
     count = cursor.fetchone()[0]
-    return f"SHP-{today}-{count+1:03d}"
+    return f"{prefix}{count+1}"
 
 
 def _batch_remaining(cursor, db, batch_id, exclude_shipment_id=None):
@@ -68,11 +74,13 @@ def _recompute_batch_status(cursor, db, batch_id):
     """, (batch_id, batch_id, batch_id, batch_id))
 
 
-def create_shipment(lines, destination=None, notes=None):
+def create_shipment(lines, destination=None, notes=None, category=None, date_shipped=None):
     """
     Creates one shipment drawing the given quantities from one or more batches.
     `lines` is a dict {batch_id: quantity}. Each batch must be produced (status 'Ready' or
     'Partially Shipped') and the requested quantity must not exceed its remaining quantity.
+    `date_shipped` (YYYY-MM-DD) drives both the stored date_shipped and the shipment_number
+    prefix; defaults to business_today() when not given (e.g. for callers/tests that don't care).
     Returns the new shipment_id on success, None on unexpected error.
     Raises ValueError on bad input (batch missing/not shippable/over-allocated).
 
@@ -117,13 +125,14 @@ def create_shipment(lines, destination=None, notes=None):
 
          #validation done--
 
-        today = datetime.now().strftime('%Y-%m-%d')
-        shipment_number = _generate_shipment_number(cursor, db)
+        if not date_shipped:
+            date_shipped = business_today().strftime('%Y-%m-%d')
+        shipment_number = _generate_shipment_number(cursor, db, date_shipped)
 
         db.execute(cursor, """
-            INSERT INTO shipments (shipment_number, date_shipped, destination, notes)
-            VALUES (%s, %s, %s, %s)
-        """, (shipment_number, today, destination, notes))
+            INSERT INTO shipments (shipment_number, date_shipped, destination, notes, category)
+            VALUES (%s, %s, %s, %s, %s)
+        """, (shipment_number, date_shipped, destination, notes, category))
         shipment_id = db.get_last_insert_id(cursor)
 
         for batch_id, qty in normalized.items():
@@ -158,13 +167,13 @@ def get_all_shipments(page=None, per_page=50):
     db = get_db_connection()
     cursor = db.cursor()
 
-    columns = ['shipment_id', 'shipment_number', 'date_shipped', 'destination', 'notes', 'batch_count']
+    columns = ['shipment_id', 'shipment_number', 'date_shipped', 'destination', 'notes', 'category', 'batch_count']
     base_query = """
-    SELECT s.shipment_id, s.shipment_number, s.date_shipped, s.destination, s.notes,
+    SELECT s.shipment_id, s.shipment_number, s.date_shipped, s.destination, s.notes, s.category,
            COUNT(sb.shipment_batch_id) AS batch_count
     FROM shipments s
     LEFT JOIN shipment_batches sb ON sb.shipment_id = s.shipment_id
-    GROUP BY s.shipment_id, s.shipment_number, s.date_shipped, s.destination, s.notes
+    GROUP BY s.shipment_id, s.shipment_number, s.date_shipped, s.destination, s.notes, s.category
     ORDER BY s.shipment_id DESC
     """
 
@@ -206,19 +215,19 @@ def get_shipments_summary():
 
     WHY a plain DataFrame (no pagination tuple): exports always want every row.
 
-    Columns: shipment_number, destination, notes, batch_count, total_units.
+    Columns: shipment_number, destination, notes, category, batch_count, total_units.
     """
     db = get_db_connection()
     cursor = db.cursor()
-    columns = ['shipment_number', 'destination', 'notes', 'batch_count', 'total_units']
+    columns = ['shipment_number', 'destination', 'notes', 'category', 'batch_count', 'total_units']
     try:
         db.execute(cursor, """
-        SELECT s.shipment_number, s.destination, s.notes,
+        SELECT s.shipment_number, s.destination, s.notes, s.category,
                COUNT(sb.shipment_batch_id) AS batch_count,
                COALESCE(SUM(sb.quantity), 0) AS total_units
         FROM shipments s
         LEFT JOIN shipment_batches sb ON sb.shipment_id = s.shipment_id
-        GROUP BY s.shipment_id, s.shipment_number, s.destination, s.notes
+        GROUP BY s.shipment_id, s.shipment_number, s.destination, s.notes, s.category
         ORDER BY s.shipment_id DESC
         """)
         result = cursor.fetchall()
@@ -339,7 +348,7 @@ def get_shipment_by_id(shipment_id):
 
     try:
         db.execute(cursor, """
-            SELECT shipment_id, shipment_number, date_shipped, destination, notes
+            SELECT shipment_id, shipment_number, date_shipped, destination, notes, category
             FROM shipments WHERE shipment_id = %s
         """, (shipment_id,))
         row = cursor.fetchone()
@@ -352,6 +361,7 @@ def get_shipment_by_id(shipment_id):
             'date_shipped': row[2],
             'destination': row[3],
             'notes': row[4],
+            'category': row[5],
         }
 
         db.execute(cursor, """
@@ -390,10 +400,15 @@ def get_shipment_by_id(shipment_id):
         db.close()
 
 
-def update_shipment(shipment_id, destination=_UNSET, notes=_UNSET, lines=_UNSET):
+def update_shipment(shipment_id, destination=_UNSET, notes=_UNSET, category=_UNSET,
+                     date_shipped=_UNSET, shipment_number=_UNSET, lines=_UNSET):
     """
     Updates a shipment's editable fields and/or its batch lines.
-    - destination/notes use the _UNSET sentinel so None can explicitly clear a field.
+    - destination/notes/category/date_shipped/shipment_number use the _UNSET sentinel so None
+      can explicitly clear a field.
+    - shipment_number, when provided, must stay unique — raises ValueError on collision with
+      another shipment (the route rebuilds it from an edited date + counter, so a collision
+      means two shipments would end up sharing the same YYMMDD# number).
     - lines (dict {batch_id: quantity}), when provided, replaces the shipment's batch lines:
       batches absent from the dict (or with qty<=0) are removed, others are added/adjusted.
       Each batch's status/remaining is recomputed afterwards.
@@ -407,12 +422,24 @@ def update_shipment(shipment_id, destination=_UNSET, notes=_UNSET, lines=_UNSET)
         if not cursor.fetchone():
             raise ValueError(f"Shipment {shipment_id} not found — nothing updated.")
 
+        if shipment_number is not _UNSET:
+            db.execute(cursor, "SELECT shipment_id FROM shipments WHERE shipment_number = %s AND shipment_id != %s",
+                       (shipment_number, shipment_id))
+            if cursor.fetchone():
+                raise ValueError(f"Shipment number '{shipment_number}' is already in use by another shipment.")
+
         # --- field updates ---
         fields = {}
         if destination is not _UNSET:
             fields['destination'] = destination
         if notes is not _UNSET:
             fields['notes'] = notes
+        if category is not _UNSET:
+            fields['category'] = category
+        if date_shipped is not _UNSET:
+            fields['date_shipped'] = date_shipped
+        if shipment_number is not _UNSET:
+            fields['shipment_number'] = shipment_number
         if fields:
             set_clause = ', '.join(f"{k} = %s" for k in fields)
             params = (*fields.values(), shipment_id)

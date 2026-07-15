@@ -130,3 +130,41 @@ def test_get_all_shipments_counts_lines(make_ready_batch):
     df, _ = get_all_shipments(page=None)
     assert not df.empty
     assert int(df.iloc[0]["batch_count"]) == 1
+
+
+def test_shipment_number_built_from_given_date(make_ready_batch):
+    a = make_ready_batch("A", 100)
+    s = create_shipment({a: 10}, date_shipped="2026-07-15")
+    detail = get_shipment_by_id(s)
+    assert detail["shipment"]["shipment_number"] == "2607151"
+    assert detail["shipment"]["date_shipped"] == "2026-07-15"
+
+
+def test_shipment_number_counter_increments_per_date(make_ready_batch):
+    a = make_ready_batch("A", 100)
+    b = make_ready_batch("B", 100)
+    c = make_ready_batch("C", 100)
+    s1 = create_shipment({a: 10}, date_shipped="2026-07-15")
+    s2 = create_shipment({b: 10}, date_shipped="2026-07-15")
+    s3 = create_shipment({c: 10}, date_shipped="2026-07-16")  # different date resets the counter
+    assert get_shipment_by_id(s1)["shipment"]["shipment_number"] == "2607151"
+    assert get_shipment_by_id(s2)["shipment"]["shipment_number"] == "2607152"
+    assert get_shipment_by_id(s3)["shipment"]["shipment_number"] == "2607161"
+
+
+def test_shipment_category_round_trips(make_ready_batch):
+    a = make_ready_batch("A", 100)
+    s = create_shipment({a: 10}, category="Wholesale")
+    assert get_shipment_by_id(s)["shipment"]["category"] == "Wholesale"
+
+    update_shipment(s, category="Retail")
+    assert get_shipment_by_id(s)["shipment"]["category"] == "Retail"
+
+
+def test_update_shipment_number_collision_raises(make_ready_batch):
+    a = make_ready_batch("A", 100)
+    b = make_ready_batch("B", 100)
+    create_shipment({a: 10}, date_shipped="2026-07-15")           # -> 2607151
+    s2 = create_shipment({b: 10}, date_shipped="2026-07-16")      # -> 2607161
+    with pytest.raises(ValueError):
+        update_shipment(s2, shipment_number="2607151")

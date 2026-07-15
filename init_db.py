@@ -244,7 +244,8 @@ def init_database():
             shipment_number TEXT NOT NULL UNIQUE,
             date_shipped    TEXT NOT NULL,
             destination     TEXT,
-            notes           TEXT
+            notes           TEXT,
+            category        TEXT
         )
         """)
     else:
@@ -254,7 +255,8 @@ def init_database():
             shipment_number TEXT NOT NULL UNIQUE,
             date_shipped    TEXT NOT NULL,
             destination     TEXT,
-            notes           TEXT
+            notes           TEXT,
+            category        TEXT
         )
         """)
 

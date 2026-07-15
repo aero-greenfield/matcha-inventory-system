@@ -26,6 +26,7 @@
                 <th>Shipment #</th>
                 <th>Date Shipped</th>
                 <th>Destination</th>
+                <th>Category</th>
                 <th>Notes</th>
                 <th># Batches</th>
             </tr>
@@ -37,6 +38,7 @@
                 <td><a href="/shipments/{{ row['shipment_id'] }}" style="color:var(--accent);">{{ row['shipment_number'] }}</a></td>
                 <td>{{ row['date_shipped'] | fmt_date }}</td>
                 <td>{{ row['destination'] if row['destination'] and row['destination'] != 'nan' else '—' }}</td>
+                <td>{{ row['category'] if row['category'] and row['category'] != 'nan' else '—' }}</td>
                 <td>{{ row['notes'] if row['notes'] and row['notes'] != 'nan' else '—' }}</td>
                 <td>{{ row['batch_count'] }}</td>
             </tr>

@@ -27,9 +27,19 @@
 
     <div class="table-container" style="padding:20px 24px;margin-bottom:20px;">
         <div style="display:flex;gap:16px;flex-wrap:wrap;">
+            <div style="flex:1;min-width:160px;">
+                <label for="date_shipped" style="display:block;font-size:13px;font-weight:600;margin-bottom:6px;">Date Shipped</label>
+                <input type="date" id="date_shipped" name="date_shipped" value="{{ today }}" required
+                       style="width:100%;padding:8px 12px;border:1px solid var(--border);border-radius:6px;font-size:14px;box-sizing:border-box;">
+            </div>
             <div style="flex:1;min-width:200px;">
                 <label for="destination" style="display:block;font-size:13px;font-weight:600;margin-bottom:6px;">Destination</label>
                 <input type="text" id="destination" name="destination" placeholder="e.g. Store A, Wholesale..."
+                       style="width:100%;padding:8px 12px;border:1px solid var(--border);border-radius:6px;font-size:14px;box-sizing:border-box;">
+            </div>
+            <div style="flex:1;min-width:160px;">
+                <label for="category" style="display:block;font-size:13px;font-weight:600;margin-bottom:6px;">Category</label>
+                <input type="text" id="category" name="category" placeholder="e.g. Retail, Wholesale..."
                        style="width:100%;padding:8px 12px;border:1px solid var(--border);border-radius:6px;font-size:14px;box-sizing:border-box;">
             </div>
             <div style="flex:1;min-width:200px;">

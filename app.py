@@ -2905,7 +2905,7 @@ def shipments_list():
 def new_shipment_page():
     df, _ = get_batches(page=None)
     batches = df.to_dict('records') if not df.empty else []
-    return render_template('create_shipment.html', batches=batches)
+    return render_template('create_shipment.html', batches=batches, today=business_today())
 
 
 @app.route('/shipments/<int:shipment_id>')
@@ -2956,9 +2956,26 @@ def create_shipment_route():
 
     destination = request.form.get('destination', '').strip() or None
     notes = request.form.get('notes', '').strip() or None
+    category = request.form.get('category', '').strip() or None
+    date_shipped = request.form.get('date_shipped', '').strip()
+    if not date_shipped:
+        return render_template('error.html',
+            title="Invalid Input",
+            message="Date shipped cannot be blank.",
+            back_link=True, back_link_url="/shipments/new", back_link_label="Back to New Shipment"
+        ), 400
+    try:
+        datetime.strptime(date_shipped, '%Y-%m-%d')
+    except ValueError:
+        return render_template('error.html',
+            title="Invalid Input",
+            message="Date shipped must be a valid date.",
+            back_link=True, back_link_url="/shipments/new", back_link_label="Back to New Shipment"
+        ), 400
 
     try:
-        shipment_id = create_shipment(lines, destination=destination, notes=notes)
+        shipment_id = create_shipment(lines, destination=destination, notes=notes,
+                                       category=category, date_shipped=date_shipped)
     except ValueError as e:
         return render_template('error.html',
             title="Cannot Create Shipment",
@@ -3026,9 +3043,22 @@ def edit_shipment(shipment_id):
                 'max_qty': b['remaining'],
             }
 
+    # Split shipment_number back into its YYMMDD date + counter to prefill the edit form.
+    # Old pre-migration numbers (e.g. "SHP-2026-07-15-001") don't fit this shape — fall back to
+    # the shipment's stored date and counter 1; saving then adopts the new format.
+    shipment_number = data['shipment']['shipment_number'] or ''
+    if shipment_number.isdigit() and len(shipment_number) > 6:
+        number_date = f"20{shipment_number[0:2]}-{shipment_number[2:4]}-{shipment_number[4:6]}"
+        number_counter = shipment_number[6:]
+    else:
+        number_date = data['shipment']['date_shipped'] or ''
+        number_counter = '1'
+
     return render_template('edit_shipment.html',
         shipment=data['shipment'],
         candidates=list(candidates.values()),
+        number_date=number_date,
+        number_counter=number_counter,
     )
 
 
@@ -3037,6 +3067,31 @@ def edit_shipment(shipment_id):
 def update_shipment_route(shipment_id):
     destination = request.form.get('destination', '').strip() or None
     notes = request.form.get('notes', '').strip() or None
+    category = request.form.get('category', '').strip() or None
+    date_shipped = request.form.get('date_shipped', '').strip()
+    counter_str = request.form.get('counter', '').strip()
+
+    if not date_shipped:
+        return render_template('error.html',
+            title="Invalid Input",
+            message="Date shipped cannot be blank.",
+            back_link=True, back_link_url=f"/edit-shipment/{shipment_id}", back_link_label="Back to Edit Shipment"
+        ), 400
+    try:
+        prefix = datetime.strptime(date_shipped, '%Y-%m-%d').strftime('%y%m%d')
+    except ValueError:
+        return render_template('error.html',
+            title="Invalid Input",
+            message="Date shipped must be a valid date.",
+            back_link=True, back_link_url=f"/edit-shipment/{shipment_id}", back_link_label="Back to Edit Shipment"
+        ), 400
+    if not counter_str.isdigit() or int(counter_str) <= 0:
+        return render_template('error.html',
+            title="Invalid Input",
+            message="Sequence # must be a positive whole number.",
+            back_link=True, back_link_url=f"/edit-shipment/{shipment_id}", back_link_label="Back to Edit Shipment"
+        ), 400
+    shipment_number = f"{prefix}{int(counter_str)}"
 
     # Collect the batch lines from qty_<batch_id> fields; blanks/zeros drop the line.
     try:
@@ -3058,7 +3113,8 @@ def update_shipment_route(shipment_id):
         ), 400
 
     try:
-        update_shipment(shipment_id, destination=destination, notes=notes, lines=lines)
+        update_shipment(shipment_id, destination=destination, notes=notes, category=category,
+                         date_shipped=date_shipped, shipment_number=shipment_number, lines=lines)
     except ValueError as e:
         return render_template('error.html',
             title="Cannot Update Shipment",

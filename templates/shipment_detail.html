@@ -81,6 +81,10 @@
             <td style="padding:6px 0;">{{ shipment['destination'] if shipment['destination'] else '—' }}</td>
         </tr>
         <tr>
+            <td style="padding:6px 24px 6px 0;color:var(--text-muted);font-weight:600;">Category</td>
+            <td style="padding:6px 0;">{{ shipment['category'] if shipment['category'] else '—' }}</td>
+        </tr>
+        <tr>
             <td style="padding:6px 24px 6px 0;color:var(--text-muted);font-weight:600;">Notes</td>
             <td style="padding:6px 0;">{{ shipment['notes'] if shipment['notes'] else '—' }}</td>
         </tr>

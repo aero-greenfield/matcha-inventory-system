@@ -121,7 +121,8 @@ def create_database():
                     shipment_number TEXT NOT NULL UNIQUE,
                     date_shipped    TEXT NOT NULL,
                     destination     TEXT,
-                    notes           TEXT
+                    notes           TEXT,
+                    category        TEXT
                    )
                    """)
 
@@ -241,6 +242,14 @@ def upgrade_schema():
         conn.commit()
     except Exception:
         conn.rollback()  # column already exists
+
+    # ADDED: shipment-category feature — additive migration for pre-existing SQLite DBs.
+    cursor.execute("PRAGMA table_info(shipments)")
+    _shipment_cols = {row[1] for row in cursor.fetchall()}
+    if "category" not in _shipment_cols:
+        cursor.execute("ALTER TABLE shipments ADD COLUMN category TEXT")
+        conn.commit()
+
     cursor.execute("CREATE INDEX IF NOT EXISTS idx_shipments_date        ON shipments(date_shipped)")
     cursor.execute("CREATE INDEX IF NOT EXISTS idx_batches_shipment_id   ON batches(shipment_id)")
     conn.commit()
