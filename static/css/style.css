@@ -144,6 +144,8 @@ textarea:focus-visible,
     padding: 20px 16px 18px;
     border-bottom: 1px solid var(--sidebar-border);
     flex-shrink: 0;
+    text-decoration: none;
+    cursor: pointer;
 }
 
 .brand-icon {
