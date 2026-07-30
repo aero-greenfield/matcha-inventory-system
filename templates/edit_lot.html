@@ -44,9 +44,9 @@
                 <label>Location</label>
                 <select name="location">
                     <option value="" {% if not lot[0].location %}selected{% endif %}>—</option>
-                    <option value="B" {% if lot[0].location == 'B' %}selected{% endif %}>B</option>
-                    <option value="F" {% if lot[0].location == 'F' %}selected{% endif %}>F</option>
-                    {% if lot[0].location and lot[0].location not in ['B', 'F'] %}
+                    <option value="Brommer" {% if lot[0].location == 'Brommer' %}selected{% endif %}>Brommer</option>
+                    <option value="Fern" {% if lot[0].location == 'Fern' %}selected{% endif %}>Fern</option>
+                    {% if lot[0].location and lot[0].location not in ['Brommer', 'Fern'] %}
                     <option value="{{ lot[0].location }}" selected>{{ lot[0].location }}</option>
                     {% endif %}
                 </select>
