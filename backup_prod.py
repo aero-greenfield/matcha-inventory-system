@@ -398,7 +398,8 @@ def run_full_backup():
 
         verify_backup_integrity(local_file)     # NEW: gate before any upload
 
-        upload_to_supabase(local_file)           # existing (primary copy)
+        if not upload_to_supabase(local_file):   # existing (primary copy)
+            raise RuntimeError("Supabase upload failed")
 
         s3 = get_r2_client()                     # NEW: off-site copy
         if s3:
