@@ -1,48 +1,128 @@
-matcha-inventory-system
-Inventory management system I built for Botaniks, a small matcha manufacturing company in Santa Cruz. They were tracking everything — raw materials, production batches, shipments — mentally. I proposed building something to fix it, and it's been running in production since early 2025. My employer now allocates paid hours for me to keep developing it.
-Live: https://botanik-inventory-system.onrender.com (currently only accessible to Botaniks) 
-
-What it does
-
-Track raw materials with stock levels, reorder thresholds, and supplier info
-Create production batches — pulls from a recipe, deducts materials automatically, rolls back on failure
-Mark batches as shipped, keep a log of shipped history
-Full CRUD for recipes (web + CLI)
-Low-stock alerts, Excel exports for everything
-Nightly automated backups via GitHub Actions → Supabase Storage
-
-Stack
-
-Backend: Python / Flask / Gunicorn
-Database: PostgreSQL (Supabase in prod, SQLite locally)
-Hosting: Render
-Backups: GitHub Actions running pg_dump nightly, stored as .sql files in Supabase Storage
-
-How the code is organized
-app.py              # Flask routes, auth, form handling
-inventory_app.py    # all the actual business logic and DB operations
-database.py         # abstraction layer so SQLite and PostgreSQL are interchangeable
-cli.py              # command-line interface (alternative to the web app)
-helper_functions.py # input validation, exports, backup utilities
-init_db.py          # schema setup for fresh PostgreSQL deployments
-backup_prod.py      # production backup script
-The database.py wrapper handles the SQLite (?) vs PostgreSQL (%s) parameter difference and last-insert-id differences automatically, so there are zero code changes between environments. Web routes and CLI functions share the same business logic layer but are kept separate so CLI workflows don't break when the web app changes.
-Running locally
-bashgit clone https://github.com/aerogreenfield/matcha-inventory-system
-cd matcha-inventory-system
-python -m venv .venv && source .venv/bin/activate
-pip install -r requirements.txt
-.env:
-DATABASE_URL=          # leave blank to use SQLite locally
-AUTH_USERNAME=
-AUTH_PASSWORD=
-bashpython app.py    # web app → localhost:8000
-python cli.py    # CLI
-Backups
-Automated nightly at 2am UTC. Files land in Supabase Storage under db-backups/ as prod_backup_YYYYMMDD_HHMMSS.sql.
-To restore:
-bashpsql "your-DATABASE_URL" < prod_backup_YYYYMMDD_HHMMSS.sql
-See backup_instructions.txt for the full walkthrough.
+# Botaniks Inventory Managment System 
 
 
-Built by Aero Greenfield while studying Technology & Information Management at UC Santa Cruz.
+<!-- One-line tagline under the title, e.g. "Lot-based inventory & production tracking for a matcha manufacturer." -->
+
+<!-- Badge/tag row — e.g. shields.io badges or plain text: Flask · PostgreSQL · SQLite · Supply Chain · Render -->
+
+## Table of Contents
+
+- [Overview](#overview)
+- [Demo](#demo)
+- [Features](#features)
+- [Architecture](#architecture)
+- [Engineering Decisions](#engineering-decisions)
+- [Testing & Reliability](#testing--reliability)
+- [Tech Stack](#tech-stack)
+- [Getting Started](#getting-started)
+- [Known Limitations & Next Steps](#known-limitations--next-steps)
+
+## Overview
+
+<!-- What it is, who uses it, and status — e.g. "In production since ___, used daily by warehouse staff." This is the section recruiters read first. -->
+
+## Demo
+
+<!-- GIF or 3-4 screenshots: receiving a lot, FIFO batch creation, shipping. Use scrubbed data. -->
+
+## Features
+
+<!-- 5-6 core actions in plain language -->
+
+- 
+- 
+- 
+- 
+- 
+
+## Architecture
+
+<!-- Mermaid diagram of the overall system/flow -->
+
+```mermaid
+graph LR
+
+```
+
+### Schema
+
+<!-- Small ER diagram of raw_material_lots, batches, batch_materials, shipment_batches -->
+
+```mermaid
+erDiagram
+
+```
+
+## Engineering Decisions
+
+<!-- 4-5 entries, each: Problem → What went wrong → Fix → Why this over the alternative -->
+
+### 1. The double-deduction race and the conditional UPDATE fix
+
+**Problem:**
+**What went wrong:**
+**Fix:**
+**Why this over the alternative:**
+
+### 2. The float/Decimal bug and the units layer
+
+**Problem:**
+**What went wrong:**
+**Fix:**
+**Why this over the alternative:**
+
+### 3. Lot-based stock as a derived SUM
+
+**Problem:**
+**What went wrong:**
+**Fix:**
+**Why this over the alternative:**
+
+### 4. Verified backups with an off-site copy
+
+**Problem:**
+**What went wrong:**
+**Fix:**
+**Why this over the alternative:**
+
+### 5. N+1 elimination
+
+**Problem:**
+**What went wrong:**
+**Fix (before/after query count):**
+**Why this over the alternative:**
+
+## Testing & Reliability
+
+<!-- Hypothesis property tests, deterministic race reproduction, pre-push hook + CI, backup integrity checks. Use real counts only. -->
+
+## Tech Stack
+
+| Layer | Technology |
+|---|---|
+| Backend | |
+| Database | |
+| Hosting | |
+| Testing | |
+| CI/CD | |
+
+## Getting Started
+
+<details>
+<summary>Setup & running locally/tests</summary>
+
+```bash
+
+```
+
+</details>
+
+## Known Limitations & Next Steps
+
+<!-- Be honest: lazy promotion trigger, SQLite-vs-Postgres test fidelity, shared auth. -->
+
+- 
+- 
+- 
+</content>
+</invoke>
