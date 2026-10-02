@@ -18,7 +18,7 @@
 
 ## Overview
 
-<!-- What it is, who uses it, and status — e.g. "In production since ___, used daily by warehouse staff." This is the section recruiters read first. -->
+
 ### What it is:
 
 Botaniks is an inventory management system for a Santa Cruz matcha and tea wholesaler (Botaniks Herbs & Tea). It tracks raw materials by lot, plans and records production batches deducted from user-selected lots or automatic FIFO, and logs shipments, giving warehouse and management staff exact stock levels, recipes, and batch and shipment history. It has been in production since June 2026 and is used daily by six staff.
@@ -78,10 +78,18 @@ erDiagram
 
 ### 1. The double-deduction race and the conditional UPDATE fix
 
-**Problem:**
-**What went wrong:**
-**Fix:**
-**Why this over the alternative:**
+**Problem:** Planned batches auto-promote from `Planned` to `Ready` lazily, on page load, once their planned completion date has passed — there's no background worker, `get_batches()` and `get_all_batches_with_id()` both just call `promote_planned_batches()` on every request. That function fetches every overdue batch, deducts its materials lot-by-lot, and flips its status. Two requests that both land on that path at (near) the same time — two different pages, two Gunicorn workers, doesn't matter which — can both end up acting on the same overdue batch.
+
+
+
+**Problem:** Planned batches are promoted to `Ready` lazily: `get_batches()` calls `promote_planned_batches()` on page load once a batch's planned date has passed. Postgres rows were already locked with `FOR UPDATE SKIP LOCKED`, but SQLite has no equivalent, so there the read-deduct-write sequence was unprotected. Two requests could both read a batch as `Planned` and both deduct it, leaving lots deducted twice and, for mix batches, a duplicate output lot (phantom stock). [One sentence on whether production data was affected.] I wrote `scripts/repair_double_promotion.py` to find and fix the duplicates (dry-run by default).
+
+
+**What went wrong:** The app runs SQLite locally/in tests and Postgres in production. The Postgres path already locked the overdue rows with `SELECT ... FOR UPDATE SKIP LOCKED`, so a second concurrent transaction would just skip a row already being processed. SQLite has no `FOR UPDATE` at all, though, and that gap was previously left unaddressed on purpose — SQLite was treated as "single-writer, local-only" and not worth locking. That left the read-then-deduct-then-write sequence unprotected on the one engine every test actually runs against: a request could read a batch as `Planned`, start deducting its lots, and a second request could read the same row as `Planned` before the first had written anything back — producing duplicate `batch_materials` rows (lots deducted twice) and, for mix batches, a duplicate house-made output lot (phantom stock). I wrote `scripts/repair_double_promotion.py` to find and repair both kinds of duplicate, run as a dry-run report by default.
+
+**Fix:** The UPDATE that flips a batch to `Ready` now carries `WHERE batch_id = %s AND status = 'Planned'` (`_claim_batch` in `services/batches.py`), and it's the *first* statement of that batch's own transaction — every other write for that batch happens after it, so a later rollback (e.g. insufficient stock) also releases the claim. The predicate is re-checked against whatever is actually committed at write time: whichever request's UPDATE lands first flips the row and wins; the second request's UPDATE, once it runs, finds `status` already `'Ready'` and matches zero rows, so it does nothing. That guarantee holds under SQLite's whole-database write lock exactly the same way it holds under a Postgres row lock — the correctness doesn't depend on which engine is underneath.
+
+**Why this over the alternative:** The obvious alternative was to just add `FOR UPDATE` support for SQLite too — but SQLite doesn't have it, so that path doesn't exist. The next obvious alternative was leaving Postgres on its existing lock and writing a SQLite-only guard, but that means carrying two different concurrency mechanisms for the same function and trusting that they're equivalent — exactly the kind of asymmetry that's easy to get subtly wrong. A conditional UPDATE needs no engine-specific locking clause, so one line of logic is correct everywhere, including in the SQLite-backed test suite, which can now actually exercise and assert the race is closed instead of only reasoning about it for the engine tests don't run against.
 
 ### 2. The float/Decimal bug and the units layer
 
