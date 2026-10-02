@@ -13,13 +13,32 @@
 - [Architecture](#architecture)
 - [Engineering Decisions](#engineering-decisions)
 - [Testing & Reliability](#testing--reliability)
-- [Tech Stack](#tech-stack)
 - [Getting Started](#getting-started)
 - [Known Limitations & Next Steps](#known-limitations--next-steps)
 
 ## Overview
 
 <!-- What it is, who uses it, and status — e.g. "In production since ___, used daily by warehouse staff." This is the section recruiters read first. -->
+### What it is:
+
+Botaniks is an inventory management system for a Santa Cruz matcha and tea wholesaler (Botaniks Herbs & Tea). It tracks raw materials by lot, plans and records production batches deducted from user-selected lots or automatic FIFO, and logs shipments, giving warehouse and management staff exact stock levels, recipes, and batch and shipment history. It has been in production since June 2026 and is used daily by six staff.
+
+**Stack:**
+
+| Layer | Tools |
+|---|---|
+| Backend | Python, Flask, Gunicorn |
+| Data | PostgreSQL (prod), SQLite (dev/test), pandas, openpyxl (Excel export) |
+| Frontend | Jinja2 templates, HTML/CSS, JavaScript |
+| Testing | pytest, Hypothesis |
+| Infra | Docker, GitHub Actions, Render, Supabase, Cloudflare R2 |
+
+
+### Background:
+
+I started as a warehouse employee at Botaniks, where inventory was tracked in spreadsheets and by intuition. That caused daily slowdowns: unexpected material shortages, manual physical counts of batches ready to ship, and batch details that had to be checked by hand.
+
+I built a demo database system and pitched it to the owner. After a positive response I kept building it on the side, and eventually the company moved me off warehouse work to build it during paid hours.
 
 ## Demo
 
