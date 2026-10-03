@@ -13,7 +13,6 @@
 - [Architecture](#architecture)
 - [Engineering Decisions](#engineering-decisions)
 - [Testing & Reliability](#testing--reliability)
-- [Getting Started](#getting-started)
 - [Known Limitations & Next Steps](#known-limitations--next-steps)
 
 ## Overview
@@ -41,7 +40,7 @@ I started as a warehouse employee at Botaniks, where inventory was tracked in sp
 I built a demo database system and pitched it to the owner. After a positive response I kept building it on the side, and eventually the company moved me off warehouse work to build it during paid hours.
 
 ## Demo
-
+ 
 <!-- GIF or 3-4 screenshots: receiving a lot, FIFO batch creation, shipping. Use scrubbed data. -->
 
 ## Features
@@ -76,7 +75,7 @@ erDiagram
 
 <!-- 4-5 entries, each: Problem → What went wrong → Fix → Why this over the alternative -->
 
-### 1. The double-deduction race and the conditional UPDATE fix
+### 1. The double-deduction race and the conditional UPDATE fix (NEEDS REVIEW BEFORE FINISH CIRCLING BACK!!!!!!!!)
 
 **Problem:** Planned batches auto-promote from `Planned` to `Ready` lazily, on page load, once their planned completion date has passed — there's no background worker, `get_batches()` and `get_all_batches_with_id()` both just call `promote_planned_batches()` on every request. That function fetches every overdue batch, deducts its materials lot-by-lot, and flips its status. Two requests that both land on that path at (near) the same time — two different pages, two Gunicorn workers, doesn't matter which — can both end up acting on the same overdue batch.
 
@@ -93,10 +92,18 @@ erDiagram
 
 ### 2. The float/Decimal bug and the units layer
 
-**Problem:**
-**What went wrong:**
-**Fix:**
-**Why this over the alternative:**
+**Problem:** Quantities are entered in what ever unit of measument is natural for the receipt (pounds, ounces, kilograms, etc) but need to be stored, summed and compared against the recipes required quantity consistently. Doing this using plain floats meant converting through binary floating point, which cant represent most of these conversions exactly. 
+
+**What went wrong:** A house-made mix lot holding exactly 176 lb was rejected as insufficient for a batch needing exactly 176 lb. The lot's produced quantity had been rounded to 4 decimal places (in grams) when saved, which shifted it about 0.00002 g from the exact value. The "is there enough stock" check used a 1e-6 g tolerance, smaller than that gap, so identical quantities failed the comparison.
+
+**Fix:**  Four pieces working together:
+- **One base unit per dimension** (grams for mass). Conversion happens only at the edges, form input and display, so each quantity is converted once instead of bouncing between units.
+- **Decimal for conversion math**, built via `Decimal(str(x))` with exact conversion factors, so the conversion step adds no error.
+- **No rounding on save.** Produced quantities are stored at full precision.
+- **One shared tolerance.** Every coverage check goes through two helpers (`_covers`, `_quantities_match`) using a 1 mg epsilon, above storage noise and far below any quantity that matters. Previously, call sites had no tolerance or a too-tight one.
+
+
+**Why this over the alternative:** Threading `Decimal` end-to-end and dropping the tolerance is the principled fix, and I scoped it out deliberately. Values are still cast to `float` on write to SQLite (`REAL` has no fixed-precision decimal type), so a tolerance would still be needed on that path. On PostgreSQL, quantity columns are `NUMERIC`, which closes most of that gap. The 1 mg tolerance bounds the remaining risk without a rewrite of every service function.
 
 ### 3. Lot-based stock as a derived SUM
 
@@ -123,26 +130,8 @@ erDiagram
 
 <!-- Hypothesis property tests, deterministic race reproduction, pre-push hook + CI, backup integrity checks. Use real counts only. -->
 
-## Tech Stack
 
-| Layer | Technology |
-|---|---|
-| Backend | |
-| Database | |
-| Hosting | |
-| Testing | |
-| CI/CD | |
 
-## Getting Started
-
-<details>
-<summary>Setup & running locally/tests</summary>
-
-```bash
-
-```
-
-</details>
 
 ## Known Limitations & Next Steps
 
