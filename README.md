@@ -64,31 +64,102 @@ graph LR
 
 ### Schema
 
-<!-- Small ER diagram of raw_material_lots, batches, batch_materials, shipment_batches -->
+<!-- ER diagram of the core schema: materials/lots, recipes, batches, and shipments -->
 
 ```mermaid
 erDiagram
+    %% planning: what materials exist, and what a recipe needs
+    raw_materials ||--o{ raw_material_lots : "received as"
+    raw_materials ||--o{ recipe_materials : "required by"
+    recipes       ||--o{ recipe_materials : "lists"
 
+    %% execution: a batch deducts lots, then ships
+    raw_material_lots ||--o{ batch_materials   : "deducted into"
+    batches            ||--o{ batch_materials   : "consumes"
+    raw_material_lots  ||--o| batches           : "produced by (mix batches)"
+    batches            ||--o{ shipment_batches  : "ships as"
+    shipments          ||--o{ shipment_batches  : "contains"
+
+    raw_materials {
+        int material_id PK
+        string name
+        string dimension
+        bool is_housemade
+    }
+    raw_material_lots {
+        int lot_id PK
+        int material_id FK
+        real quantity
+        string status
+    }
+    recipes {
+        int recipe_id PK
+        string product_name
+        string batch_type
+    }
+    recipe_materials {
+        int recipe_material_id PK
+        int recipe_id FK
+        int material_id FK
+        real quantity_needed
+    }
+    batches {
+        int batch_id PK
+        string product_name
+        string batch_type
+        string status
+        int mix_lot_id FK
+    }
+    batch_materials {
+        int batch_material_id PK
+        int batch_id FK
+        int lot_id FK
+        real quantity_used
+    }
+    shipments {
+        int shipment_id PK
+        string shipment_number
+        string date_shipped
+    }
+    shipment_batches {
+        int shipment_batch_id PK
+        int shipment_id FK
+        int batch_id FK
+        real quantity
+    }
 ```
 
 ## Engineering Decisions
 
 <!-- 4-5 entries, each: Problem → What went wrong → Fix → Why this over the alternative -->
 
-### 1. The double-deduction race and the conditional UPDATE fix (NEEDS REVIEW BEFORE FINISH CIRCLING BACK!!!!!!!!)
+### 1. The double-deduction race and the conditional UPDATE fix
 
-**Problem:** Planned batches auto-promote from `Planned` to `Ready` lazily, on page load, once their planned completion date has passed — there's no background worker, `get_batches()` and `get_all_batches_with_id()` both just call `promote_planned_batches()` on every request. That function fetches every overdue batch, deducts its materials lot-by-lot, and flips its status. Two requests that both land on that path at (near) the same time — two different pages, two Gunicorn workers, doesn't matter which — can both end up acting on the same overdue batch.
+**Problem:** A Planned batch is scheduled for a future date, and its materials are deducted from stock when that date arrives. There is no background worker. `get_batches()` and `get_all_batches_with_id()` call `promote_planned_batches()` on page load, throttled by a 60-second timer. Production runs two Gunicorn workers, which are separate OS processes, so two requests can reach that function at the same instant and both see the same overdue batch.
 
+**What went wrong:** The function found overdue batches with a plain `SELECT`, deducted each batch's lots, then flipped its status with `UPDATE ... WHERE batch_id = %s`. A `SELECT` takes no lock and the UPDATE didn't re-check anything, so both requests read `status = 'Planned'` and both ran the full deduction. The damage was twofold:
+- **Double deduction:** duplicate `batch_materials` rows, with the same lots drawn down twice.
+- **Phantom stock:** for mix (Component) batches, a duplicate house-made output lot.
 
+The duplicates reached real data, so I wrote `scripts/repair_double_promotion.py` (dry-run by default) to find and fix both kinds.
 
-**Problem:** Planned batches are promoted to `Ready` lazily: `get_batches()` calls `promote_planned_batches()` on page load once a batch's planned date has passed. Postgres rows were already locked with `FOR UPDATE SKIP LOCKED`, but SQLite has no equivalent, so there the read-deduct-write sequence was unprotected. Two requests could both read a batch as `Planned` and both deduct it, leaving lots deducted twice and, for mix batches, a duplicate output lot (phantom stock). [One sentence on whether production data was affected.] I wrote `scripts/repair_double_promotion.py` to find and fix the duplicates (dry-run by default).
+**Fix:** The status flip became a conditional claim (`_claim_batch` in `services/batches.py`):
 
+`UPDATE batches SET status='Ready' ... WHERE batch_id=%s AND status='Planned'`
 
-**What went wrong:** The app runs SQLite locally/in tests and Postgres in production. The Postgres path already locked the overdue rows with `SELECT ... FOR UPDATE SKIP LOCKED`, so a second concurrent transaction would just skip a row already being processed. SQLite has no `FOR UPDATE` at all, though, and that gap was previously left unaddressed on purpose — SQLite was treated as "single-writer, local-only" and not worth locking. That left the read-then-deduct-then-write sequence unprotected on the one engine every test actually runs against: a request could read a batch as `Planned`, start deducting its lots, and a second request could read the same row as `Planned` before the first had written anything back — producing duplicate `batch_materials` rows (lots deducted twice) and, for mix batches, a duplicate house-made output lot (phantom stock). I wrote `scripts/repair_double_promotion.py` to find and repair both kinds of duplicate, run as a dry-run report by default.
+- **It runs first.** It is the first statement in that batch's own transaction, so every other write for the batch happens after the claim succeeds.
+- **Only one caller wins.** An UPDATE must take a write lock, so concurrent claims run one at a time. The second re-evaluates `status = 'Planned'` against committed data, finds `Ready`, matches zero rows, and the code skips the batch.
+- **Failures release the claim.** If a later step fails (e.g. insufficient stock), the rollback undoes the claim and the batch stays Planned with a failure reason recorded.
+- **One transaction per batch.** One batch failing can't roll back others already promoted in the same pass.
 
-**Fix:** The UPDATE that flips a batch to `Ready` now carries `WHERE batch_id = %s AND status = 'Planned'` (`_claim_batch` in `services/batches.py`), and it's the *first* statement of that batch's own transaction — every other write for that batch happens after it, so a later rollback (e.g. insufficient stock) also releases the claim. The predicate is re-checked against whatever is actually committed at write time: whichever request's UPDATE lands first flips the row and wins; the second request's UPDATE, once it runs, finds `status` already `'Ready'` and matches zero rows, so it does nothing. That guarantee holds under SQLite's whole-database write lock exactly the same way it holds under a Postgres row lock — the correctness doesn't depend on which engine is underneath.
+This works the same on SQLite (database-wide write lock) and Postgres (row lock).
 
-**Why this over the alternative:** The obvious alternative was to just add `FOR UPDATE` support for SQLite too — but SQLite doesn't have it, so that path doesn't exist. The next obvious alternative was leaving Postgres on its existing lock and writing a SQLite-only guard, but that means carrying two different concurrency mechanisms for the same function and trusting that they're equivalent — exactly the kind of asymmetry that's easy to get subtly wrong. A conditional UPDATE needs no engine-specific locking clause, so one line of logic is correct everywhere, including in the SQLite-backed test suite, which can now actually exercise and assert the race is closed instead of only reasoning about it for the engine tests don't run against.
+**Why this over the alternative:**
+- **`SELECT ... FOR UPDATE [SKIP LOCKED]`** is Postgres-only. Using it alone would leave the SQLite-backed test suite unprotected and mean maintaining two concurrency mechanisms and trusting they're equivalent. The conditional UPDATE uses no engine-specific syntax, so one piece of logic is correct everywhere. It's kept there as a throughput optimization so workers pick different batches, not as the correctness mechanism.
+- **A scheduled promotion job** would remove the page-load trigger but still needs the guard once two workers or a retry overlap.
+- **Testing without threads:** the suite replays a stale pre-commit snapshot of the overdue batch through a second promotion run and asserts nothing is deducted twice and no duplicate lot exists. It reproduces the state a race leaves behind, not the timing, so it never flakes.
+
+**Known limitation:** Promotion only happens when someone loads a page, and the 60-second throttle is a per-process global, so the two workers don't coordinate. Correctness is safe because of the claim, but a batch could sit past its due date if nobody visits. The fix is a real scheduled trigger, such as a GitHub Actions cron hitting an internal endpoint, like the backup job.
 
 ### 2. The float/Decimal bug and the units layer
 
@@ -105,26 +176,79 @@ erDiagram
 
 **Why this over the alternative:** Threading `Decimal` end-to-end and dropping the tolerance is the principled fix, and I scoped it out deliberately. Values are still cast to `float` on write to SQLite (`REAL` has no fixed-precision decimal type), so a tolerance would still be needed on that path. On PostgreSQL, quantity columns are `NUMERIC`, which closes most of that gap. The 1 mg tolerance bounds the remaining risk without a rewrite of every service function.
 
+
 ### 3. Lot-based stock as a derived SUM
 
-**Problem:**
-**What went wrong:**
-**Fix:**
-**Why this over the alternative:**
+**Problem:** The obvious way to model "how much of a material do we have" is a single `stock_level` column on `raw_materials`, incremented and decremented on every transaction. The business needs more than a total, though:
+- **FIFO:** Draw from the oldest receipt first, because tea products expire.
+- **Expiry-aware availability:** Half of a material's stock can expire next week and the rest in six months.
+- **Accurate batch cost:** A batch should reflect what the specific stock it consumed actually cost, not an average.
+- **Material tracing:** The materials within each batch should be able to be tracked back to specific material lots, this allows for easier tracking of possible bad batches requiring a recall.
+
+**Why a counter fails:** A single number can't answer any of those, because it has no idea which receipt the stock came from. It's also a second copy of the truth. If any code path updates the underlying quantities but misses the total, the two disagree and nothing exists to reconcile them.
+
+**Fix:** `raw_material_lots` holds one row per physical receipt (quantity, received date, expiration date, cost, status). `raw_materials` has no quantity or cost column at all. Stock is computed as `SUM(quantity)` over active, non-expired lots (`get_material_stock_from_lots`, `services/lots.py`). This enables three things:
+- **FIFO:** order lots by `received_date` and fill from the oldest (`promote_planned_batches`).
+- **Per-lot expiry:** an expired lot drops out of the SUM automatically.
+- **Auditable cost:** `batch_materials` records which lot was drawn from and freezes `cost_per_unit` at deduction time, so a batch's historical cost survives later edits to the lot.
+
+**What deriving stock costs:**
+- **Query cost:** every stock question is a `SUM` over lots, not a column read. `get_all_materials` computes stock and total cost for every material in one `LEFT JOIN ... GROUP BY` query, and `raw_material_lots.material_id` is indexed.
+- **The NULL trap:** with a `LEFT JOIN`, a material with no lots gets `SUM` = `NULL`, not 0, and `NULL` slips past both `== 0` and `<= reorder_level` checks, so the item would display as "In Stock." `COALESCE(SUM(...), 0)` is what prevents that.
+
+**Why this over the alternative:** A stored total means every code path touching stock must keep it in sync forever. Deriving it means there is no second value to go stale. This doesn't make lot quantities immune to bugs (the double deduction in #1 corrupted them directly, which is why #1 needed a repair script), but it removes one layer of drift: the material-level total disagreeing with its lots. The cost is a `SUM` per read instead of an O(1) lookup, a fine trade at a small manufacturer's write volume. If reads ever dominated, I'd materialize the total and maintain it in the same transaction as the lot write, rather than going back to a free-floating counter.
+
 
 ### 4. Verified backups with an off-site copy
 
-**Problem:**
-**What went wrong:**
+**Problem:** Production runs on Postgres (Supabase), so a lost or corrupted database has to be recoverable. A nightly GitHub Actions cron job runs `pg_dump` and uploads the file to Supabase Storage. That setup has four weaknesses.
+
+**Risks in the original design:**
+- **Unverified output:** `pg_dump` exits 0 even when the dump is empty or truncated. The exit code proves the process ran, not that the data made it in, so a silently empty backup would have been trusted until the day I needed to restore.
+- **Single failure domain:** The only copy lived in the same Supabase project as the database. A billing problem, deleted bucket, or account issue could take out the database and its backups together.
+- **Unbounded growth:** Nightly uploads with no cleanup would eventually hit the storage cap.
+- **Silent scheduler failure:** GitHub disables scheduled workflows after 60 days of repo inactivity, with no failure email. The pipeline could stop running and nothing would say so.
+
 **Fix:**
-**Why this over the alternative:**
+- **Verify before upload:** `verify_backup_integrity()` rejects the dump unless it clears four checks, each catching a failure the others miss:
+  1. A minimum file size, which catches a trivially empty or truncated file.
+  2. A minimum count of `CREATE TABLE` statements, which proves the schema made it in.
+  3. The anchor tables `raw_materials` and `batches`, which prove it's the right schema. I check two structural tables instead of every table so the check doesn't need updating every time the schema changes.
+  4. At least one `COPY` block, which is how `pg_dump` writes row data. A schema-only dump passes every earlier check, so this is the one that catches "right shape, zero rows."
+- **Second copy at a different vendor:** The verified dump also goes to Cloudflare R2, a separate company and account from Supabase. If any of the four R2 secrets is missing while others are set, the script raises instead of silently skipping the off-site copy.
+- **Retention:** Both destinations are pruned to the newest 30 backups.
+- **Dead-man's switch:** A healthchecks.io ping fires last, only after every earlier step succeeds. If the ping doesn't arrive on schedule, I get alerted. That covers the case a check inside the script can't, which is the script never running at all.
 
-### 5. N+1 elimination
+**Why this over the alternative:** The lazy option was a second bucket inside the same Supabase project, which fails for the same reason as the original setup: one vendor's outage or account problem takes out both copies. Relying on GitHub's run history as proof the backup happened doesn't work either, because a disabled schedule produces no failure to look at. Only a ping that must arrive turns silence into a signal. Checking dump contents instead of just the exit code costs a few regex passes per run, which is trivial next to discovering the backups were empty during an outage.
 
-**Problem:**
-**What went wrong:**
-**Fix (before/after query count):**
+**Known limitation:** Verification checks the dump's shape, not that it restores cleanly. The next step is a scheduled restore drill: load the latest backup into a throwaway Postgres container and run sanity `COUNT(*)` queries.
+
+
+### 5. N+1 query elimination
+
+**Problem:** A page or service function that needs related data for N items can fetch it with one query per item, which costs N+1 round-trips. Each trip pays connection and parsing overhead even when the query itself is trivial. Here, every service call opens and closes its own database connection, so the overhead is larger than usual.
+
+**Where it showed up:**
+- **`check_negative_stock`** (`services/recipes.py`) called `get_material_stock_from_lots(material_id)` once per recipe ingredient. Each call opened its own connection, so a 10-ingredient recipe cost 11 connections: one for the recipe, ten for stock lookups.
+- **`add_recipe` / `update_recipe`** (`services/recipes.py`) called `get_raw_material(name)` once per ingredient being saved, the same pattern with a connection per name.
+- **Inventory lot drawers** would have needed one API call per material row to populate on page load. This one was avoided by design, not fixed after the fact.
+
+**Fix:**
+
+| Call site | Lookups before | Lookups after |
+|---|---|---|
+| `check_negative_stock` | N (one stock SUM per ingredient) | 1 (`GROUP BY material_id` with an `IN (...)` clause, read into a `{material_id: stock}` dict) |
+| `add_recipe` / `update_recipe` | N (one name lookup per ingredient) | 1 (`WHERE LOWER(name) IN (...)`, resolved through a dict in the loop) |
+| Inventory lot drawers | N (one API call per material) | 1 (`get_active_lots_for_materials`, one `IN (...)` query grouped by `material_id` in Python) |
+
+In each case the per-ingredient loop stays as it was. It reads from an in-memory dict instead of the database, so the code's structure is unchanged and only the round-trips drop.
+
 **Why this over the alternative:**
+- **Caching the per-item lookups** was the first option. Stock levels and material names change on every batch or lot write, so a cache needs invalidation logic to solve a problem that one batched query removes with no staleness risk.
+- **Denormalizing** (storing the material name directly on `recipe_materials`) would make the lookup unnecessary, but it duplicates data that's one join away and reopens the sync-drift problem that the lot-based stock model in #3 exists to avoid.
+- **One giant multi-join query** would also work, but the actual cost here is round-trips, not query complexity. A simple batched fetch plus a dict keeps the code readable.
+
+**Known limitation:** The `IN (...)` clause grows with the number of items. That's fine for a recipe with a handful of ingredients, but it would need chunking for very large lists.
 
 ## Testing & Reliability
 
