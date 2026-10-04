@@ -38,7 +38,7 @@ ex:
 Step 3: Get your database URL
 
 ex:
-DATABASE_URL=postgresql://postgres:password@db.tyrofukczchyhoafcnwo.supabase.co:5432/postgres
+DATABASE_URL=postgresql://postgres:[YOUR-PASSWORD]@db.[YOUR-PROJECT-REF].supabase.co:5432/postgres
 
 Step 4: Restore the database
 
@@ -52,7 +52,7 @@ psql "postgresql://postgres:[YOUR-PASSWORD]@db.[YOUR-PROJECT-REF].supabase.co:54
 
 this is using ur project ref:
 
-psql "postgresql://postgres:[YOUR-PASSWORD]@db.tyrofukczchyhoafcnwo.supabase.co:5432/postgres" < prod_backup_20260226_015410.sql
+psql "postgresql://postgres:[YOUR-PASSWORD]@db.[YOUR-PROJECT-REF].supabase.co:5432/postgres" < prod_backup_20260226_015410.sql
 
 
 The restore takes about 10-30 seconds.
