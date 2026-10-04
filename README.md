@@ -155,6 +155,8 @@ This works the same on SQLite (database-wide write lock) and Postgres (row lock)
 
 **Known limitation:** Promotion only happens when someone loads a page, and the 60-second throttle is a per-process global, so the two workers don't coordinate. Correctness is safe because of the claim, but a batch could sit past its due date if nobody visits. The fix is a real scheduled trigger, such as a GitHub Actions cron hitting an internal endpoint, like the backup job.
 
+---
+
 ### 2. The float/Decimal bug and the units layer
 
 **Problem:** Quantities are entered in what ever unit of measument is natural for the receipt (pounds, ounces, kilograms, etc) but need to be stored, summed and compared against the recipes required quantity consistently. Doing this using plain floats meant converting through binary floating point, which cant represent most of these conversions exactly. 
@@ -170,6 +172,7 @@ This works the same on SQLite (database-wide write lock) and Postgres (row lock)
 
 **Why this over the alternative:** Threading `Decimal` end-to-end and dropping the tolerance is the principled fix, and I scoped it out deliberately. Values are still cast to `float` on write to SQLite (`REAL` has no fixed-precision decimal type), so a tolerance would still be needed on that path. On PostgreSQL, quantity columns are `NUMERIC`, which closes most of that gap. The 1 mg tolerance bounds the remaining risk without a rewrite of every service function.
 
+---
 
 ### 3. Lot-based stock as a derived SUM
 
@@ -192,6 +195,7 @@ This works the same on SQLite (database-wide write lock) and Postgres (row lock)
 
 **Why this over the alternative:** A stored total means every code path touching stock must keep it in sync forever. Deriving it means there is no second value to go stale. This doesn't make lot quantities immune to bugs (the double deduction in #1 corrupted them directly, which is why #1 needed a repair script), but it removes one layer of drift: the material-level total disagreeing with its lots. The cost is a `SUM` per read instead of an O(1) lookup, a fine trade at a small manufacturer's write volume. If reads ever dominated, I'd materialize the total and maintain it in the same transaction as the lot write, rather than going back to a free-floating counter.
 
+---
 
 ### 4. Verified backups with an off-site copy
 
@@ -215,8 +219,9 @@ This works the same on SQLite (database-wide write lock) and Postgres (row lock)
 
 **Why this over the alternative:** The lazy option was a second bucket inside the same Supabase project, which fails for the same reason as the original setup: one vendor's outage or account problem takes out both copies. Relying on GitHub's run history as proof the backup happened doesn't work either, because a disabled schedule produces no failure to look at. Only a ping that must arrive turns silence into a signal. Checking dump contents instead of just the exit code costs a few regex passes per run, which is trivial next to discovering the backups were empty during an outage.
 
-**Known limitation:** Verification checks the dump's shape, not that it restores cleanly. The next step is a scheduled restore drill: load the latest backup into a throwaway Postgres container and run sanity `COUNT(*)` queries.
+**Known limitation:** The automated check verifies the dump's shape, not that it restores. I verified restorability manually a handful of time, the last being 2026-10-03: the latest nightly backup was restored into a throwaway local Postgres container and the app ran against it with correct data. Automating this as a scheduled restore drill (throwaway Postgres in GitHub Actions, sanity `COUNT(*)` queries) is the next step.
 
+---
 
 ### 5. N+1 query elimination
 
@@ -265,6 +270,7 @@ In each case the per-ingredient loop stays as it was. It reads from an in-memory
 **Backup verification:** a separate nightly workflow (`.github/workflows/backup.yml`) dumps production Postgres and runs it through `verify_backup_integrity()` (file size, `CREATE TABLE` count, presence of the `raw_materials`/`batches` anchor tables, at least one `COPY` block with row data) before accepting it — see [Engineering Decisions #4](#4-verified-backups-with-an-off-site-copy). A failed or skipped dead-man's-switch ping is the alert if the job never ran at all.
 
 **Known gap:** the suite runs entirely on SQLite; production runs Postgres. It verifies application logic — the conditional-UPDATE claim, the units layer, the N+1 fixes — not Postgres-specific behavior like `Decimal` return types, `LASTVAL()`, or the connection pool. There is no database-matched CI; the suite is run locally before every deploy via the pre-push hook.
+
 ## Known Limitations & Next Steps
 
 <!-- Be honest: lazy promotion trigger, SQLite-vs-Postgres test fidelity, shared auth. -->
