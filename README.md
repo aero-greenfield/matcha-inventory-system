@@ -45,22 +45,16 @@ I built a demo database system and pitched it to the owner. After a positive res
 
 ## Features
 
-<!-- 5-6 core actions in plain language -->
-
-- 
-- 
-- 
-- 
-- 
+- **Track raw materials by lot, not just a total number.** Every receipt (a bag of matcha, a box of tins) gets its own lot with its own quantity, cost, and expiration date, so stock on hand is always traceable back to exactly what came in and when.
+- **Build batches two ways: FIFO or pick-your-own.** Making a batch pulls from the oldest lot first by default, but staff can manually choose which lots to draw from when it matters (e.g. using up a lot that's expiring soon).
+- **Plan batches ahead of time.** Schedule a batch for a future completion date and the system holds off deducting materials until then — it automatically promotes the batch to "Ready" when the date hits, as long as there's enough stock.
+- **Make house-made intermediate products.** "Mix" batches (like a blended base) become their own trackable material, so a finished batch can consume something you made in-house just like any purchased ingredient.
+- **See low-stock problems before they're a problem.** The dashboard flags materials sitting at or below their reorder level, so the person managing inventory doesn't find out by running out mid-batch.
+- **Log shipments and get an audit trail for free.** Every batch, lot, and shipment action is logged automatically, and anything can be exported to Excel for bookkeeping or a quick look outside the app.
 
 ## Architecture
 
-<!-- Mermaid diagram of the overall system/flow -->
 
-```mermaid
-graph LR
-
-```
 
 ### Schema
 
@@ -252,11 +246,25 @@ In each case the per-ingredient loop stays as it was. It reads from an in-memory
 
 ## Testing & Reliability
 
-<!-- Hypothesis property tests, deterministic race reproduction, pre-push hook + CI, backup integrity checks. Use real counts only. -->
+211 tests across 8 files in `test_scripts/` (pytest), run against an isolated throwaway SQLite database that's rebuilt once per session and wiped between tests — never `data/inventory.db`, never production.
 
+**Example tests** cover the services layer (materials, lots, recipes, batches, shipments) and, through `test_routes.py`, HTTP/API behavior via the Flask test client — auth, CSRF, rate limiting, and the autocomplete/lot-selection JSON endpoints.
 
+**Property-based tests** (Hypothesis, `test_units.py`) guard the unit-conversion layer — the root of the float/Decimal bug in [Engineering Decisions #2](#2-the-floatdecimal-bug-and-the-units-layer) — against classes of error instead of a handful of hand-picked values:
+- Round-tripping any quantity through `to_base`/`from_base` reconstructs the original within a tight Decimal bound.
+- Every unit alias (`lbs`, `pound`, `#`, ...) converts identically to its canonical key.
+- Count-based units (tin, box, each...) are the identity function — they never convert.
+- The float-storage boundary (what Postgres/SQLite actually persist) doesn't drift beyond a 1e-9 relative tolerance.
 
+**Deterministic race reproduction:** the double-promotion bug in [Engineering Decisions #1](#1-the-double-deduction-race-and-the-conditional-update-fix) only happens when two Gunicorn workers interleave, which threads in a test process can't reliably force. Instead, `test_batches.py` captures the exact stale snapshot a losing racer would hold after the winning racer has already committed, then replays it through a second promotion pass and asserts nothing is deducted twice and no duplicate output lot is created. It reproduces the state the race leaves behind rather than the timing, so it exercises the real bug on every run with no flakiness.
 
+**Pre-push gate:** `git config core.hooksPath hooks` wires in a local pre-push hook that blocks the push if the pytest suite or an app-boot smoke test (`scripts/smoke_test.py`) fails — both run against the same isolated SQLite DB. Render auto-deploys on every push with no gate of its own in between, so this is what actually stops a broken change from reaching production, not the CI below.
+
+**CI:** a GitHub Actions workflow (`.github/workflows/tests.yml`) runs the same suite on every push/PR to `main` and `units-conversion-layer`. It's a backstop, not the primary gate — it's async and doesn't block the deploy that Render triggers on push; the pre-push hook is what runs before that push happens.
+
+**Backup verification:** a separate nightly workflow (`.github/workflows/backup.yml`) dumps production Postgres and runs it through `verify_backup_integrity()` (file size, `CREATE TABLE` count, presence of the `raw_materials`/`batches` anchor tables, at least one `COPY` block with row data) before accepting it — see [Engineering Decisions #4](#4-verified-backups-with-an-off-site-copy). A failed or skipped dead-man's-switch ping is the alert if the job never ran at all.
+
+**Known gap:** the suite runs entirely on SQLite; production runs Postgres. It verifies application logic — the conditional-UPDATE claim, the units layer, the N+1 fixes — not Postgres-specific behavior like `Decimal` return types, `LASTVAL()`, or the connection pool. There is no database-matched CI; the suite is run locally before every deploy via the pre-push hook.
 ## Known Limitations & Next Steps
 
 <!-- Be honest: lazy promotion trigger, SQLite-vs-Postgres test fidelity, shared auth. -->
