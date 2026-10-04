@@ -273,10 +273,16 @@ In each case the per-ingredient loop stays as it was. It reads from an in-memory
 
 ## Known Limitations & Next Steps
 
-<!-- Be honest: lazy promotion trigger, SQLite-vs-Postgres test fidelity, shared auth. -->
+- **Promotion runs on page load, not a schedule.** The conditional-UPDATE claim in [Engineering Decisions #1](#1-the-double-deduction-race-and-the-conditional-update-fix) makes double-promotion impossible, but a Planned batch is only checked when someone happens to load a page that calls `promote_planned_batches()`. If nobody opens the app on the due date, the batch just sits in Planned. **Next step:** a real scheduled trigger — a GitHub Actions cron hitting an internal endpoint, the same pattern the nightly backup job already uses.
 
-- 
-- 
-- 
+- **Tests run on SQLite; production runs Postgres.** The 211-test suite ([Testing & Reliability](#testing--reliability)) verifies application logic — the claim-based promotion, the units layer, the N+1 fixes — but not Postgres-specific behavior: `Decimal` return types, `LASTVAL()`, the connection pool. There's no database-matched CI; a Postgres bug that SQLite can't reproduce would only surface in production. **Next step:** a Postgres service container in the GitHub Actions workflow, running the same suite against the real engine before merge.
+
+- **One shared login, and an audit log that can't name names.** `AUTH_USERNAME`/`AUTH_PASSWORD` (`auth.py`) is a single HTTP Basic Auth credential for all six staff — there are no per-user accounts. That has a second-order effect: `audit_log` records `action`, `details`, and `timestamp`, but nothing identifies *who* acted, because there's no per-user identity to attach. Tracing a mistake back to a person today means asking, not querying. **Next step:** per-user accounts, a `user_id` column on every audit row, and role-based permissions (e.g. restricting deletes) as a natural follow-on once identity exists.
+
+- **Backup verification checks shape, not restorability.** `verify_backup_integrity()` ([Engineering Decisions #4](#4-verified-backups-with-an-off-site-copy)) catches an empty, truncated, or schema-only dump automatically. A full restore has only been tested by hand (most recently 2026-10-03). **Next step:** a scheduled restore drill — spin up a throwaway Postgres container in CI, restore the latest backup into it, and run sanity `COUNT(*)` checks.
+
+- **The N+1 fix doesn't scale past very large item lists.** The batched `IN (...)` queries in [Engineering Decisions #5](#5-n+1-query-elimination) are a fine tradeoff at this company's recipe sizes, but an unbounded `IN (...)` would need chunking before it held up against a much larger ingredient list.
+
+- **The UI has design-system debt.** Formatting helpers (`fmt_num`, `dash`, `humanize`, `fmt_date` in `app.py`) exist to normalize numbers, dates, and empty values but aren't wired into most templates yet, and status colors are hardcoded inline in a few places instead of using the shared CSS tokens. Functionally correct, visually inconsistent in spots. **Next step:** wire the formatting filters through templates one page at a time, and consolidate the hardcoded colors onto the existing token set.
 </content>
 </invoke>
