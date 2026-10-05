@@ -1,8 +1,14 @@
 # Botaniks Inventory Management System
-
+Lot-based inventory and production tracking for a small matcha manufacturer.
 <!-- One-line tagline under the title, e.g. "Lot-based inventory & production tracking for a matcha manufacturer." -->
 
-<!-- Badge/tag row, e.g. shields.io badges or plain text: Flask · PostgreSQL · SQLite · Supply Chain · Render -->
+![Python](https://img.shields.io/badge/Python-3-3776AB?logo=python&logoColor=white)
+![Flask](https://img.shields.io/badge/Flask-black?logo=flask&logoColor=white)
+![PostgreSQL](https://img.shields.io/badge/PostgreSQL-4169E1?logo=postgresql&logoColor=white)
+![SQLite](https://img.shields.io/badge/SQLite-07405E?logo=sqlite&logoColor=white)
+![Docker](https://img.shields.io/badge/Docker-2496ED?logo=docker&logoColor=white)
+![pytest](https://img.shields.io/badge/pytest-0A9EDC?logo=pytest&logoColor=white)
+![Render](https://img.shields.io/badge/Render-46E3B7?logo=render&logoColor=white)
 
 **Stack:** Python, Flask, Gunicorn · PostgreSQL (prod) / SQLite (dev, test) · pandas, openpyxl · Jinja2, HTML/CSS, JavaScript · pytest, Hypothesis · Docker, GitHub Actions, Render, Supabase, Cloudflare R2
 

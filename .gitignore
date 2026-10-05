@@ -25,3 +25,8 @@ exports/*.xlsx
 .DS_Store
 Thumbs.db
 io
+
+# Test/coverage artifacts
+.coverage
+.pytest_cache/
+.hypothesis/
