@@ -140,20 +140,6 @@ The suite runs on SQLite; production runs Postgres. It verifies application logi
 - **No response security headers yet** (CSP, X-Frame-Options, HSTS). Every route is behind `@requires_auth`, but header hardening is still open.
 - **The UI has design-system debt.** Formatting helpers (`fmt_num`, `dash`, `humanize`, `fmt_date`) exist but aren't wired into most templates, and some status colors are hardcoded instead of using the shared CSS tokens.
 
-## Quickstart
-
-```bash
-python -m venv .venv && source .venv/bin/activate   # Windows: .venv\Scripts\activate
-pip install -r requirements.txt
-```
-
-Create a `.env` with `SECRET_KEY`, `AUTH_USERNAME`, `AUTH_PASSWORD`, and `DATABASE_URL` left blank (blank → SQLite at `data/inventory.db`; set it → PostgreSQL). The app won't start without these.
-
-```bash
-python app.py                        # serves on :8000; creates the SQLite DB on first run
-python -m pytest test_scripts -q     # run the test suite
-git config core.hooksPath hooks      # one-time: enable the pre-push gate (pytest + smoke test)
-```
 
 ## Docs
 
