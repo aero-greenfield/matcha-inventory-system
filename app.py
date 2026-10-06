@@ -1978,9 +1978,14 @@ def change_batch_status(batch_id):
         log_action('batch_status_changed', f"batch_id={batch_id}, new_status={new_status}")
         # CHANGED: was url_for(..., msg=...) — moved to flash()
         flash(f'Batch status updated to {new_status}', 'success')
+        # The Batches page's "Mark Ready" button sends next=batches so staff land back there, not on edit.
+        if request.form.get('next') == 'batches':
+            return redirect(url_for('view_batches'))
         return redirect(url_for('edit_batch', batch_id=batch_id))
     else:
         flash('Failed to update batch status', 'error')
+        if request.form.get('next') == 'batches':
+            return redirect(url_for('view_batches'))
         return redirect(url_for('edit_batch', batch_id=batch_id))
     
 
