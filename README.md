@@ -14,6 +14,22 @@ Lot-based inventory and production tracking for a small matcha manufacturer.
 
 I started as a warehouse employee at Botaniks Herbs & Tea, a Santa Cruz matcha and tea wholesaler, where inventory was tracked in spreadsheets and by intuition. That caused daily material shortages, manual physical counts, and hand-checked batch details. I built a demo database, pitched it to the owner, and the company moved me off warehouse work to build it during paid hours, as the sole engineer. It replaced manual tracking of 70+ raw materials and 45 products for the 6-person operation, and has run daily since its June 2026 launch: containerized with Docker, served on Gunicorn, saving 5-6 hrs/week with zero stockout-driven batch cancellations since launch (previously every 1-2 months). Clients take 350kg+ pallets weekly.
 
+## Table of Contents
+
+- [Demo](#demo)
+  - [Batches](#batches)
+  - [Recipes](#recipes)
+  - [Materials](#materials)
+  - [Shipments](#shipments)
+- [Features](#features)
+- [Architecture](#architecture)
+  - [Schema](#schema)
+  - [System](#system)
+- [Engineering highlights](#engineering-highlights)
+- [Testing & Reliability](#testing--reliability)
+- [Known limitations](#known-limitations)
+- [Docs](#docs)
+
 ## Demo
 
 <!-- Screenshots use seeded demo data only (scripts/seed_demo_data.py), never real inventory, costs, or supplier data. -->
