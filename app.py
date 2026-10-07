@@ -69,7 +69,7 @@ from services.recipes import (
 from services.batches import (
     add_to_batches, get_batches, get_batches_shipped, get_batches_planned,
     get_all_batches_with_id, get_batch_by_id, mark_as_shipped, delete_batch,
-    update_batch, update_batch_status, get_batch_materials,
+    update_batch, update_batch_status, promote_batch_now, get_batch_materials,
     adjust_batch_material, check_batch_materials_stock,
     get_batch_materials_for_reallocation,
     # ADDED: planned-deduction-mode feature — a deferred Planned batch has no batch_materials rows;
@@ -1972,7 +1972,21 @@ def change_batch_status(batch_id):
             return redirect(url_for('edit_batch', batch_id=batch_id))
         update_batch(batch_id, planned_completion_date=planned_completion_date)
 
-    result = update_batch_status(batch_id, new_status)
+    # Planned -> Ready is a real promotion, not a label change: a deferred batch must deduct its
+    # lots and record batch_materials (a mix also needs its output lot). Going through
+    # update_batch_status here left such a batch Ready with nothing deducted.
+    current = get_batch_by_id(batch_id)
+    if new_status == 'Ready' and current and current[4] == 'Planned':
+        result, failure_reason = promote_batch_now(batch_id)
+        if not result:
+            logging.warning(f"Manual promotion failed: batch_id={batch_id}, reason={failure_reason}")
+            flash('Could not mark this batch Ready — there is not enough usable stock '
+                  '(or a selected lot has expired). It stays Planned. Check the lot stock and try again.', 'error')
+            if request.form.get('next') == 'batches':
+                return redirect(url_for('view_batches'))
+            return redirect(url_for('edit_batch', batch_id=batch_id))
+    else:
+        result = update_batch_status(batch_id, new_status)
     if result:
         logging.info(f"Batch status changed: batch_id={batch_id}, new_status={new_status}")
         log_action('batch_status_changed', f"batch_id={batch_id}, new_status={new_status}")

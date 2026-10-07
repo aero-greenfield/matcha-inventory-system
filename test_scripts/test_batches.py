@@ -12,7 +12,7 @@ import pytest
 
 from services import batches as batches_mod  # for monkeypatching _fetch_overdue in the race tests
 from services.batches import (
-    add_to_batches, promote_planned_batches, delete_batch, get_batch_materials,
+    add_to_batches, promote_planned_batches, promote_batch_now, delete_batch, get_batch_materials,
     get_batch_materials_for_reallocation, adjust_batch_material, check_batch_materials_stock,
     get_batch_by_id, get_batches, get_batches_planned, get_all_batches_with_id,
     get_planned_lot_selections, update_planned_lot_selections, clear_planned_lot_selections,
@@ -692,6 +692,131 @@ def test_planned_promotion_failure_reports_insufficient_not_missing_selection(
     assert reason
     assert "Insufficient" in reason
     assert "no stored lot selection" not in reason.lower()
+
+
+# --- manual promotion ("Mark Ready" before the planned date) -------------------------
+# Bug: the Mark Ready button only flipped status, so a deferred batch became Ready without ever
+# deducting its lots or writing batch_materials (drawer: "No materials recorded").
+FUTURE = "2999-01-01"  # not overdue, so only a manual promotion can move it
+
+
+def _mix_lot_id(db, batch_id):
+    cur = db.cursor()
+    db.execute(cur, "SELECT mix_lot_id FROM batches WHERE batch_id = %s", (batch_id,))
+    return cur.fetchone()[0]
+
+
+def test_manual_promote_deferred_fifo_deducts_and_records(make_material, make_lot, make_recipe, db):
+    mid = make_material("Matcha")
+    old = make_lot(mid, 20, received_date="2024-01-01", lot_number="OLD")
+    new = make_lot(mid, 20, received_date="2024-03-01", lot_number="NEW")
+    make_recipe("Latte", [{"material_name": "Matcha", "quantity_needed": 30}])
+    bid = add_to_batches("Latte", 1, batch_number="MP1", planned_completion_date=FUTURE,
+                         batch_type="finished", deduction_mode="deferred", lot_selections=None)
+
+    ok, reason = promote_batch_now(bid)
+
+    assert ok is True and reason is None
+    assert _batch_status(db, bid)[0] == "Ready"
+    assert _lot_qty(db, old)[0] == 0
+    assert _lot_qty(db, new)[0] == 10
+    assert len(_bm_rows(db, bid)) == 2
+    assert get_batch_materials(bid)  # what the drawer reads
+
+
+def test_manual_promote_deferred_uses_stored_lot_picks(make_material, make_lot, make_recipe, db):
+    mid = make_material("Matcha")
+    old = make_lot(mid, 50, received_date="2024-01-01")
+    picked = make_lot(mid, 50, received_date="2024-03-01")
+    make_recipe("Latte", [{"material_name": "Matcha", "quantity_needed": 10}])
+    bid = add_to_batches("Latte", 1, batch_number="MP2", planned_completion_date=FUTURE,
+                         batch_type="finished", deduction_mode="deferred",
+                         lot_selections={mid: [{"lot_id": picked, "qty": 10}]})
+
+    ok, _ = promote_batch_now(bid)
+
+    assert ok is True
+    assert _lot_qty(db, picked)[0] == 40
+    assert _lot_qty(db, old)[0] == 50  # FIFO must not override the user's pick
+
+
+def test_manual_promote_deferred_mix_creates_output_lot(make_material, make_lot, make_recipe, db):
+    mid = make_material("Matcha")
+    lid = make_lot(mid, 100)
+    make_recipe("Blend", [{"material_name": "Matcha", "quantity_needed": 10}],
+                batch_type="mix", product_unit="g", product_dimension="mass")
+    bid = add_to_batches("Blend", 2, batch_number="MP3", planned_completion_date=FUTURE,
+                         batch_type="mix", deduction_mode="deferred", lot_selections=None)
+    assert _mix_lot_id(db, bid) is None
+
+    ok, _ = promote_batch_now(bid)
+
+    assert ok is True
+    assert _lot_qty(db, lid)[0] == 80
+    assert _mix_lot_id(db, bid) is not None
+
+
+def test_manual_promote_insufficient_stock_stays_planned(make_material, make_lot, make_recipe, db):
+    mid = make_material("Matcha")
+    lid = make_lot(mid, 5)
+    make_recipe("Latte", [{"material_name": "Matcha", "quantity_needed": 10}])
+    bid = add_to_batches("Latte", 1, batch_number="MP4", planned_completion_date=FUTURE,
+                         batch_type="finished", deduction_mode="deferred", lot_selections=None)
+
+    ok, reason = promote_batch_now(bid)
+
+    assert ok is False and reason
+    status, stored_reason = _batch_status(db, bid)
+    assert status == "Planned"
+    assert stored_reason
+    assert _lot_qty(db, lid)[0] == 5
+    assert _bm_rows(db, bid) == []
+
+
+def test_manual_promote_immediate_mode_does_not_deduct_twice(make_material, make_lot, make_recipe, db):
+    mid = make_material("Matcha")
+    lid = make_lot(mid, 100)
+    make_recipe("Latte", [{"material_name": "Matcha", "quantity_needed": 10}])
+    bid = add_to_batches("Latte", 1, batch_number="MP5", planned_completion_date=FUTURE,
+                         batch_type="finished", deduction_mode="immediate",
+                         lot_selections={mid: [{"lot_id": lid, "qty": 10}]})
+    assert _lot_qty(db, lid)[0] == 90  # deducted at creation
+
+    ok, _ = promote_batch_now(bid)
+
+    assert ok is True
+    assert _batch_status(db, bid)[0] == "Ready"
+    assert _lot_qty(db, lid)[0] == 90
+    assert len(_bm_rows(db, bid)) == 1
+
+
+def test_manual_promote_twice_deducts_once(make_material, make_lot, make_recipe, db):
+    mid = make_material("Matcha")
+    lid = make_lot(mid, 100)
+    make_recipe("Latte", [{"material_name": "Matcha", "quantity_needed": 10}])
+    bid = add_to_batches("Latte", 1, batch_number="MP6", planned_completion_date=FUTURE,
+                         batch_type="finished", deduction_mode="deferred", lot_selections=None)
+
+    first, _ = promote_batch_now(bid)
+    second, second_reason = promote_batch_now(bid)  # double-click: batch is no longer Planned
+
+    assert first is True
+    assert second is False and second_reason
+    assert _lot_qty(db, lid)[0] == 90
+    assert len(_bm_rows(db, bid)) == 1
+
+
+def test_manual_promote_writes_an_audit_row(make_material, make_lot, make_recipe, db):
+    mid = make_material("Matcha")
+    make_lot(mid, 100)
+    make_recipe("Latte", [{"material_name": "Matcha", "quantity_needed": 10}])
+    bid = add_to_batches("Latte", 1, batch_number="MP7", planned_completion_date=FUTURE,
+                         batch_type="finished", deduction_mode="deferred", lot_selections=None)
+    promote_batch_now(bid)
+
+    cur = db.cursor()
+    db.execute(cur, "SELECT COUNT(*) FROM audit_log WHERE action = %s", ("planned_batch_promoted",))
+    assert cur.fetchone()[0] == 1
 
 
 # --- delete with reallocation --------------------------------------------------------

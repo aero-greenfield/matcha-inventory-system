@@ -399,6 +399,45 @@ def test_materials_endpoint_reports_fifo_when_no_lots_reserved(client, auth, mak
     assert payload["fifo"] is True
 
 
+def test_mark_ready_on_deferred_batch_deducts_stock_and_shows_materials(client, auth, make_material, make_lot, make_recipe):
+    # Regression: "Mark Ready" on a deferred Planned batch only flipped the status, so nothing was
+    # deducted and the drawer said "No materials recorded".
+    make_material("Matcha")
+    mid = get_material_id("Matcha")
+    lid = make_lot(mid, 100)
+    make_recipe("Latte", [{"material_name": "Matcha", "quantity_needed": 10}], batch_type="finished")
+    bid = add_to_batches("Latte", 1, batch_number="MR1", planned_completion_date="2999-01-01",
+                         batch_type="finished", deduction_mode="deferred", lot_selections=None)
+
+    resp = client.post(f"/edit-batch/{bid}/change-status", headers=auth,
+                       data={"status": "Ready", "next": "batches"})
+
+    assert resp.status_code == 302
+    assert get_batch_by_id(bid)[4] == "Ready"
+    assert get_material_stock_from_lots(mid) == 90
+    payload = client.get(f"/batches/{bid}/materials", headers=auth).get_json()
+    assert payload["planned"] is False
+    assert len(payload["materials"]) == 1
+
+
+def test_mark_ready_with_short_stock_keeps_batch_planned_and_flashes(client, auth, make_material, make_lot, make_recipe):
+    make_material("Matcha")
+    mid = get_material_id("Matcha")
+    make_lot(mid, 5)
+    make_recipe("Latte", [{"material_name": "Matcha", "quantity_needed": 10}], batch_type="finished")
+    bid = add_to_batches("Latte", 1, batch_number="MR2", planned_completion_date="2999-01-01",
+                         batch_type="finished", deduction_mode="deferred", lot_selections=None)
+
+    resp = client.post(f"/edit-batch/{bid}/change-status", headers=auth, data={"status": "Ready"})
+
+    assert resp.status_code == 302
+    assert get_batch_by_id(bid)[4] == "Planned"
+    assert get_material_stock_from_lots(mid) == 5
+    with client.session_transaction() as sess:
+        flashes = sess.get("_flashes", [])
+    assert any(cat == "error" and "stays Planned" in msg for cat, msg in flashes)
+
+
 def test_edit_page_opens_for_deferred_planned_batch(client, auth, make_material, make_lot, make_recipe):
     # Regression: this used to 404 ("Batch Materials Not Found") because a deferred batch has no
     # batch_materials rows, making every planned batch un-editable.
