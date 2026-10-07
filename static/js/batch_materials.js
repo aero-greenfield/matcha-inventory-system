@@ -23,7 +23,7 @@ function renderBatchMaterials(data) {
     html += '<table class="materials-inner-table"><thead><tr>' +
             '<th>Material</th><th>Lot #</th>' +
             // cost-of-material feature — Cost/Unit column in the materials expansion panel.
-            '<th>' + (data.planned ? 'Quantity Reserved' : 'Quantity Used') + '</th><th>Unit</th><th>Cost/Unit</th>' +
+            '<th class="center">' + (data.planned ? 'Quantity Reserved' : 'Quantity Used') + '</th><th class="center">Unit</th><th>Cost/Unit</th>' +
             '</tr></thead><tbody>';
 
     materials.forEach(function (m) {
@@ -32,8 +32,8 @@ function renderBatchMaterials(data) {
         // letting the batch silently fail to promote.
         var stale = (m.lot_status && m.lot_status !== 'active')
             ? ' <span class="badge badge-out">unavailable</span>' : '';
-        html += '<tr><td>' + m.material_name + '</td><td>' + m.lot_number + stale + '</td><td class="num">' +
-                m.quantity_used + '</td><td>' + m.unit + '</td><td class="num">' + cpu + '</td></tr>';
+        html += '<tr><td>' + m.material_name + '</td><td>' + m.lot_number + stale + '</td><td class="num center">' +
+                m.quantity_used + '</td><td class="center">' + m.unit + '</td><td class="num">' + cpu + '</td></tr>';
     });
 
     return html + '</tbody></table>';

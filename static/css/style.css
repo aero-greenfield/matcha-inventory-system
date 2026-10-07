@@ -1232,3 +1232,7 @@ h1 {
 .lots-card tr:last-child td { border-bottom: none; }
 .lots-card th.num, .lots-card td.num { text-align: right; }
 .drawer-empty { color: var(--text-muted); font-size: 13px; margin-top: 10px; }
+
+/* Centered Quantity/Unit columns in the batch materials drawer (header + cells). */
+.materials-inner-table th.center,
+.materials-inner-table td.center { text-align: center; }
