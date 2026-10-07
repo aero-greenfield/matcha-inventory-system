@@ -16,7 +16,42 @@ I started as a warehouse employee at Botaniks Herbs & Tea, a Santa Cruz matcha a
 
 ## Demo
 
-<!-- TODO(aero): GIF + 3-4 screenshots (receiving a lot, FIFO batch creation, shipping) using scrubbed/seed data. Run `python scripts/seed_demo_data.py` to rebuild data/demo_inventory.db, then serve it on a second port (see the script's docstring) and screenshot from there. Never real inventory, costs, or supplier data. -->
+<!-- Screenshots use seeded demo data only (scripts/seed_demo_data.py), never real inventory, costs, or supplier data. -->
+
+*Screenshots use seeded demo data.*
+
+<p align="center">
+  <img src="docs/screenshots/dashboard.png" alt="Dashboard with stat cards, a needs-reordering table with Low status pills, and recent activity" width="100%">
+</p>
+<p align="center"><sub><b>Dashboard</b>: low-stock alerts and recent activity at a glance</sub></p>
+
+### Batches
+Standard, mix, and planned finished batches, with status at a glance.
+
+![Batches page listing production batches by type and status](docs/screenshots/batches.png)
+
+### Recipes
+Per-product material requirements, checked against live lot stock when a batch is created.
+
+![Recipes page listing products and their materials](docs/screenshots/recipes.png)
+
+![New recipe form with material rows and quantities](docs/screenshots/new-recipe.png)
+
+### Materials
+Stock is tracked per lot: expand a material to see each receipt's quantity, expiration, location, and supplier. House-made mixes are tracked alongside purchased materials.
+
+![Raw materials list with an expanded lot detail row and stock status pills](docs/screenshots/materials.png)
+
+Reorder levels and units are set per material.
+
+![Add a raw material form](docs/screenshots/add-material.png)
+
+### Shipments
+History of what went out, and a form to ship finished batches.
+
+![Shipments page listing shipped batches](docs/screenshots/shipments.png)
+
+![Create shipment form selecting batches to ship](docs/screenshots/create-shipment.png)
 
 ## Features
 
